@@ -25,8 +25,9 @@ on:
     - cron: "17 6 * * 1"
 
 permissions:
+  # Pushing the sync branch is all this needs. It deliberately does not open the pull
+  # request, so `pull-requests: write` would be a permission granted for nothing.
   contents: write
-  pull-requests: write
 
 concurrency:
   group: upstream-sync
@@ -110,63 +111,65 @@ jobs:
             echo "::warning::$count path(s) conflicted; a human has to resolve this one"
           fi
 
-      - name: Open the pull request
+      - name: Push the branch and point at the pull request
         if: steps.target.outputs.already-merged == 'false' && steps.merge.outputs.conflicted == 'false'
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.target.outputs.tag }}
           BRANCH: ${{ steps.target.outputs.branch }}
         run: |
           set -euo pipefail
           git push --set-upstream origin "$BRANCH"
+          # Deliberately does not open the pull request. `gh pr create` from a workflow
+          # needs "Allow GitHub Actions to create and approve pull requests", and that one
+          # setting grants BOTH -- in a public repository a workflow that can approve pull
+          # requests can approve its own, which costs more than clicking a link.
+          url="${{ github.server_url }}/${{ github.repository }}/compare/develop...${BRANCH}?expand=1"
           {
-            echo "Merges upstream [\`$TAG\`](https://github.com/anomalyco/opencode/releases/tag/$TAG) into \`develop\`."
+            echo "### Upstream $TAG merged cleanly onto \`$BRANCH\`"
             echo
-            echo "The merge applied without conflicts. That does **not** mean it is correct:"
-            echo "a clean three-way merge can still change behaviour our fork depends on."
+            echo "[Open the pull request into \`develop\`]($url)"
             echo
-            echo "Before merging, check that the sweep of upstream's changes did not undo"
-            echo "anything deliberate -- the legacy \`.opencode\` config directory, the three"
-            echo "\`opencode-*\` npm dependencies, and our provider endpoint are the usual"
-            echo "casualties. See [docs/BRANCHING.md](docs/BRANCHING.md)."
-            echo
-            echo "Opened by the \`upstream-sync\` workflow."
-          } > body.md
-          gh pr create --base develop --head "$BRANCH" \
-            --title "Merge upstream $TAG into develop" --body-file body.md
+            echo "A clean three-way merge does **not** mean a correct one. Check that"
+            echo "upstream's changes did not undo anything deliberate -- the legacy"
+            echo "\`.opencode\` config directory, the three \`opencode-*\` npm dependencies,"
+            echo "and our provider endpoint are the usual casualties. See"
+            echo "\`docs/BRANCHING.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::upstream $TAG merged onto $BRANCH; open the pull request at $url"
 
       - name: Report a conflicting sync
         if: steps.merge.outputs.conflicted == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.target.outputs.tag }}
           COUNT: ${{ steps.merge.outputs.conflict-count }}
         run: |
           set -euo pipefail
+          # Written to the run summary rather than filed as an issue: `gh issue create`
+          # needs `issues: write`, and widening this workflow's token to file its own
+          # tickets is not worth it when the summary is where someone reading a failed run
+          # already is.
           {
-            echo "Merging upstream \`$TAG\` into \`develop\` conflicts in **$COUNT path(s)**,"
-            echo "so it needs a person. The workflow aborted the merge rather than pushing"
-            echo "a tree full of conflict markers."
+            echo "### Upstream $TAG needs manual resolution"
             echo
-            echo "\`\`\`"
+            echo "Merging upstream \`$TAG\` into \`develop\` conflicts in **$COUNT path(s)**."
+            echo "The merge was aborted rather than pushing a tree full of conflict markers."
+            echo
+            echo '```'
             cat "$RUNNER_TEMP/conflicts.txt"
-            echo "\`\`\`"
+            echo '```'
             echo
             echo "To resolve it locally:"
             echo
-            echo "\`\`\`sh"
+            echo '```sh'
             echo "git remote add upstream https://github.com/anomalyco/opencode.git  # once"
             echo "git fetch upstream --tags"
             echo "git switch develop && git pull"
             echo "git switch -c sync/upstream-$TAG"
             echo "git merge $TAG"
-            echo "\`\`\`"
+            echo '```'
             echo
             echo "Conflicts here are usually rebranding: upstream edited a line we renamed."
             echo "Keep ours, take their surrounding change. Do not finish the rebrand while"
-            echo "resolving -- some \`opencode\` strings are load-bearing, see"
-            echo "[NOTICE.md](NOTICE.md)."
-          } > body.md
-          gh issue create --title "Upstream sync $TAG needs manual resolution" \
-            --body-file body.md --label upstream-sync || \
-            gh issue create --title "Upstream sync $TAG needs manual resolution" --body-file body.md
+            echo "resolving -- some \`opencode\` strings are load-bearing, see \`NOTICE.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::upstream $TAG conflicts in $COUNT path(s); see the run summary"
