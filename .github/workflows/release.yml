@@ -1,113 +1,461 @@
 name: release
 
-# Builds the CLI binaries and attaches them to a GitHub Release. This is the simple
-# path: no npm, Docker, Homebrew, AUR, or AWS. Those live in `publish.yml`, which needs
-# credentials this repository does not have.
+# Build, sign, and publish a Redrob Code release.
+#
+# Versions track upstream with a `-redrob.N` suffix, so no tag this publishes is a string
+# upstream also publishes and nobody can mistake our artifact for theirs.
+#
+# `workflow_dispatch` ONLY. This job reaches real signing credentials, so it must never be
+# reachable from a pull request, a comment, or a schedule. Dispatch requires write access
+# to this repository, which is the access control.
+#
+# It does not push to `main`. The last step opens a pull request from `develop` into
+# `main`, because `main` is what people believe is released and advancing it deserves the
+# same review as anything else -- it is also the one branch where an unreviewed automated
+# push would be hard to notice. See docs/BRANCHING.md.
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release, without the leading v (e.g. 0.0.1)"
+      upstream_version:
+        description: "Upstream version this builds against, without the v, e.g. 1.18.32"
         required: true
         type: string
-      single:
-        description: "Build only this runner's platform instead of every target"
+      iteration:
+        description: "Our build number against that upstream version. 1 unless re-releasing."
+        required: true
+        default: "1"
+        type: string
+      dry_run:
+        description: "Build and sign, but publish nothing."
         required: false
         default: false
         type: boolean
-  # Paused during local-dev. Restore `push: {tags: [v*]}` to auto-release on tags.
-
-concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: write
+  # For actions/attest-build-provenance. Provenance is free to produce and is the one
+  # thing that lets someone verify an artifact came from this repository and this workflow
+  # rather than from a machine that had the signing keys.
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ inputs.upstream_version }}-${{ inputs.iteration }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  version:
+    runs-on: ubuntu-latest
+    # Pinned to this repository's immutable id, not its name. A fork must never run this,
+    # and a rename must not silently switch the check off -- a false `if:` SKIPS a job
+    # rather than failing it, which is invisible behind a green checkmark.
+    if: github.repository_id == '1371675259'
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      tag: ${{ steps.compute.outputs.tag }}
+    steps:
+      - id: compute
+        env:
+          UPSTREAM: ${{ inputs.upstream_version }}
+          ITERATION: ${{ inputs.iteration }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$UPSTREAM" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::upstream_version must look like 1.18.32, got '$UPSTREAM'"
+            exit 1
+          fi
+          if ! printf '%s' "$ITERATION" | grep -qE '^[0-9]+$'; then
+            echo "::error::iteration must be a number, got '$ITERATION'"
+            exit 1
+          fi
+          version="${UPSTREAM}-redrob.${ITERATION}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::releasing v$version (tracks opencode v$UPSTREAM)"
+
+  build:
+    needs: version
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 1
 
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/setup-bun
 
-      - name: Resolve version
-        id: version
+      # Bun cross-compiles every target from one host, so there is no build matrix and
+      # every artifact in a release comes from a single commit and a single toolchain.
+      - name: Build
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          ./packages/redrob/script/build.ts
+        env:
+          REDROB_VERSION: ${{ needs.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-unsigned
+          path: |
+            packages/redrob/dist/redrob-darwin*
+            packages/redrob/dist/redrob-linux*
+            packages/redrob/dist/redrob-windows*
+
+  sign-macos:
+    needs: [version, build]
+    runs-on: macos-14
+    env:
+      APPLE_CODESIGN_CERT_P12_BASE64: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
+      APPLE_CODESIGN_CERT_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
+      APPLE_NOTARY_API_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+      APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+      APPLE_NOTARY_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-unsigned
+          path: dist
+
+      # Fail here rather than three steps later inside codesign, where the error is about
+      # a keychain and says nothing about the missing secret that caused it.
+      - name: Require the Apple credentials
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_CODESIGN_CERT_P12_BASE64 \
+            APPLE_CODESIGN_CERT_PASSWORD \
+            APPLE_NOTARY_API_KEY_P8_BASE64 \
+            APPLE_NOTARY_API_KEY_ID \
+            APPLE_NOTARY_API_ISSUER_ID; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::missing macOS signing secrets: ${missing[*]}"
+            exit 1
           fi
 
-      - name: Ensure release exists
+      - name: Import the Developer ID certificate
+        run: |
+          set -euo pipefail
+          p12="$RUNNER_TEMP/signing.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$APPLE_CODESIGN_CERT_P12_BASE64" | base64 --decode > "$p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -k "$keychain" -P "$APPLE_CODESIGN_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "::error::no Developer ID Application identity in the imported certificate"
+            exit 1
+          fi
+          printf '%s' "$APPLE_NOTARY_API_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+          {
+            echo "APPLE_SIGNING_IDENTITY=$identity"
+            echo "APPLE_SIGNING_KEYCHAIN=$keychain"
+          } >> "$GITHUB_ENV"
+
+      - name: Sign and notarize
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          binaries=(dist/redrob-darwin-*/bin/redrob)
+          if [ "${#binaries[@]}" -lt 2 ]; then
+            echo "::error::expected darwin arm64 and x64 binaries, found ${#binaries[@]}"
+            exit 1
+          fi
+          for binary in "${binaries[@]}"; do
+            chmod 755 "$binary"
+            # --options runtime is the hardened runtime, without which notarization is
+            # rejected. --timestamp is required for the signature to outlive the cert.
+            codesign --force --options runtime --timestamp \
+              --keychain "$APPLE_SIGNING_KEYCHAIN" --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+            codesign --verify --strict --verbose=2 "$binary"
+            archive="$RUNNER_TEMP/$(basename "$(dirname "$(dirname "$binary")")").zip"
+            ditto -c -k --keepParent "$binary" "$archive"
+            xcrun notarytool submit "$archive" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$APPLE_NOTARY_API_KEY_ID" \
+              --issuer "$APPLE_NOTARY_API_ISSUER_ID" \
+              --wait
+          done
+
+      - name: Repack
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          for directory in redrob-darwin-*; do
+            [ -d "$directory" ] || continue
+            (cd "$directory/bin" && zip -qr "../../${directory}.zip" .)
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-macos-signed
+          path: dist/redrob-darwin-*.zip
+
+      # `if: always()` so a failed notarization still takes the private key off the runner.
+      - name: Delete the signing keychain
+        if: always()
+        run: |
+          if [ -n "${APPLE_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$APPLE_SIGNING_KEYCHAIN" || true
+          fi
+
+  sign-windows:
+    needs: [version, build]
+    runs-on: windows-latest
+    outputs:
+      # Carried to `publish` so the release notes state what actually happened. Notes that
+      # claim a signature the run did not produce are worse than no claim: a reader has no
+      # way to tell, and the whole point of saying "signed" is that it can be relied on.
+      signed: ${{ steps.result.outputs.signed }}
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+      AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+      AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-unsigned
+          path: dist
+
+      # Signing is all-or-nothing on six values. Deciding once, here, keeps every later
+      # step from re-deriving it, and an incomplete configuration is reported as such
+      # rather than failing inside an Azure login with an unrelated message.
+      - name: Detect the signing configuration
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          present=0
+          missing=()
+          for name in \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT \
+            AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE; do
+            if [ -n "${!name:-}" ]; then present=$((present + 1)); else missing+=("$name"); fi
+          done
+          if [ "$present" -eq 6 ]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          elif [ "$present" -eq 0 ]; then
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Azure signing is not configured; the Windows binaries will be unsigned"
+          else
+            echo "::error::partial Azure signing configuration; missing: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Azure login
+        if: steps.config.outputs.signing == 'true'
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign with Azure Trusted Signing
+        id: sign
+        continue-on-error: true
+        if: steps.config.outputs.signing == 'true'
+        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+        with:
+          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+          files: |
+            ${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe
+            ${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe
+            ${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Record the signing outcome
+        id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.config.outputs.signing }}" = "true" ] && [ "${{ steps.sign.outcome }}" = "success" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::the Windows binaries in this release are NOT signed"
+          fi
+
+      - name: Repack
+        shell: bash
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          for directory in redrob-windows-*; do
+            [ -d "$directory" ] || continue
+            (cd "$directory/bin" && 7z a -tzip "../../${directory}.zip" . >/dev/null)
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-windows-signed
+          path: dist/redrob-windows-*.zip
+
+  publish:
+    needs: [version, build, sign-macos, sign-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-unsigned
+          path: unsigned
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-macos-signed
+          path: assets
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-windows-signed
+          path: assets
+
+      - name: Pack the Linux binaries
+        run: |
+          set -euo pipefail
+          cd unsigned
+          for directory in redrob-linux-*; do
+            [ -d "$directory" ] || continue
+            (cd "$directory/bin" && zip -qr "../../../assets/${directory}.zip" .)
+          done
+
+      - name: Checksums
+        working-directory: assets
+        run: |
+          set -euo pipefail
+          sha256sum redrob-*.zip > SHA256SUMS
+          cat SHA256SUMS
+
+      # Lets anyone verify an artifact was produced by this repository and this workflow,
+      # which a code signature alone does not establish -- a signature says the key was
+      # used, not where.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: assets/redrob-*.zip
+
+      - name: Create the release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.version.outputs.value }}
+          TAG: ${{ needs.version.outputs.tag }}
+          UPSTREAM: ${{ inputs.upstream_version }}
+          WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
         run: |
+          set -euo pipefail
+          # An annotated tag records a tagger, and a bare runner has no git identity, so
+          # `git tag -a` fails with "empty ident name" AFTER the build, the signing and the
+          # notarization have all succeeded -- the most expensive possible place to
+          # discover it. The tag stays annotated rather than lightweight because it is what
+          # a release points at and it should say who made it and when.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          {
+            echo "Tracks [opencode v$UPSTREAM](https://github.com/anomalyco/opencode/releases/tag/v$UPSTREAM)."
+            echo
+            echo "The \`-redrob.N\` suffix means this is our build against that upstream"
+            echo "version, not a mirror of upstream's own release."
+            echo
+            echo "## Verifying"
+            echo
+            echo "macOS binaries are signed with a Developer ID certificate and notarized."
+            if [ "$WINDOWS_SIGNED" = "true" ]; then
+              echo "Windows binaries are signed through Azure Trusted Signing."
+            else
+              echo "**Windows binaries in this release are NOT signed**, so Windows will show a"
+              echo "SmartScreen warning on first run. Verify the archive against \`SHA256SUMS\`"
+              echo "and the provenance attestation below before running it."
+            fi
+            echo
+            echo "Every archive carries build provenance attesting it was produced by this"
+            echo "workflow, which a code signature alone does not establish -- a signature says"
+            echo "the key was used, not where:"
+            echo
+            echo '```sh'
+            echo "gh attestation verify redrob-darwin-arm64.zip --repo ${{ github.repository }}"
+            echo '```'
+            echo
+            echo "Checksums are in \`SHA256SUMS\`."
+          } > notes.md
+          git tag -a "$TAG" -m "Redrob Code $TAG — tracks opencode v$UPSTREAM" 2>/dev/null || \
+            echo "tag $TAG already exists locally"
+          # A release that fails after tagging must be retryable. Without this a single
+          # transient failure in the steps below leaves the version permanently unusable:
+          # the tag exists, so every retry dies on push before reaching the release.
+          git push origin "$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists"
+            echo "::notice::release $TAG exists; replacing its notes and assets"
+            gh release edit "$TAG" --notes-file notes.md
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md assets/*
+          fi
+
+      - name: Point at the promotion to main
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Deliberately does NOT open the pull request itself.
+          #
+          # `gh pr create` from a workflow needs "Allow GitHub Actions to create and
+          # approve pull requests", and that one setting grants BOTH. In a public
+          # repository, letting the Actions token approve pull requests means a workflow
+          # can approve its own, which is worth more than the convenience of not clicking
+          # a link. So this prints the link and a person opens it.
+          #
+          # Compared against the remote rather than a local ref: this job checks out
+          # `develop` alone, so `origin/main` does not exist here and a
+          # `git log origin/main..HEAD` would come back empty and read as "nothing to
+          # promote" -- passing for the wrong reason, which is how the previous version of
+          # this step silently did nothing.
+          main_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ -z "$main_sha" ]; then
+            echo "::notice::no main branch yet; create it from $TAG to start tracking released state"
             exit 0
           fi
-          gh release create "$TAG" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
-
-      # REDROB_RELEASE is deliberately unset: build.ts would then archive and upload the
-      # assets itself in one `gh release upload` call, which returns HTTP 400 when it
-      # pushes every target at once. Package and upload below instead.
-      - name: Build binaries
-        working-directory: packages/redrob
-        env:
-          REDROB_VERSION: ${{ steps.version.outputs.value }}
-        run: bun run build ${{ inputs.single && '--single' || '' }}
-
-      - name: Package binaries
-        working-directory: packages/redrob
-        run: |
-          set -euo pipefail
-          root=$(pwd)
-          mkdir -p upload
-          for dir in dist/*/; do
-            name=$(basename "$dir")
-            [ -d "$dir/bin" ] || continue
-            case "$name" in
-              *linux*) (cd "$dir/bin" && tar -czf "$root/upload/$name.tar.gz" *) ;;
-              *) (cd "$dir/bin" && zip -qr "$root/upload/$name.zip" *) ;;
-            esac
-          done
-          ls -l upload
-
-      - name: Upload assets
-        working-directory: packages/redrob
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          for file in upload/*; do
-            uploaded=false
-            for attempt in 1 2 3; do
-              if gh release upload "$TAG" "$file" --clobber; then
-                uploaded=true
-                break
-              fi
-              echo "attempt $attempt failed for $file, retrying"
-              sleep 15
-            done
-            if [ "$uploaded" != true ]; then
-              echo "::error::failed to upload $file"
-              exit 1
-            fi
-          done
-
-      - name: Summarize
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.version.outputs.value }}
-        run: |
+          if [ "$main_sha" = "$(git rev-parse HEAD)" ]; then
+            echo "::notice::main already matches develop; nothing to promote"
+            exit 0
+          fi
+          url="${{ github.server_url }}/${{ github.repository }}/compare/main...develop?expand=1"
           {
-            echo "### $TAG assets"
+            echo "### Promote \`develop\` to \`main\` for $TAG"
             echo
-            gh release view "$TAG" --json assets --jq '.assets[] | "- \(.name) (\(.size) bytes)"'
+            echo "The release is published. \`main\` still points at \`${main_sha:0:9}\`, so what"
+            echo "the repository says is *released* has not moved yet."
+            echo
+            echo "[Open the promotion pull request]($url)"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::release published; promote develop to main at $url"

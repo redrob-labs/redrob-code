@@ -157,5 +157,8 @@ bun typecheck                # all packages
 cd packages/core && bun test # tests run per package, never from the repo root
 ```
 
-`bun@1.3.14` is required; the pre-push hook enforces it. See [AGENTS.md](./AGENTS.md)
-for branch, commit, and style conventions.
+`bun@1.3.14` is required; the pre-push hook enforces it.
+
+See [docs/BRANCHING.md](./docs/BRANCHING.md) for the branch model, how to open a pull
+request, and how upstream releases are absorbed — the last of which is the operation
+that matters most in a fork and the one most easily got wrong.
