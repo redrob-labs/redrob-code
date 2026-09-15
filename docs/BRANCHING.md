@@ -46,10 +46,16 @@ git switch -c sync/upstream-v1.18.32
 git merge v1.18.32
 ```
 
-The `upstream-sync` workflow does exactly this and opens the pull request for you; run it
-from the Actions tab. When the merge conflicts it says which paths conflicted and stops,
-because resolving a fork's conflicts is a judgement call about which side is right, and a
-machine that guesses at that produces a tree nobody can review.
+The `upstream-sync` workflow does exactly this and pushes the branch for you; run it from
+the Actions tab and it prints a link that opens the pull request. When the merge conflicts
+it says which paths conflicted and stops, because resolving a fork's conflicts is a
+judgement call about which side is right, and a machine that guesses at that produces a
+tree nobody can review.
+
+Neither workflow opens a pull request itself. Doing so needs "Allow GitHub Actions to
+create and approve pull requests", and that single setting grants both — in a public
+repository, a workflow able to approve pull requests can approve its own, which is worth
+more than not clicking a link.
 
 Three things to know before your first sync:
 
@@ -79,13 +85,19 @@ upstream version. The suffix is not decoration — it guarantees no tag we publi
 string upstream also publishes, so nobody can mistake our artifact for theirs.
 
 Run the `release` workflow from the Actions tab against `develop`. It builds every
-platform, signs and notarizes the macOS binaries, signs the Windows binary, attaches
-build provenance, creates the tagged release, and then opens a pull request from
-`develop` into `main`.
+platform, signs and notarizes the macOS binaries, signs the Windows binary when Azure
+Trusted Signing is configured, attaches build provenance, and creates the tagged release.
+It then prints a link to open the promotion pull request from `develop` into `main`.
 
-That last step is a pull request rather than a push on purpose. `main` is what people
-believe is released; advancing it deserves the same review as anything else, and it is
-the one branch where an unreviewed automated push would be hard to notice.
+`main` moves through a reviewed pull request rather than an automated push. It is what
+people believe is released, and it is the one branch where an unreviewed push would be
+hard to notice.
+
+Pass `dry_run: true` to build, sign and notarize while publishing nothing. That is the way
+to check the signing credentials are actually visible to this repository — organization
+secrets are not automatically visible to a new public repository, and an absent Azure
+configuration degrades to an unsigned Windows binary with a warning rather than failing
+the release.
 
 ## Hotfixes
 

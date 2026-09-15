@@ -39,7 +39,6 @@ permissions:
   # rather than from a machine that had the signing keys.
   id-token: write
   attestations: write
-  pull-requests: write
 
 concurrency:
   group: release-${{ inputs.upstream_version }}-${{ inputs.iteration }}
@@ -421,29 +420,42 @@ jobs:
             gh release create "$TAG" --title "$TAG" --notes-file notes.md assets/*
           fi
 
-      - name: Open the release pull request into main
+      - name: Point at the promotion to main
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          # `main` may not exist yet on a repository that has only ever released from
-          # develop. Say so rather than failing the release that already succeeded.
-          if ! git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+          # Deliberately does NOT open the pull request itself.
+          #
+          # `gh pr create` from a workflow needs "Allow GitHub Actions to create and
+          # approve pull requests", and that one setting grants BOTH. In a public
+          # repository, letting the Actions token approve pull requests means a workflow
+          # can approve its own, which is worth more than the convenience of not clicking
+          # a link. So this prints the link and a person opens it.
+          #
+          # Compared against the remote rather than a local ref: this job checks out
+          # `develop` alone, so `origin/main` does not exist here and a
+          # `git log origin/main..HEAD` would come back empty and read as "nothing to
+          # promote" -- passing for the wrong reason, which is how the previous version of
+          # this step silently did nothing.
+          main_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ -z "$main_sha" ]; then
             echo "::notice::no main branch yet; create it from $TAG to start tracking released state"
             exit 0
           fi
-          if [ -z "$(git log --oneline "origin/main..HEAD")" ]; then
+          if [ "$main_sha" = "$(git rev-parse HEAD)" ]; then
             echo "::notice::main already matches develop; nothing to promote"
             exit 0
           fi
+          url="${{ github.server_url }}/${{ github.repository }}/compare/main...develop?expand=1"
           {
-            echo "Promotes \`develop\` to \`main\` for [$TAG](../../releases/tag/$TAG)."
+            echo "### Promote \`develop\` to \`main\` for $TAG"
             echo
-            echo "Opened by the \`release\` workflow. Merging this advances what \`main\`"
-            echo "says is released; the artifacts are already published against the tag."
-          } > pr-body.md
-          gh pr create --base main --head develop \
-            --title "Release $TAG" --body-file pr-body.md || \
-            echo "::notice::a develop -> main pull request is already open"
+            echo "The release is published. \`main\` still points at \`${main_sha:0:9}\`, so what"
+            echo "the repository says is *released* has not moved yet."
+            echo
+            echo "[Open the promotion pull request]($url)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::release published; promote develop to main at $url"
