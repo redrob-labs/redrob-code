@@ -1,0 +1,172 @@
+name: upstream-sync
+
+# Absorb an upstream release into `develop` as a reviewable pull request.
+#
+# We follow upstream TAGS rather than its `dev` branch: a tag is a point upstream decided
+# was coherent, `dev` is whatever landed an hour ago.
+#
+# This never pushes to `develop` and never resolves a conflict. A fork's conflicts are a
+# judgement about which side is right -- ours is usually a rebrand, theirs is usually a
+# fix -- and a machine guessing at that produces a tree nobody can review. On conflict it
+# reports which paths disagreed and stops.
+#
+# Needs no secrets: the default GITHUB_TOKEN can push a branch and open a pull request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to merge, e.g. v1.18.32. Leave empty for upstream's latest release."
+        required: false
+        type: string
+  schedule:
+    # Weekly, so a sync that nobody remembers to run still surfaces as a pull request
+    # rather than as six months of drift discovered during an incident.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Pinned to this repository's immutable id, not its name: a fork of a fork should
+    # never open pull requests here, and a rename must not silently switch the check off.
+    if: github.repository_id == '1371675259'
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          # Full history: a shallow clone has no merge base with upstream, which turns a
+          # three-way merge into the 650-conflict mess this fork exists to avoid.
+          fetch-depth: 0
+
+      - name: Resolve the upstream tag
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/anomalyco/opencode.git
+          git fetch --quiet --tags upstream
+
+          if [ -n "${REQUESTED:-}" ]; then
+            tag="$REQUESTED"
+          else
+            tag="$(gh release view --repo anomalyco/opencode --json tagName --jq .tagName)"
+            echo "upstream's latest release is $tag"
+          fi
+
+          if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "::error::upstream has no tag $tag"
+            exit 1
+          fi
+
+          # Nothing to do when the tag is already an ancestor. Reported rather than
+          # failed: a scheduled run finding no new release is the normal case.
+          if git merge-base --is-ancestor "refs/tags/$tag" HEAD; then
+            echo "already-merged=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag is already an ancestor of develop; nothing to sync"
+          else
+            echo "already-merged=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "branch=sync/upstream-$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Merge the tag
+        id: merge
+        if: steps.target.outputs.already-merged == 'false'
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+
+          base="$(git merge-base HEAD "refs/tags/$TAG")"
+          echo "merge base: $(git rev-parse --short "$base")"
+          echo "upstream commits to absorb: $(git rev-list --count "$base..refs/tags/$TAG")"
+
+          if git merge --no-edit "refs/tags/$TAG"; then
+            echo "conflicted=false" >> "$GITHUB_OUTPUT"
+          else
+            # Record what disagreed BEFORE aborting, then abort so the pushed branch is a
+            # clean starting point for a human rather than a tree full of markers.
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt" || true
+            count="$(wc -l < "$RUNNER_TEMP/conflicts.txt" | tr -d ' ')"
+            echo "conflicted=true" >> "$GITHUB_OUTPUT"
+            echo "conflict-count=$count" >> "$GITHUB_OUTPUT"
+            git merge --abort
+            echo "::warning::$count path(s) conflicted; a human has to resolve this one"
+          fi
+
+      - name: Open the pull request
+        if: steps.target.outputs.already-merged == 'false' && steps.merge.outputs.conflicted == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git push --set-upstream origin "$BRANCH"
+          {
+            echo "Merges upstream [\`$TAG\`](https://github.com/anomalyco/opencode/releases/tag/$TAG) into \`develop\`."
+            echo
+            echo "The merge applied without conflicts. That does **not** mean it is correct:"
+            echo "a clean three-way merge can still change behaviour our fork depends on."
+            echo
+            echo "Before merging, check that the sweep of upstream's changes did not undo"
+            echo "anything deliberate -- the legacy \`.opencode\` config directory, the three"
+            echo "\`opencode-*\` npm dependencies, and our provider endpoint are the usual"
+            echo "casualties. See [docs/BRANCHING.md](docs/BRANCHING.md)."
+            echo
+            echo "Opened by the \`upstream-sync\` workflow."
+          } > body.md
+          gh pr create --base develop --head "$BRANCH" \
+            --title "Merge upstream $TAG into develop" --body-file body.md
+
+      - name: Report a conflicting sync
+        if: steps.merge.outputs.conflicted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
+          COUNT: ${{ steps.merge.outputs.conflict-count }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Merging upstream \`$TAG\` into \`develop\` conflicts in **$COUNT path(s)**,"
+            echo "so it needs a person. The workflow aborted the merge rather than pushing"
+            echo "a tree full of conflict markers."
+            echo
+            echo "\`\`\`"
+            cat "$RUNNER_TEMP/conflicts.txt"
+            echo "\`\`\`"
+            echo
+            echo "To resolve it locally:"
+            echo
+            echo "\`\`\`sh"
+            echo "git remote add upstream https://github.com/anomalyco/opencode.git  # once"
+            echo "git fetch upstream --tags"
+            echo "git switch develop && git pull"
+            echo "git switch -c sync/upstream-$TAG"
+            echo "git merge $TAG"
+            echo "\`\`\`"
+            echo
+            echo "Conflicts here are usually rebranding: upstream edited a line we renamed."
+            echo "Keep ours, take their surrounding change. Do not finish the rebrand while"
+            echo "resolving -- some \`opencode\` strings are load-bearing, see"
+            echo "[NOTICE.md](NOTICE.md)."
+          } > body.md
+          gh issue create --title "Upstream sync $TAG needs manual resolution" \
+            --body-file body.md --label upstream-sync || \
+            gh issue create --title "Upstream sync $TAG needs manual resolution" --body-file body.md
