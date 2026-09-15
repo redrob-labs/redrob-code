@@ -6,9 +6,33 @@ import * as core from "@actions/core"
 import * as github from "@actions/github"
 import type { Context as GitHubContext } from "@actions/github/lib/context"
 import type { IssueCommentEvent, PullRequestReviewCommentEvent } from "@octokit/webhooks-types"
-import { createOpencodeClient } from "@opencode-ai/sdk"
+import { createRedrobClient } from "@redrob-code/sdk"
 import { spawn } from "node:child_process"
 import { setTimeout as sleep } from "node:timers/promises"
+
+// Phrases that summon the agent from a comment.
+//
+// `/redrob` and `/rr` are ours. `/opencode` and `/oc` are upstream's and are kept
+// deliberately: the phrase lives in people's comments rather than in a config file, so
+// dropping them would silently stop answering every repository that already uses this
+// action, with no error anyone could act on. They cost nothing to keep.
+//
+// Defined once because the same list was previously written out three times in this
+// file, and a fourth copy in action.yml's description -- which is exactly how a list
+// like this drifts out of agreement with itself.
+const TRIGGER_PHRASES = ["/redrob", "/rr", "/opencode", "/oc"] as const
+
+const TRIGGER_PATTERN = new RegExp(`(?:^|\\s)(?:${TRIGGER_PHRASES.join("|")})(?=$|\\s)`)
+
+const TRIGGER_HINT = TRIGGER_PHRASES.map((phrase) => `\`${phrase}\``).join(", ")
+
+function mentionsTrigger(body: string) {
+  return TRIGGER_PHRASES.some((phrase) => body.includes(phrase))
+}
+
+function isBareTrigger(body: string) {
+  return (TRIGGER_PHRASES as readonly string[]).includes(body)
+}
 
 type GitHubAuthor = {
   login: string
@@ -113,7 +137,7 @@ type IssueQueryResponse = {
   }
 }
 
-const { client, server } = createOpencode()
+const { client, server } = createRedrob()
 let accessToken: string
 let octoRest: Octokit
 let octoGraph: typeof graphql
@@ -127,7 +151,7 @@ type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
 try {
   assertContextEvent("issue_comment", "pull_request_review_comment")
   assertPayloadKeyword()
-  await assertOpencodeConnected()
+  await assertRedrobConnected()
 
   accessToken = await getAccessToken()
   octoRest = new Octokit({ auth: accessToken })
@@ -142,7 +166,7 @@ try {
   const comment = await createComment()
   commentId = comment.data.id
 
-  // Setup opencode session
+  // Setup Redrob Code session
   const repoData = await fetchRepo()
   session = await client.session.create<true>().then((r) => r.data)
   await subscribeSessionEvents()
@@ -152,7 +176,7 @@ try {
     await client.session.share<true>({ path: session })
     return session.id.slice(-8)
   })()
-  console.log("opencode session", session.id)
+  console.log("Redrob Code session", session.id)
   if (shareId) {
     console.log("Share link:", `${useShareUrl()}/s/${shareId}`)
   }
@@ -201,7 +225,7 @@ try {
         repoData.data.default_branch,
         branch,
         summary,
-        `${response}\n\nCloses #${useIssueId()}${footer({ image: true })}`,
+        pullRequestBody(response, `Closes #${useIssueId()}${footer({ image: true })}`),
       )
       await updateComment(`Created PR #${pr}${footer({ image: true })}`)
     } else {
@@ -228,12 +252,12 @@ try {
 }
 process.exit(exitCode)
 
-function createOpencode() {
+function createRedrob() {
   const host = "127.0.0.1"
   const port = 4096
   const url = `http://${host}:${port}`
-  const proc = spawn(`opencode`, [`serve`, `--hostname=${host}`, `--port=${port}`])
-  const client = createOpencodeClient({ baseUrl: url })
+  const proc = spawn(`redrob`, [`serve`, `--hostname=${host}`, `--port=${port}`])
+  const client = createRedrobClient({ baseUrl: url })
 
   return {
     server: { url, close: () => proc.kill() },
@@ -244,8 +268,8 @@ function createOpencode() {
 function assertPayloadKeyword() {
   const payload = useContext().payload as IssueCommentEvent | PullRequestReviewCommentEvent
   const body = payload.comment.body.trim()
-  if (!body.match(/(?:^|\s)(?:\/opencode|\/oc)(?=$|\s)/)) {
-    throw new Error("Comments must mention `/opencode` or `/oc`")
+  if (!body.match(TRIGGER_PATTERN)) {
+    throw new Error(`Comments must mention one of ${TRIGGER_HINT}`)
   }
 }
 
@@ -267,7 +291,7 @@ function getReviewCommentContext() {
   }
 }
 
-async function assertOpencodeConnected() {
+async function assertRedrobConnected() {
   let retry = 0
   let connected = false
   do {
@@ -286,7 +310,7 @@ async function assertOpencodeConnected() {
   } while (retry++ < 30)
 
   if (!connected) {
-    throw new Error("Failed to connect to opencode server")
+    throw new Error("Failed to connect to the Redrob Code server")
   }
 }
 
@@ -363,7 +387,7 @@ function useIssueId() {
 }
 
 function useShareUrl() {
-  return isMock() ? "https://dev.opencode.ai" : "https://opencode.ai"
+  return isMock() ? "https://dev.code.redrob.ai" : "https://code.redrob.ai"
 }
 
 async function getAccessToken() {
@@ -374,7 +398,7 @@ async function getAccessToken() {
 
   let response
   if (isMock()) {
-    response = await fetch("https://api.opencode.ai/exchange_github_app_token_with_pat", {
+    response = await fetch("https://api.code.redrob.ai/exchange_github_app_token_with_pat", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${useEnvMock().mockToken}`,
@@ -383,7 +407,7 @@ async function getAccessToken() {
     })
   } else {
     const oidcToken = await core.getIDToken("opencode-github-action")
-    response = await fetch("https://api.opencode.ai/exchange_github_app_token", {
+    response = await fetch("https://api.code.redrob.ai/exchange_github_app_token", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${oidcToken}`,
@@ -418,19 +442,19 @@ async function getUserPrompt() {
 
   let prompt = (() => {
     const body = payload.comment.body.trim()
-    if (body === "/opencode" || body === "/oc") {
+    if (isBareTrigger(body)) {
       if (reviewContext) {
         return `Review this code change and suggest improvements for the commented lines:\n\nFile: ${reviewContext.file}\nLines: ${reviewContext.line}\n\n${reviewContext.diffHunk}`
       }
       return "Summarize this thread"
     }
-    if (body.includes("/opencode") || body.includes("/oc")) {
+    if (mentionsTrigger(body)) {
       if (reviewContext) {
         return `${body}\n\nContext: You are reviewing a comment on file "${reviewContext.file}" at line ${reviewContext.line}.\n\nDiff context:\n${reviewContext.diffHunk}`
       }
       return body
     }
-    throw new Error("Comments must mention `/opencode` or `/oc`")
+    throw new Error(`Comments must mention one of ${TRIGGER_HINT}`)
   })()
 
   // Handle images
@@ -607,7 +631,7 @@ async function resolveAgent(): Promise<string | undefined> {
 }
 
 async function chat(text: string, files: PromptFiles = []) {
-  console.log("Sending message to opencode...")
+  console.log("Sending message to Redrob Code...")
   const { providerID, modelID } = useEnvModel()
   const agent = await resolveAgent()
 
@@ -806,6 +830,33 @@ async function updateComment(body: string) {
   })
 }
 
+/**
+ * Build a pull request body from the agent's own closing report.
+ *
+ * `report` is whatever the model produced as the final text part of its turn,
+ * which is ordinarily a written summary of the work. It is not guaranteed to be
+ * anything: a turn that ended on a tool call, was cut short, or returned only
+ * whitespace leaves it blank, and the trailer alone ("Closes #12") describes
+ * nothing. Rather than open a PR whose entire description is a cross-reference,
+ * say plainly that no summary was produced so a reviewer knows to read the diff
+ * instead of trusting a description that is not there.
+ *
+ * The CLI carries its own copy of this in `packages/redrob/src/cli/cmd/github.shared.ts`
+ * — this file ships as a separate bundle and cannot import it. Change both.
+ */
+export function pullRequestBody(report: string, trailer: string) {
+  const summary = report.trim()
+  if (summary) return `${summary}\n\n${trailer}`
+  return [
+    "## Summary",
+    "",
+    "The agent did not produce a summary for this change. Read the diff and the",
+    "commit messages before approving — there is no description to check them against.",
+    "",
+    trailer,
+  ].join("\n")
+}
+
 async function createPR(base: string, branch: string, title: string, body: string) {
   console.log("Creating pull request...")
   const { repo } = useContext()
@@ -820,7 +871,6 @@ async function createPR(base: string, branch: string, title: string, body: strin
   })
   return pr.data.number
 }
-
 function footer(opts?: { image?: boolean }) {
   const { providerID, modelID } = useEnvModel()
 
@@ -833,7 +883,7 @@ function footer(opts?: { image?: boolean }) {
 
     return `<a href="${useShareUrl()}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
   })()
-  const shareUrl = shareId ? `[opencode session](${useShareUrl()}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+  const shareUrl = shareId ? `[Redrob Code session](${useShareUrl()}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
   return `\n\n${image}${shareUrl}[github run](${useEnvRunUrl()})`
 }
 

@@ -1,4 +1,4 @@
-import type { Workspace } from "@opencode-ai/sdk/v2"
+import type { Workspace } from "@redrob-code/sdk/v2"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useProject } from "../context/project"
@@ -10,11 +10,13 @@ import { createStore } from "solid-js/store"
 import { errorMessage } from "../util/error"
 import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
+import { useLanguage } from "../context/language"
 
 type WorkspaceOption = { workspace: Workspace }
 
 export function DialogWorkspaceList() {
   const dialog = useDialog()
+  const language = useLanguage()
   const route = useRoute()
   const sync = useSync()
   const sdk = useSDK()
@@ -39,9 +41,9 @@ export function DialogWorkspaceList() {
         return {
           title:
             removing() === workspace.id
-              ? "Deleting…"
+              ? language.t("workspace.list.deleting")
               : deleting() === workspace.id
-                ? `Delete ${workspace.name}? Press delete again`
+                ? language.t("workspace.list.delete_confirm", { name: workspace.name })
                 : workspace.name,
           value: { workspace },
           footer: workspace.type,
@@ -71,7 +73,7 @@ export function DialogWorkspaceList() {
       setRemoving(undefined)
       toast.show({
         variant: "error",
-        title: "Failed to delete workspace",
+        title: language.t("toast.workspace_delete_failed"),
         message: errorMessage(result.error),
       })
       return
@@ -94,7 +96,7 @@ export function DialogWorkspaceList() {
 
   return (
     <DialogSelect
-      title="Workspaces"
+      title={language.t("workspace.list.title")}
       options={options()}
       onMove={(option) => {
         setDeleting(undefined)
@@ -103,7 +105,7 @@ export function DialogWorkspaceList() {
       actions={[
         {
           command: "session.delete",
-          title: "delete",
+          title: language.t("action.delete"),
           onTrigger: (option) => void remove(option.value.workspace),
         },
       ]}

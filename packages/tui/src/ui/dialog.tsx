@@ -4,9 +4,10 @@ import { useTheme } from "../context/theme"
 import { MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
-import { Flag } from "@opencode-ai/core/flag/flag"
-import { useBindings, useOpencodeModeStack } from "../keymap"
+import { Flag } from "@redrob-code/core/flag/flag"
+import { useBindings, useRedrobModeStack } from "../keymap"
 import { useClipboard } from "../context/clipboard"
+import { useLanguage } from "../context/language"
 
 export function Dialog(
   props: ParentProps<{
@@ -67,6 +68,7 @@ export function Dialog(
 }
 
 function init() {
+  const language = useLanguage()
   const [store, setStore] = createStore({
     stack: [] as {
       element: JSX.Element
@@ -76,7 +78,7 @@ function init() {
   })
 
   const renderer = useRenderer()
-  const modeStack = useOpencodeModeStack()
+  const modeStack = useRedrobModeStack()
 
   createEffect(() => {
     if (store.stack.length === 0) return
@@ -107,7 +109,7 @@ function init() {
     bindings: [
       {
         key: "escape",
-        desc: "Close dialog",
+        desc: language.t("dialog.close"),
         group: "Dialog",
         cmd: () => {
           if (renderer.getSelection()) {
@@ -121,7 +123,7 @@ function init() {
       },
       {
         key: "ctrl+c",
-        desc: "Close dialog",
+        desc: language.t("dialog.close"),
         group: "Dialog",
         cmd: () => {
           if (renderer.getSelection()) {
@@ -184,12 +186,13 @@ export function DialogProvider(props: ParentProps) {
   const renderer = useRenderer()
   const toast = useToast()
   const clipboard = useClipboard()
+  const language = useLanguage()
 
   function copySelection() {
     const text = renderer.getSelection()?.getSelectedText()
     if (!text || !clipboard.write) return false
     void clipboard.write(text).then(
-      () => toast.show({ message: "Copied to clipboard", variant: "info" }),
+      () => toast.show({ message: language.t("toast.copied_to_clipboard"), variant: "info" }),
       (error) => toast.error(error),
     )
     renderer.clearSelection()
@@ -203,14 +206,14 @@ export function DialogProvider(props: ParentProps) {
         position="absolute"
         zIndex={3000}
         onMouseDown={(evt: { button: number; preventDefault(): void; stopPropagation(): void }) => {
-          if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+          if (!Flag.REDROB_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
           if (evt.button !== MouseButton.RIGHT) return
 
           if (!copySelection()) return
           evt.preventDefault()
           evt.stopPropagation()
         }}
-        onMouseUp={!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
+        onMouseUp={!Flag.REDROB_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
       >
         <Show when={value.stack.length}>
           <Dialog onClose={() => value.clear()} size={value.size}>

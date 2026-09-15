@@ -8,79 +8,65 @@ import { DialogPrompt } from "../ui/dialog-prompt"
 import { Link } from "../ui/link"
 import { useTheme } from "../context/theme"
 import { TextAttributes } from "@opentui/core"
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@opencode-ai/sdk/v2"
+import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@redrob-code/sdk/v2"
 import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
+import { useLanguage } from "../context/language"
+import type { TuiI18nKey } from "../i18n"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
-  opencode: 0,
-  "opencode-go": 1,
+  redrob: 0,
+  "redrob-go": 1,
   openai: 2,
   "github-copilot": 3,
   anthropic: 4,
   google: 5,
 }
 
-const CUSTOM_PROVIDER_OPTION_VALUE = "__opencode_custom_provider__"
-const CUSTOM_PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
-
 type ProviderOptionBase = {
   title: string
   value: string
-  description?: string
-  category: string
+  descriptionKey?: TuiI18nKey
+  categoryKey: TuiI18nKey
 }
 
-type ProviderOption =
-  | (ProviderOptionBase & {
-      type: "provider"
-      providerID: string
-    })
-  | (ProviderOptionBase & {
-      type: "custom"
-    })
+type ProviderOption = ProviderOptionBase & {
+  type: "provider"
+  providerID: string
+}
 
+// Redrob Code connects to the Redrob console only, so there is no custom-provider entry: the
+// list is the console-backed providers and nothing else.
 export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
-  return [
-    ...pipe(
-      list,
-      sortBy(
-        (x) => PROVIDER_PRIORITY[x.id] ?? 99,
-        (x) => x.name.toLowerCase(),
-        (x) => x.id,
-      ),
-      map((provider) => ({
-        type: "provider" as const,
-        title: provider.name,
-        value: provider.id,
-        providerID: provider.id,
-        description: {
-          opencode: "(Recommended)",
-          anthropic: "(API key)",
-          openai: "(ChatGPT Plus/Pro or API key)",
-          "opencode-go": "Low cost subscription for everyone",
-        }[provider.id],
-        category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
-      })),
+  return pipe(
+    list,
+    sortBy(
+      (x) => PROVIDER_PRIORITY[x.id] ?? 99,
+      (x) => x.name.toLowerCase(),
+      (x) => x.id,
     ),
-    {
-      type: "custom",
-      title: "Other",
-      value: CUSTOM_PROVIDER_OPTION_VALUE,
-      description: "Custom provider",
-      category: "Providers",
-    },
-  ]
-}
-
-export function normalizeCustomProviderID(value: string) {
-  const providerID = value.trim().replace(/^@ai-sdk\//, "")
-  if (!CUSTOM_PROVIDER_ID.test(providerID)) return
-  return providerID
+    map((provider) => ({
+      type: "provider" as const,
+      title: provider.name,
+      value: provider.id,
+      providerID: provider.id,
+      descriptionKey: (
+        {
+          redrob: "provider.description.redrob",
+          anthropic: "provider.description.anthropic",
+          openai: "provider.description.openai",
+          "redrob-go": "provider.description.redrob_go",
+        } as Record<string, TuiI18nKey | undefined>
+      )[provider.id],
+      categoryKey: (provider.id in PROVIDER_PRIORITY
+        ? "provider.category.popular"
+        : "provider.category.providers") satisfies TuiI18nKey as TuiI18nKey,
+    })),
+  )
 }
 
 export function createDialogProviderOptions() {
@@ -90,74 +76,43 @@ export function createDialogProviderOptions() {
   const toast = useToast()
   const { theme } = useTheme()
   const onboarded = useConnected()
-
-  async function promptCustomProviderID(): Promise<string | undefined> {
-    const value = await DialogPrompt.show(dialog, "Other", {
-      placeholder: "Provider id",
-      description: () => (
-        <text fg={theme.textMuted}>
-          This only stores a credential. Configure the provider in opencode.json to use it.
-        </text>
-      ),
-    })
-    if (value === null) return
-
-    const providerID = normalizeCustomProviderID(value)
-    if (providerID) return providerID
-
-    toast.show({
-      variant: "error",
-      message:
-        "Provider ids must start with a lowercase letter or number and only use lowercase letters, numbers, hyphens, and underscores",
-    })
-    return promptCustomProviderID()
-  }
+  const language = useLanguage()
 
   const options = createMemo(() => {
     return pipe(
       providerOptions(sync.data.provider_next.all),
       map((provider) => {
-        if (provider.type === "custom") {
-          return {
-            title: provider.title,
-            value: provider.value,
-            description: provider.description,
-            category: provider.category,
-            async onSelect() {
-              const providerID = await promptCustomProviderID()
-              if (!providerID) return
-              return dialog.replace(() => <ApiMethod providerID={providerID} title="API key" custom />)
-            },
-          }
-        }
-
         const providerID = provider.providerID
         const consoleManaged = isConsoleManagedProvider(sync.data.console_state.consoleManagedProviders, providerID)
         const connected = sync.data.provider_next.connected.includes(providerID)
+        const methods: ProviderAuthMethod[] = sync.data.provider_auth[providerID] ?? [
+          {
+            type: "api",
+            label: language.t("provider.auth.method.api"),
+          },
+        ]
 
         return {
           title: provider.title,
           value: provider.value,
-          description: provider.description,
+          description: provider.descriptionKey ? language.t(provider.descriptionKey) : undefined,
           footer: consoleManaged ? sync.data.console_state.activeOrgName : undefined,
-          category: provider.category,
+          category: language.t(provider.categoryKey),
+          // DialogProvider skips the picker for a lone provider, but only when selecting it lands
+          // somewhere: console-managed providers have nothing to enter, and anything other than a
+          // single api method needs a choice made first.
+          autoConnect: !consoleManaged && methods.length === 1 && methods[0].type === "api",
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,
           async onSelect() {
             if (consoleManaged) return
 
-            const methods = sync.data.provider_auth[providerID] ?? [
-              {
-                type: "api",
-                label: "API key",
-              },
-            ]
             let index: number | null = 0
             if (methods.length > 1) {
               index = await new Promise<number | null>((resolve) => {
                 dialog.replace(
                   () => (
                     <DialogSelect
-                      title="Select auth method"
+                      title={language.t("provider.auth.method.title")}
                       options={methods.map((x, index) => ({
                         title: x.label,
                         value: index,
@@ -226,8 +181,25 @@ export function createDialogProviderOptions() {
 }
 
 export function DialogProvider() {
+  const language = useLanguage()
   const options = createDialogProviderOptions()
-  return <DialogSelect title="Connect a provider" options={options()} />
+  // The Redrob console is the only provider, so a single-entry picker is pure friction: go
+  // straight to its credential entry. The list still renders whenever there is a real choice.
+  const only = createMemo(() => {
+    const list = options()
+    if (list.length !== 1) return
+    if (!list[0].autoConnect) return
+    return list[0]
+  })
+  onMount(() => {
+    const single = only()
+    if (single) void single.onSelect()
+  })
+  return (
+    <Show when={!only()}>
+      <DialogSelect title={language.t("provider.dialog.title")} options={options()} />
+    </Show>
+  )
 }
 
 interface AutoMethodProps {
@@ -237,6 +209,7 @@ interface AutoMethodProps {
   authorization: ProviderAuthAuthorization
 }
 function AutoMethod(props: AutoMethodProps) {
+  const language = useLanguage()
   const { theme } = useTheme()
   const sdk = useSDK()
   const dialog = useDialog()
@@ -248,14 +221,14 @@ function AutoMethod(props: AutoMethodProps) {
     bindings: [
       {
         key: "c",
-        desc: "Copy provider code",
+        desc: language.t("dialog.copy_code"),
         group: "Dialog",
         cmd: () => {
           const code =
             props.authorization.instructions.match(/[A-Z0-9]{4}-[A-Z0-9]{4,5}/)?.[0] ?? props.authorization.url
           clipboard
             .write?.(code)
-            .then(() => toast.show({ message: "Copied to clipboard", variant: "info" }))
+            .then(() => toast.show({ message: language.t("toast.copied_to_clipboard"), variant: "info" }))
             .catch(toast.error)
         },
       },
@@ -272,7 +245,7 @@ function AutoMethod(props: AutoMethodProps) {
         variant: "error",
         message:
           "name" in result.error && result.error.name === "ProviderAuthOauthCallbackFailed"
-            ? "OAuth authorization failed. Try /connect again."
+            ? language.t("provider.auth.oauth_failed")
             : JSON.stringify(result.error),
       })
       dialog.clear()
@@ -297,9 +270,9 @@ function AutoMethod(props: AutoMethodProps) {
         <Link href={props.authorization.url} fg={theme.primary} />
         <text fg={theme.textMuted}>{props.authorization.instructions}</text>
       </box>
-      <text fg={theme.textMuted}>Waiting for authorization…</text>
+      <text fg={theme.textMuted}>{language.t("provider.auth.waiting")}</text>
       <text fg={theme.text}>
-        c <span style={{ fg: theme.textMuted }}>copy</span>
+        c <span style={{ fg: theme.textMuted }}>{language.t("provider.auth.copy")}</span>
       </text>
     </box>
   )
@@ -312,6 +285,7 @@ interface CodeMethodProps {
   authorization: ProviderAuthAuthorization
 }
 function CodeMethod(props: CodeMethodProps) {
+  const language = useLanguage()
   const { theme } = useTheme()
   const sdk = useSDK()
   const sync = useSync()
@@ -321,7 +295,7 @@ function CodeMethod(props: CodeMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="Authorization code"
+      placeholder={language.t("provider.auth.code.placeholder")}
       onConfirm={async (value) => {
         const { error } = await sdk.client.provider.oauth.callback({
           providerID: props.providerID,
@@ -341,7 +315,7 @@ function CodeMethod(props: CodeMethodProps) {
           <text fg={theme.textMuted}>{props.authorization.instructions}</text>
           <Link href={props.authorization.url} fg={theme.primary} />
           <Show when={error()}>
-            <text fg={theme.error}>Invalid code</text>
+            <text fg={theme.error}>{language.t("provider.auth.code.invalid")}</text>
           </Show>
         </box>
       )}
@@ -353,40 +327,33 @@ interface ApiMethodProps {
   providerID: string
   title: string
   metadata?: Record<string, string>
-  custom?: boolean
 }
 function ApiMethod(props: ApiMethodProps) {
+  const language = useLanguage()
   const dialog = useDialog()
   const sdk = useSDK()
   const sync = useSync()
-  const toast = useToast()
   const { theme } = useTheme()
 
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="API key"
+      placeholder={language.t("provider.auth.api.placeholder")}
       description={() =>
         ({
-          opencode: (
+          redrob: (
             <box gap={1}>
-              <text fg={theme.textMuted}>
-                OpenCode Zen gives you access to all the best coding models at the cheapest prices with a single API
-                key.
-              </text>
+              <text fg={theme.textMuted}>{language.t("provider.auth.redrob.description")}</text>
               <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://opencode.ai/zen</span> to get a key
+                {language.t("provider.auth.redrob.link", { url: "https://console.redrob.ai" })}
               </text>
             </box>
           ),
-          "opencode-go": (
+          "redrob-go": (
             <box gap={1}>
-              <text fg={theme.textMuted}>
-                OpenCode Go is a $10 per month subscription that provides reliable access to popular open coding models
-                with generous usage limits.
-              </text>
+              <text fg={theme.textMuted}>{language.t("provider.auth.redrob_go.description")}</text>
               <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://opencode.ai/go</span> and enable OpenCode Go
+                {language.t("provider.auth.redrob_go.link", { url: "https://code.redrob.ai/go" })}
               </text>
             </box>
           ),
@@ -404,14 +371,6 @@ function ApiMethod(props: ApiMethodProps) {
         })
         await sdk.client.instance.dispose()
         await sync.bootstrap()
-        if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
-          toast.show({
-            variant: "info",
-            message: `Saved credential for ${props.providerID}. Configure it in opencode.json to use it.`,
-          })
-          dialog.clear()
-          return
-        }
         dialog.replace(() => <DialogModel providerID={props.providerID} />)
       }}
     />

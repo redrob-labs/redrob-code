@@ -6,20 +6,25 @@ import { DialogSelect, type DialogSelectRef, type DialogSelectOption } from "../
 import { useTheme } from "../context/theme"
 import { TextAttributes } from "@opentui/core"
 import { useSDK } from "../context/sdk"
+import { useLanguage } from "../context/language"
 
 function Status(props: { enabled: boolean; loading: boolean }) {
   const { theme } = useTheme()
+  const language = useLanguage()
   if (props.loading) {
-    return <span style={{ fg: theme.textMuted }}>⋯ Loading</span>
+    return <span style={{ fg: theme.textMuted }}>⋯ {language.t("mcp.status.loading")}</span>
   }
   if (props.enabled) {
-    return <span style={{ fg: theme.success, attributes: TextAttributes.BOLD }}>✓ Enabled</span>
+    return (
+      <span style={{ fg: theme.success, attributes: TextAttributes.BOLD }}>✓ {language.t("mcp.status.enabled")}</span>
+    )
   }
-  return <span style={{ fg: theme.textMuted }}>○ Disabled</span>
+  return <span style={{ fg: theme.textMuted }}>○ {language.t("mcp.status.disabled")}</span>
 }
 
 export function DialogMcp() {
   const local = useLocal()
+  const language = useLanguage()
   const sync = useSync()
   const sdk = useSDK()
   const [, setRef] = createSignal<DialogSelectRef<unknown>>()
@@ -37,7 +42,7 @@ export function DialogMcp() {
       map(([name, status]) => ({
         value: name,
         title: name,
-        description: status.status === "failed" ? "failed" : status.status,
+        description: status.status === "failed" ? language.t("mcp.status.failed") : status.status,
         footer: <Status enabled={local.mcp.isEnabled(name)} loading={loadingMcp === name} />,
         category: undefined,
       })),
@@ -47,7 +52,7 @@ export function DialogMcp() {
   const actions = createMemo(() => [
     {
       command: "dialog.mcp.toggle",
-      title: "toggle",
+      title: language.t("action.toggle"),
       onTrigger: async (option: DialogSelectOption<string>) => {
         // Prevent toggling while an operation is already in progress
         if (loading() !== null) return
@@ -74,7 +79,7 @@ export function DialogMcp() {
   return (
     <DialogSelect
       ref={setRef}
-      title="MCPs"
+      title={language.t("mcp.dialog.title")}
       options={options()}
       actions={actions()}
       onSelect={(_option) => {

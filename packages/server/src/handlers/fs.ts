@@ -1,5 +1,5 @@
-import { FileSystem } from "@opencode-ai/core/filesystem"
-import { RelativePath } from "@opencode-ai/core/schema"
+import { FileSystem } from "@redrob-code/core/filesystem"
+import { RelativePath } from "@redrob-code/core/schema"
 import { Effect } from "effect"
 import { HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"

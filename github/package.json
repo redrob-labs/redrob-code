@@ -1,5 +1,5 @@
 {
-  "name": "github",
+  "name": "@redrob-code/github",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -15,6 +15,6 @@
     "@actions/github": "6.0.1",
     "@octokit/graphql": "9.0.1",
     "@octokit/rest": "catalog:",
-    "@opencode-ai/sdk": "workspace:*"
+    "@redrob-code/sdk": "workspace:*"
   }
 }

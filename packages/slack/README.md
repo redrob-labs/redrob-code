@@ -1,6 +1,6 @@
-# @opencode-ai/slack
+# @redrob-code/slack
 
-Slack bot integration for opencode that creates threaded conversations.
+Slack bot integration for Redrob Code that creates threaded conversations.
 
 ## Setup
 

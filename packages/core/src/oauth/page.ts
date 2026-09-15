@@ -6,10 +6,18 @@
 // offline and drop into any transport (`res.end(...)`, Effect `response.end`,
 // etc.).
 //
-// The visual language mirrors the OpenCode app: the design tokens are a curated
-// subset of the OC-2 semantic tokens in `packages/ui/src/styles/theme.css`, and
-// the wordmark is the same geometry as `packages/ui/src/components/logo.tsx`.
-// Keep this file in sync with those sources when the brand changes.
+// This is the one Redrob Code surface a browser renders, so it is the one that can share the
+// console's token system as tokens: the roles below are the console's semantic names and the values
+// are the brand primitives from `../theme/brand`. The wordmark is the shared Redrob Code geometry.
+// This file is the source of record for both; the browser UI packages that used to hold them live in
+// Redrob Work.
+//
+// Pretendard is named in the font stack and deliberately not fetched. The page must work offline -
+// a failed authorization is exactly when the network is not there - and a blocking webfont request
+// from a loopback page would trade the whole card for the typeface. Anyone with Pretendard installed
+// sees it; everyone else gets the system stack, whose metrics are close enough that the difference is
+// weight, not layout. The console loads the webfont because it is a hosted site and can.
+import { Brand } from "../theme/brand"
 
 export interface CallbackPageOptions {
   /** Friendly integration name shown as a subtitle, e.g. "xAI", "Snowflake", "MCP". */
@@ -25,7 +33,7 @@ export function success(options?: CallbackPageOptions) {
     body: renderCard({
       status: "success",
       headline: "Authorization successful",
-      message: provider ? `OpenCode is now connected to ${escapeHtml(provider)}.` : "OpenCode is now authorized.",
+      message: provider ? `RedrobCode is now connected to ${escapeHtml(provider)}.` : "RedrobCode is now authorized.",
       footnote: "You can close this window.",
     }),
     script: options?.autoClose === false ? undefined : AUTO_CLOSE_SCRIPT,
@@ -40,10 +48,10 @@ export function error(detail: string, options?: CallbackPageOptions) {
       status: "error",
       headline: "Authorization failed",
       message: provider
-        ? `OpenCode couldn't finish connecting to ${escapeHtml(provider)}.`
-        : "OpenCode couldn't complete authorization.",
+        ? `RedrobCode couldn't finish connecting to ${escapeHtml(provider)}.`
+        : "RedrobCode couldn't complete authorization.",
       detail,
-      footnote: "Close this window and try again from OpenCode.",
+      footnote: "Close this window and try again from RedrobCode.",
     }),
   })
 }
@@ -79,17 +87,17 @@ type Status = "pending" | "success" | "error"
 
 function renderCard(input: { status: Status; headline: string; message: string; detail?: string; footnote: string }) {
   const detail = input.detail?.trim()
-  return `<main class="card" id="oc-card" data-status="${input.status}" role="status" aria-live="polite">
+  return `<main class="card" id="rr-card" data-status="${input.status}" role="status" aria-live="polite">
       <div class="brand">${WORDMARK}</div>
       <div class="status" aria-hidden="true">
         <span class="icon icon-pending">${ICON_SPINNER}</span>
         <span class="icon icon-success">${ICON_CHECK}</span>
         <span class="icon icon-error">${ICON_CROSS}</span>
       </div>
-      <h1 class="headline" id="oc-headline">${escapeHtml(input.headline)}</h1>
-      <p class="message" id="oc-message">${input.message}</p>
-      <pre class="detail" id="oc-detail"${detail ? "" : " hidden"}>${detail ? escapeHtml(detail) : ""}</pre>
-      <p class="footnote" id="oc-footnote">${escapeHtml(input.footnote)}</p>
+      <h1 class="headline" id="rr-headline">${escapeHtml(input.headline)}</h1>
+      <p class="message" id="rr-message">${input.message}</p>
+      <pre class="detail" id="rr-detail"${detail ? "" : " hidden"}>${detail ? escapeHtml(detail) : ""}</pre>
+      <p class="footnote" id="rr-footnote">${escapeHtml(input.footnote)}</p>
     </main>`
 }
 
@@ -100,7 +108,7 @@ function renderDocument(input: { title: string; body: string; script?: string })
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>${escapeHtml(input.title)} · OpenCode</title>
+    <title>${escapeHtml(input.title)} · RedrobCode</title>
     <style>${STYLES}</style>
   </head>
   <body>
@@ -115,9 +123,9 @@ function bootstrapScript(options: BootstrapOptions) {
   return `var PROVIDER=${scriptString(options.provider ?? "")};
 var TOKEN_URL=new URL(${scriptString(options.tokenPath)},window.location.origin).href;
 (function(){
-  var card=document.getElementById("oc-card"),headline=document.getElementById("oc-headline"),message=document.getElementById("oc-message"),detail=document.getElementById("oc-detail"),footnote=document.getElementById("oc-footnote");
-  function fail(text){card.dataset.status="error";headline.textContent="Authorization failed";message.textContent=PROVIDER?("OpenCode couldn't finish connecting to "+PROVIDER+"."):"OpenCode couldn't complete authorization.";if(text){detail.textContent=text;detail.hidden=false}footnote.textContent="Close this window and try again from OpenCode."}
-  function ok(){card.dataset.status="success";headline.textContent="Authorization successful";message.textContent=PROVIDER?("OpenCode is now connected to "+PROVIDER+"."):"OpenCode is now authorized.";detail.hidden=true;footnote.textContent="You can close this window.";setTimeout(function(){try{window.close()}catch(e){}},2500)}
+  var card=document.getElementById("rr-card"),headline=document.getElementById("rr-headline"),message=document.getElementById("rr-message"),detail=document.getElementById("rr-detail"),footnote=document.getElementById("rr-footnote");
+  function fail(text){card.dataset.status="error";headline.textContent="Authorization failed";message.textContent=PROVIDER?("RedrobCode couldn't finish connecting to "+PROVIDER+"."):"RedrobCode couldn't complete authorization.";if(text){detail.textContent=text;detail.hidden=false}footnote.textContent="Close this window and try again from RedrobCode."}
+  function ok(){card.dataset.status="success";headline.textContent="Authorization successful";message.textContent=PROVIDER?("RedrobCode is now connected to "+PROVIDER+"."):"RedrobCode is now authorized.";detail.hidden=true;footnote.textContent="You can close this window.";setTimeout(function(){try{window.close()}catch(e){}},2500)}
   try{
     var hash=new URLSearchParams((window.location.hash||"").slice(1));
     var search=new URLSearchParams(window.location.search||"");
@@ -146,45 +154,60 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;")
 }
 
-// Curated subset of OC-2 tokens (packages/ui/src/styles/theme.css). Default is
-// light; dark applies via prefers-color-scheme. The [data-theme] selectors let a
-// host force a scheme without changing the default.
+// Curated subset of the Redrob Console semantic tokens, pointed at the brand primitives in
+// `../theme/brand`. Role names follow the console's stylesheet so the two surfaces speak one
+// vocabulary; the values are the same steps. Default is light and dark applies via
+// prefers-color-scheme. The [data-theme] selectors let a host force a scheme without changing the
+// default.
+//
+// Where this departs from the console, and why:
+//
+//   - `--rr-card` on dark is the console's `color-mix(in srgb, var(--rr-gray-8) 45%, var(--rr-gray-9))`
+//     resolved to hex by `Brand.mix`. Written out rather than mixed in CSS so the value is the one
+//     the contrast test reads.
+//   - `--rr-subtle-foreground` is Gray 6 in both themes, as on the console, and is used only for the
+//     footnote and the pending icon: 3.8:1 on the light card clears large text and non-text UI and
+//     does not clear body copy.
+//   - The detail block is only ever an error payload, so it takes `destructive-soft` for its strip
+//     and `destructive` for its boundary instead of inventing a warm tint.
 const LIGHT_VARS = `
-    --oc-bg: #f8f8f8;
-    --oc-card: #fcfcfc;
-    --oc-text-strong: #171717;
-    --oc-text-base: #6f6f6f;
-    --oc-text-weak: #8f8f8f;
-    --oc-border-weak: #e5e5e5;
-    --oc-icon-strong: #171717;
-    --oc-icon-base: #8f8f8f;
-    --oc-icon-weak: #dbdbdb;
-    --oc-success: #2dba26;
-    --oc-error: #ed4831;
-    --oc-detail-bg: #fff8f6;
-    --oc-detail-border: #fdc3b7;
-    --oc-shadow: 0 16px 48px -6px rgba(0,0,0,.10), 0 6px 12px -2px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.06);`
+    --rr-bg: ${Brand.gray1};
+    --rr-card: ${Brand.white};
+    --rr-foreground: ${Brand.gray9};
+    --rr-muted-foreground: ${Brand.gray7};
+    --rr-subtle-foreground: ${Brand.gray6};
+    --rr-border: ${Brand.gray3};
+    --rr-primary: ${Brand.blue6};
+    --rr-icon-strong: ${Brand.gray9};
+    --rr-icon-base: ${Brand.gray7};
+    --rr-icon-weak: ${Brand.gray3};
+    --rr-success-ink: ${Brand.green5};
+    --rr-destructive-ink: ${Brand.red4};
+    --rr-destructive: ${Brand.red4};
+    --rr-destructive-soft: ${Brand.red1};
+    --rr-shadow: 0 2px 4px color-mix(in srgb, ${Brand.gray8} 6%, transparent), 0 12px 32px color-mix(in srgb, ${Brand.gray8} 12%, transparent);`
 
 const DARK_VARS = `
-    --oc-bg: #101010;
-    --oc-card: #161616;
-    --oc-text-strong: rgba(255,255,255,.936);
-    --oc-text-base: rgba(255,255,255,.618);
-    --oc-text-weak: rgba(255,255,255,.422);
-    --oc-border-weak: #282828;
-    --oc-icon-strong: #ededed;
-    --oc-icon-base: #7e7e7e;
-    --oc-icon-weak: #343434;
-    --oc-success: #12c905;
-    --oc-error: #fc533a;
-    --oc-detail-bg: #28110c;
-    --oc-detail-border: #6a1206;
-    --oc-shadow: 0 16px 48px -6px rgba(0,0,0,.55), 0 6px 12px -2px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4);`
+    --rr-bg: ${Brand.gray9};
+    --rr-card: ${Brand.mix(Brand.gray8, Brand.gray9, 0.45)};
+    --rr-foreground: ${Brand.gray1};
+    --rr-muted-foreground: ${Brand.gray5};
+    --rr-subtle-foreground: ${Brand.gray6};
+    --rr-border: ${Brand.gray8};
+    --rr-primary: ${Brand.blue5};
+    --rr-icon-strong: ${Brand.gray1};
+    --rr-icon-base: ${Brand.gray5};
+    --rr-icon-weak: ${Brand.gray8};
+    --rr-success-ink: ${Brand.green3};
+    --rr-destructive-ink: ${Brand.red3};
+    --rr-destructive: ${Brand.red3};
+    --rr-destructive-soft: ${Brand.red5};
+    --rr-shadow: 0 2px 4px color-mix(in srgb, ${Brand.black} 30%, transparent), 0 12px 32px color-mix(in srgb, ${Brand.black} 50%, transparent);`
 
 const STYLES = `
   :root { color-scheme: light dark;${LIGHT_VARS}
-    --oc-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --oc-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --rr-font-sans: ${Brand.fontSans};
+    --rr-font-mono: ${Brand.fontMono};
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {${DARK_VARS} } }
   :root[data-theme="dark"] {${DARK_VARS} }
@@ -197,20 +220,26 @@ const STYLES = `
     display: grid;
     place-items: center;
     padding: 24px;
-    background: var(--oc-bg);
-    color: var(--oc-text-base);
-    font-family: var(--oc-font-sans);
+    background: var(--rr-bg);
+    color: var(--rr-muted-foreground);
+    font-family: var(--rr-font-sans);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Korean lines break between any two syllables by default, so a wrap lands mid-word and the reader
+     has to reassemble it. Break on spaces instead, the way Korean is typeset. A provider name or an
+     error payload can arrive in Korean on an English page, so this is set on everything; Latin has no
+     soft wrap opportunity between letters to suppress, so it is inert for English. */
+  * { word-break: keep-all; overflow-wrap: break-word; }
+  :lang(zh), :lang(ja) { word-break: normal; line-break: strict; }
   .card {
     width: min(100%, 28rem);
     padding: 2.25rem 2rem 1.75rem;
-    background: var(--oc-card);
-    border: 1px solid var(--oc-border-weak);
-    border-radius: 14px;
-    box-shadow: var(--oc-shadow);
+    background: var(--rr-card);
+    border: 1px solid var(--rr-border);
+    border-radius: ${Brand.radiusLg};
+    box-shadow: var(--rr-shadow);
     text-align: center;
   }
   .brand { display: flex; justify-content: center; margin-bottom: 1.75rem; }
@@ -221,52 +250,52 @@ const STYLES = `
   .card[data-status="pending"] .icon-pending,
   .card[data-status="success"] .icon-success,
   .card[data-status="error"] .icon-error { display: block; }
-  .icon-success { color: var(--oc-success); }
-  .icon-error { color: var(--oc-error); }
-  .icon-pending { color: var(--oc-text-weak); }
-  .headline { margin: 0; font-size: 1.1875rem; font-weight: 500; line-height: 1.3; letter-spacing: -0.012em; color: var(--oc-text-strong); }
-  .message { margin: 0.5rem 0 0; font-size: 0.9375rem; color: var(--oc-text-base); }
+  .icon-success { color: var(--rr-success-ink); }
+  .icon-error { color: var(--rr-destructive-ink); }
+  .icon-pending { color: var(--rr-primary); }
+  .headline { margin: 0; font-size: 1.1875rem; font-weight: 500; line-height: 1.3; letter-spacing: -0.012em; color: var(--rr-foreground); }
+  .message { margin: 0.5rem 0 0; font-size: 0.9375rem; color: var(--rr-muted-foreground); }
   .detail {
     margin: 1.25rem 0 0;
     padding: 0.75rem 0.875rem;
     text-align: left;
-    font-family: var(--oc-font-mono);
+    font-family: var(--rr-font-mono);
     font-size: 0.8125rem;
     line-height: 1.55;
-    color: var(--oc-text-strong);
-    background: var(--oc-detail-bg);
-    border: 1px solid var(--oc-detail-border);
-    border-radius: 8px;
+    color: var(--rr-foreground);
+    background: var(--rr-destructive-soft);
+    border: 1px solid var(--rr-destructive);
+    border-radius: ${Brand.radiusSm};
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 9.5rem;
     overflow: auto;
   }
   .detail[hidden] { display: none; }
-  .footnote { margin: 1.5rem 0 0; font-size: 0.8125rem; color: var(--oc-text-weak); }
-  .spinner { animation: oc-spin 0.8s linear infinite; transform-origin: center; }
-  @keyframes oc-spin { to { transform: rotate(360deg); } }
+  .footnote { margin: 1.5rem 0 0; font-size: 0.8125rem; color: var(--rr-subtle-foreground); }
+  .spinner { animation: rr-spin 0.8s linear infinite; transform-origin: center; }
+  @keyframes rr-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 `
 
-// OpenCode wordmark — same path geometry as packages/ui/src/components/logo.tsx (Logo).
-const WORDMARK = `<svg class="wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 42" fill="none" aria-label="OpenCode" role="img">
-        <path d="M18 30H6V18H18V30Z" fill="var(--oc-icon-weak)" />
-        <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" fill="var(--oc-icon-base)" />
-        <path d="M48 30H36V18H48V30Z" fill="var(--oc-icon-weak)" />
-        <path d="M36 30H48V12H36V30ZM54 36H36V42H30V6H54V36Z" fill="var(--oc-icon-base)" />
-        <path d="M84 24V30H66V24H84Z" fill="var(--oc-icon-weak)" />
-        <path d="M84 24H66V30H84V36H60V6H84V24ZM66 18H78V12H66V18Z" fill="var(--oc-icon-base)" />
-        <path d="M108 36H96V18H108V36Z" fill="var(--oc-icon-weak)" />
-        <path d="M108 12H96V36H90V6H108V12ZM114 36H108V12H114V36Z" fill="var(--oc-icon-base)" />
-        <path d="M144 30H126V18H144V30Z" fill="var(--oc-icon-weak)" />
-        <path d="M144 12H126V30H144V36H120V6H144V12Z" fill="var(--oc-icon-strong)" />
-        <path d="M168 30H156V18H168V30Z" fill="var(--oc-icon-weak)" />
-        <path d="M168 12H156V30H168V12ZM174 36H150V6H174V36Z" fill="var(--oc-icon-strong)" />
-        <path d="M198 30H186V18H198V30Z" fill="var(--oc-icon-weak)" />
-        <path d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z" fill="var(--oc-icon-strong)" />
-        <path d="M234 24V30H216V24H234Z" fill="var(--oc-icon-weak)" />
-        <path d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z" fill="var(--oc-icon-strong)" />
+// RedrobCode wordmark.
+const WORDMARK = `<svg class="wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 42" fill="none" aria-label="RedrobCode" role="img">
+        <path d="M18 30H6V18H18V30Z" fill="var(--rr-icon-weak)" />
+        <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" fill="var(--rr-icon-base)" />
+        <path d="M48 30H36V18H48V30Z" fill="var(--rr-icon-weak)" />
+        <path d="M36 30H48V12H36V30ZM54 36H36V42H30V6H54V36Z" fill="var(--rr-icon-base)" />
+        <path d="M84 24V30H66V24H84Z" fill="var(--rr-icon-weak)" />
+        <path d="M84 24H66V30H84V36H60V6H84V24ZM66 18H78V12H66V18Z" fill="var(--rr-icon-base)" />
+        <path d="M108 36H96V18H108V36Z" fill="var(--rr-icon-weak)" />
+        <path d="M108 12H96V36H90V6H108V12ZM114 36H108V12H114V36Z" fill="var(--rr-icon-base)" />
+        <path d="M144 30H126V18H144V30Z" fill="var(--rr-icon-weak)" />
+        <path d="M144 12H126V30H144V36H120V6H144V12Z" fill="var(--rr-icon-strong)" />
+        <path d="M168 30H156V18H168V30Z" fill="var(--rr-icon-weak)" />
+        <path d="M168 12H156V30H168V12ZM174 36H150V6H174V36Z" fill="var(--rr-icon-strong)" />
+        <path d="M198 30H186V18H198V30Z" fill="var(--rr-icon-weak)" />
+        <path d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z" fill="var(--rr-icon-strong)" />
+        <path d="M234 24V30H216V24H234Z" fill="var(--rr-icon-weak)" />
+        <path d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z" fill="var(--rr-icon-strong)" />
       </svg>`
 
 const ICON_CHECK = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8.5 12.5 2.4 2.4 4.6-5.4" /></svg>`

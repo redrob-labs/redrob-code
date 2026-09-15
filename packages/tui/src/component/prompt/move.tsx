@@ -10,6 +10,7 @@ import { DialogMoveSession, type MoveSessionSelection } from "../dialog-move-ses
 import { DialogWorkspaceFileChanges } from "../dialog-workspace-file-changes"
 import { useHomeSessionDestination } from "../../routes/home/session-destination"
 import { useProject } from "../../context/project"
+import { useLanguage } from "../../context/language"
 
 function moveReminderText(directory: string) {
   return `<system-reminder>The user has changed the current working directory to "${directory}". This is still the same project but at a possibly new location; take this into account when working with any files from now on.</system-reminder>`
@@ -17,6 +18,7 @@ function moveReminderText(directory: string) {
 
 export function usePromptMove(input: { projectID: () => string | undefined; sessionID: () => string | undefined }) {
   const dialog = useDialog()
+  const language = useLanguage()
   const sdk = useSDK()
   const sync = useSync()
   const toast = useToast()
@@ -31,7 +33,7 @@ export function usePromptMove(input: { projectID: () => string | undefined; sess
     const projectID = input.projectID()
     if (!projectID) return
     setCreating(true)
-    setProgress("Creating copy")
+    setProgress(language.t("prompt.move.creating_copy"))
     try {
       const generated = await sdk.client.experimental.projectCopy.generateName(
         { projectID, context },
@@ -48,19 +50,19 @@ export function usePromptMove(input: { projectID: () => string | undefined; sess
         { throwOnError: true },
       )
       const directory = result.data?.directory
-      if (!directory) throw new Error("No project copy directory returned")
+      if (!directory) throw new Error(language.t("prompt.move.no_directory"))
 
       // Call a location-based route to make sure it's bootstrapped
       // before moving on
       await sdk.client.path.get({ directory }, { throwOnError: true })
 
-      setProgress("Creating session")
+      setProgress(language.t("prompt.move.creating_session"))
       return directory
     } catch (err) {
       homeDestination?.clear()
       setProgress(undefined)
       setCreating(false)
-      toast.show({ title: "Creating workspace failed", message: errorMessage(err), variant: "error" })
+      toast.show({ title: language.t("prompt.workspace.create_failed"), message: errorMessage(err), variant: "error" })
       return
     }
   }
@@ -126,7 +128,7 @@ export function usePromptMove(input: { projectID: () => string | undefined; sess
       dialog.clear()
       return
     }
-    setProgress("Moving session")
+    setProgress(language.t("prompt.move.moving"))
     try {
       await sdk.client.experimental.controlPlane.moveSession(
         {
@@ -173,7 +175,7 @@ export function usePromptMove(input: { projectID: () => string | undefined; sess
   }
 
   function startSubmit() {
-    if (progress()) setProgress("Submitting prompt")
+    if (progress()) setProgress(language.t("prompt.move.submitting"))
   }
 
   function finishSubmit() {

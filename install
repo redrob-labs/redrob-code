@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP=opencode
+APP=redrob
+REPO=redrob-labs/redrob-code
+# Extra curl args for the asset download. Expanded with the `${x[@]+...}` guard because
+# macOS still ships bash 3.2, where expanding an empty array under `set -u` is an error.
+curl_auth=()
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -9,7 +13,7 @@ NC='\033[0m' # No Color
 
 usage() {
     cat <<EOF
-OpenCode Installer
+Redrob Code Installer
 
 Usage: install.sh [options]
 
@@ -20,9 +24,9 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://opencode.ai/install | bash
-    curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
-    ./install --binary /path/to/opencode
+    curl -fsSL https://code.redrob.ai/install | bash
+    curl -fsSL https://code.redrob.ai/install | bash -s -- --version 1.0.180
+    ./install --binary /path/to/redrob
 EOF
 }
 
@@ -65,7 +69,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-INSTALL_DIR=$HOME/.opencode/bin
+if [ -n "${REDROB_INSTALL_DIR:-}" ]; then
+    INSTALL_DIR="$REDROB_INSTALL_DIR"
+elif [ -n "${XDG_BIN_DIR:-}" ]; then
+    INSTALL_DIR="$XDG_BIN_DIR"
+elif [ -d "$HOME/bin" ] || mkdir -p "$HOME/bin" 2>/dev/null; then
+    INSTALL_DIR="$HOME/bin"
+else
+    INSTALL_DIR="$HOME/.redrob/bin"
+fi
 mkdir -p "$INSTALL_DIR"
 
 # If --binary is provided, skip all download/detection logic
@@ -180,27 +192,57 @@ else
         fi
     fi
 
-    if [ -z "$requested_version" ]; then
-        url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
-        specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+    # The repository is private, so anonymous release downloads 404. With a token the
+    # release is resolved through the API and the asset is fetched by id, which is the only
+    # download route that accepts a token. Without one, fall back to the public URLs so
+    # this keeps working if the repository is ever made public.
+    token="${REDROB_GITHUB_TOKEN:-${GH_TOKEN:-${GITHUB_TOKEN:-}}}"
+    api="https://api.github.com/repos/$REPO"
 
-        if [[ $? -ne 0 || -z "$specific_version" ]]; then
-            echo -e "${RED}Failed to fetch version information${NC}"
-            exit 1
+    api_get() {
+        if [ -n "$token" ]; then
+            curl -sf -H "Authorization: Bearer $token" -H "Accept: application/vnd.github+json" "$1"
+        else
+            curl -sf -H "Accept: application/vnd.github+json" "$1"
         fi
+    }
+
+    if [ -z "$requested_version" ]; then
+        release_json=$(api_get "$api/releases/latest") || release_json=""
+        specific_version=$(echo "$release_json" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
     else
         # Strip leading 'v' if present
         requested_version="${requested_version#v}"
-        url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
         specific_version=$requested_version
+        release_json=$(api_get "$api/releases/tags/v${requested_version}") || release_json=""
+    fi
 
-        # Verify the release exists before downloading
-        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
-        if [ "$http_status" = "404" ]; then
+    if [ -z "$release_json" ] || [ -z "$specific_version" ]; then
+        if [ -n "$requested_version" ]; then
             echo -e "${RED}Error: Release v${requested_version} not found${NC}"
-            echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
+        else
+            echo -e "${RED}Failed to fetch version information${NC}"
+        fi
+        if [ -z "$token" ]; then
+            echo -e "${MUTED}This repository is private. Set GITHUB_TOKEN to a token with 'repo' scope and retry.${NC}"
+        fi
+        echo -e "${MUTED}Available releases: https://github.com/$REPO/releases${NC}"
+        exit 1
+    fi
+
+    if [ -n "$token" ]; then
+        # Flatten first so each asset object becomes one line, otherwise grep would return
+        # only the "name" line and the "id" that precedes it would be lost.
+        asset_id=$(echo "$release_json" | tr -d '\n' | tr '{' '\n' | grep -F "\"$filename\"" |
+            sed -n 's/.*"id": *\([0-9][0-9]*\).*/\1/p' | head -n 1)
+        if [ -z "$asset_id" ]; then
+            echo -e "${RED}Error: ${filename} is not attached to release v${specific_version}${NC}"
             exit 1
         fi
+        url="$api/releases/assets/$asset_id"
+        curl_auth=(-H "Authorization: Bearer $token" -H "Accept: application/octet-stream")
+    else
+        url="https://github.com/$REPO/releases/download/v${specific_version}/$filename"
     fi
 fi
 
@@ -219,11 +261,11 @@ print_message() {
 }
 
 check_version() {
-    if command -v opencode >/dev/null 2>&1; then
-        opencode_path=$(which opencode)
+    if command -v redrob >/dev/null 2>&1; then
+        redrob_path=$(which redrob)
 
         ## Check the installed version
-        installed_version=$(opencode --version 2>/dev/null || echo "")
+        installed_version=$(redrob --version 2>/dev/null || echo "")
 
         if [[ "$installed_version" != "$specific_version" ]]; then
             print_message info "${MUTED}Installed version: ${NC}$installed_version."
@@ -275,7 +317,7 @@ download_with_progress() {
     fi
 
     local tmp_dir=${TMPDIR:-/tmp}
-    local basename="${tmp_dir}/opencode_install_$$"
+    local basename="${tmp_dir}/redrob_install_$$"
     local tracefile="${basename}.trace"
 
     rm -f "$tracefile"
@@ -287,7 +329,7 @@ download_with_progress() {
     trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
 
     (
-        curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
+        curl --trace-ascii "$tracefile" -s -L ${curl_auth[@]+"${curl_auth[@]}"} -o "$output" "$url"
     ) &
     local curl_pid=$!
 
@@ -325,13 +367,13 @@ download_with_progress() {
 }
 
 download_and_install() {
-    print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
+    print_message info "\n${MUTED}Installing ${NC}redrob ${MUTED}version: ${NC}$specific_version"
+    local tmp_dir="${TMPDIR:-/tmp}/redrob_install_$$"
     mkdir -p "$tmp_dir"
 
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
         # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        curl -# -L ${curl_auth[@]+"${curl_auth[@]}"} -o "$tmp_dir/$filename" "$url"
     fi
 
     if [ "$os" = "linux" ]; then
@@ -340,15 +382,15 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/opencode" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    mv "$tmp_dir/redrob" "$INSTALL_DIR"
+    chmod 755 "${INSTALL_DIR}/redrob"
     rm -rf "$tmp_dir"
 }
 
 install_from_binary() {
-    print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}from: ${NC}$binary_path"
-    cp "$binary_path" "${INSTALL_DIR}/opencode"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    print_message info "\n${MUTED}Installing ${NC}redrob ${MUTED}from: ${NC}$binary_path"
+    cp "$binary_path" "${INSTALL_DIR}/redrob"
+    chmod 755 "${INSTALL_DIR}/redrob"
 }
 
 if [ -n "$binary_path" ]; then
@@ -366,9 +408,9 @@ add_to_path() {
     if grep -Fxq "$command" "$config_file"; then
         print_message info "Command already exists in $config_file, skipping write."
     elif [[ -w $config_file ]]; then
-        echo -e "\n# opencode" >> "$config_file"
+        echo -e "\n# redrob" >> "$config_file"
         echo "$command" >> "$config_file"
-        print_message info "${MUTED}Successfully added ${NC}opencode ${MUTED}to \$PATH in ${NC}$config_file"
+        print_message info "${MUTED}Successfully added ${NC}redrob ${MUTED}to \$PATH in ${NC}$config_file"
     else
         print_message warning "Manually add the directory to $config_file (or similar):"
         print_message info "  $command"
@@ -450,11 +492,11 @@ echo -e "${MUTED}█░░█ █░░█ █▀▀▀ █░░█ ${NC}█░
 echo -e "${MUTED}▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ${NC}▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"
 echo -e ""
 echo -e ""
-echo -e "${MUTED}OpenCode includes free models, to start:${NC}"
+echo -e "${MUTED}Redrob Code includes free models, to start:${NC}"
 echo -e ""
 echo -e "cd <project>  ${MUTED}# Open directory${NC}"
-echo -e "opencode      ${MUTED}# Run command${NC}"
+echo -e "redrob      ${MUTED}# Run command${NC}"
 echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://opencode.ai/docs"
+echo -e "${MUTED}For more information visit ${NC}https://code.redrob.ai/docs"
 echo -e ""
 echo -e ""

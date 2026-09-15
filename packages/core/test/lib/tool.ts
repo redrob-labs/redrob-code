@@ -1,6 +1,6 @@
-import { AgentV2 } from "@opencode-ai/core/agent"
-import { SessionMessage } from "@opencode-ai/core/session/message"
-import { ToolRegistry } from "@opencode-ai/core/tool/registry"
+import { AgentV2 } from "@redrob-code/core/agent"
+import { SessionMessage } from "@redrob-code/core/session/message"
+import { ToolRegistry } from "@redrob-code/core/tool/registry"
 import { Effect } from "effect"
 
 export const toolIdentity = {

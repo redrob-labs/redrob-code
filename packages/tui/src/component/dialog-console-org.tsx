@@ -1,12 +1,13 @@
 import { createResource, createMemo, createSignal } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import { DialogSelect } from "../ui/dialog-select"
+import { useLanguage } from "../context/language"
 import { useSDK } from "../context/sdk"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { useTheme } from "../context/theme"
 import { errorMessage } from "../util/error"
-import type { ExperimentalConsoleListOrgsResponse } from "@opencode-ai/sdk/v2"
+import type { ExperimentalConsoleListOrgsResponse } from "@redrob-code/sdk/v2"
 
 type OrgOption = ExperimentalConsoleListOrgsResponse["orgs"][number]
 
@@ -23,6 +24,7 @@ const accountLabel = (item: Pick<OrgOption, "accountEmail" | "accountUrl">) =>
 
 export function DialogConsoleOrg() {
   const sdk = useSDK()
+  const language = useLanguage()
   const dialog = useDialog()
   const toast = useToast()
   const { theme } = useTheme()
@@ -51,7 +53,7 @@ export function DialogConsoleOrg() {
     if (listed === undefined) {
       return [
         {
-          title: "Loading orgs…",
+          title: language.t("org.loading"),
           value: "loading",
           onSelect: () => {},
         },
@@ -61,7 +63,7 @@ export function DialogConsoleOrg() {
     if (listed.length === 0) {
       return [
         {
-          title: "No orgs found",
+          title: language.t("org.empty"),
           value: "empty",
           onSelect: () => {},
         },
@@ -105,7 +107,7 @@ export function DialogConsoleOrg() {
 
           await sdk.client.instance.dispose()
           toast.show({
-            message: `Switched to ${item.orgName}`,
+            message: language.t("toast.org_switched", { org: item.orgName }),
             variant: "info",
           })
           dialog.clear()
@@ -115,7 +117,7 @@ export function DialogConsoleOrg() {
 
   return (
     <DialogSelect<string | OrgOption>
-      title="Switch org"
+      title={language.t("org.dialog.title")}
       options={options()}
       current={current()}
       renderFilter={!showError()}
@@ -124,7 +126,7 @@ export function DialogConsoleOrg() {
         showError() ? (
           <box paddingLeft={4} paddingRight={4}>
             <text fg={theme.error} attributes={TextAttributes.BOLD}>
-              Could not load orgs
+              {language.t("org.load_error")}
             </text>
             <text fg={theme.textMuted}>{errorMessage(loadError())}</text>
           </box>

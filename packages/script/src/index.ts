@@ -18,44 +18,31 @@ if (!semver.satisfies(process.versions.bun, expectedBunVersionRange)) {
 }
 
 const env = {
-  OPENCODE_CHANNEL: process.env["OPENCODE_CHANNEL"],
-  OPENCODE_BUMP: process.env["OPENCODE_BUMP"],
-  OPENCODE_VERSION: process.env["OPENCODE_VERSION"],
-  OPENCODE_RELEASE: process.env["OPENCODE_RELEASE"],
+  REDROB_CHANNEL: process.env["REDROB_CHANNEL"],
+  REDROB_BUMP: process.env["REDROB_BUMP"],
+  REDROB_VERSION: process.env["REDROB_VERSION"],
+  REDROB_RELEASE: process.env["REDROB_RELEASE"],
 }
 const CHANNEL = await (async () => {
-  if (env.OPENCODE_CHANNEL) return env.OPENCODE_CHANNEL
-  if (env.OPENCODE_BUMP) return "latest"
-  if (env.OPENCODE_VERSION && !env.OPENCODE_VERSION.startsWith("0.0.0-")) return "latest"
+  if (env.REDROB_CHANNEL) return env.REDROB_CHANNEL
+  if (env.REDROB_BUMP) return "latest"
+  if (env.REDROB_VERSION && !env.REDROB_VERSION.startsWith("0.0.0-")) return "latest"
   return await $`git branch --show-current`.text().then((x) => x.trim())
 })()
 const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
-  if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
+  if (env.REDROB_VERSION) return env.REDROB_VERSION
   if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`
-  const version = await fetch("https://registry.npmjs.org/opencode-ai/latest")
-    .then((res) => {
-      if (!res.ok) throw new Error(res.statusText)
-      return res.json()
-    })
-    .then((data: any) => data.version)
-  const [major, minor, patch] = version.split(".").map((x: string) => Number(x) || 0)
-  const t = env.OPENCODE_BUMP?.toLowerCase()
+  // The CLI package version is the release source of truth; `script/publish.ts` writes the
+  // released version back into every package.json, so the next release bumps from here.
+  const current = await Bun.file(path.resolve(import.meta.dir, "../../redrob/package.json")).json()
+  const [major, minor, patch] = current.version.split(".").map((x: string) => Number(x) || 0)
+  const t = env.REDROB_BUMP?.toLowerCase()
   if (t === "major") return `${major + 1}.0.0`
   if (t === "minor") return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
 })()
-
-const bot = ["actions-user", "opencode", "opencode-agent[bot]"]
-const teamPath = path.resolve(import.meta.dir, "../../../.github/TEAM_MEMBERS")
-const team = [
-  ...(await Bun.file(teamPath)
-    .text()
-    .then((x) => x.split(/\r?\n/).map((x) => x.trim()))
-    .then((x) => x.filter((x) => x && !x.startsWith("#")))),
-  ...bot,
-]
 
 export const Script = {
   get channel() {
@@ -68,10 +55,7 @@ export const Script = {
     return IS_PREVIEW
   },
   get release(): boolean {
-    return !!env.OPENCODE_RELEASE
-  },
-  get team() {
-    return team
+    return !!env.REDROB_RELEASE
   },
 }
-console.log(`opencode script`, JSON.stringify(Script, null, 2))
+console.log(`redrob script`, JSON.stringify(Script, null, 2))

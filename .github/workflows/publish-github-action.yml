@@ -2,10 +2,7 @@ name: publish-github-action
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "github-v*.*.*"
-      - "!github-v1"
+  # Paused during local-dev. Restore `push: {tags: [github-v*.*.*, !github-v1]}`.
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -24,7 +21,7 @@ jobs:
 
       - name: Publish
         run: |
-          git config --global user.email "opencode@sst.dev"
-          git config --global user.name "opencode"
+          git config --global user.email "redrob@sst.dev"
+          git config --global user.name "redrob"
           ./script/publish
         working-directory: ./github

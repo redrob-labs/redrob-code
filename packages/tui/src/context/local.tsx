@@ -13,6 +13,7 @@ import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
+import { useLanguage } from "./language"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -51,6 +52,7 @@ export function recentModels(
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
+    const language = useLanguage()
     const sync = useSync()
     const sdk = useSDK()
     const toast = useToast()
@@ -100,7 +102,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (!agents().some((x) => x.name === name))
             return toast.show({
               variant: "warning",
-              message: `Agent not found: ${name}`,
+              message: language.t("toast.agent_not_found", { name }),
               duration: 3000,
             })
           setAgentStore("current", name)
@@ -259,8 +261,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const value = currentModel()
           if (!value) {
             return {
-              provider: "Connect a provider",
-              model: "No provider selected",
+              provider: language.t("model.label.connect_provider"),
+              model: language.t("model.label.none"),
               reasoning: false,
             }
           }
@@ -292,7 +294,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (!favorites.length) {
             toast.show({
               variant: "info",
-              message: "Add a favorite model to use this shortcut",
+              message: language.t("toast.favorite_model_required"),
               duration: 3000,
             })
             return
@@ -321,7 +323,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           batch(() => {
             if (!isModelValid(model)) {
               toast.show({
-                message: `Model ${model.providerID}/${model.modelID} is not valid`,
+                message: language.t("toast.model_invalid", { providerID: model.providerID, modelID: model.modelID }),
                 variant: "warning",
                 duration: 3000,
               })
@@ -340,7 +342,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           batch(() => {
             if (!isModelValid(model)) {
               toast.show({
-                message: `Model ${model.providerID}/${model.modelID} is not valid`,
+                message: language.t("toast.model_invalid", { providerID: model.providerID, modelID: model.modelID }),
                 variant: "warning",
                 duration: 3000,
               })
@@ -525,7 +527,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       if (isModelValid(value.model)) return
       toast.show({
         variant: "warning",
-        message: `Agent ${value.name}'s configured model ${value.model.providerID}/${value.model.modelID} is not valid`,
+        message: language.t("toast.agent_model_invalid", {
+          agent: value.name,
+          providerID: value.model.providerID,
+          modelID: value.model.modelID,
+        }),
         duration: 3000,
       })
     })

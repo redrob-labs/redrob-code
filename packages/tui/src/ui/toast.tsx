@@ -4,6 +4,7 @@ import { useTheme } from "../context/theme"
 import { useTerminalDimensions } from "@opentui/solid"
 import { SplitBorder } from "./border"
 import { TextAttributes } from "@opentui/core"
+import { useLanguage } from "../context/language"
 export type ToastOptions = {
   title?: string
   message: string
@@ -51,6 +52,7 @@ export function Toast() {
 }
 
 function init() {
+  const language = useLanguage()
   const [store, setStore] = createStore({
     currentToast: null as ToastOptions | null,
   })
@@ -74,7 +76,7 @@ function init() {
         })
       toast.show({
         variant: "error",
-        message: "An unknown error has occurred",
+        message: language.t("toast.unknown_error"),
       })
     },
     get currentToast(): ToastOptions | null {

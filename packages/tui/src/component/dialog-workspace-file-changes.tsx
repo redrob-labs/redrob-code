@@ -1,12 +1,13 @@
 import { TextAttributes } from "@opentui/core"
 import { useKeyboard } from "@opentui/solid"
-import type { VcsFileStatus } from "@opencode-ai/sdk/v2"
+import type { VcsFileStatus } from "@redrob-code/sdk/v2"
 import { createMemo, For } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Locale } from "../util/locale"
 import { useTheme } from "../context/theme"
 import { useTuiConfig } from "../config"
 import { useDialog, type DialogContext } from "../ui/dialog"
+import { useLanguage } from "../context/language"
 import { getScrollAcceleration } from "../util/scroll"
 
 const options = ["no", "yes"] as const
@@ -31,6 +32,7 @@ export function DialogWorkspaceFileChanges(props: {
   message?: string
 }) {
   const dialog = useDialog()
+  const language = useLanguage()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
@@ -69,15 +71,15 @@ export function DialogWorkspaceFileChanges(props: {
     <box gap={1}>
       <box flexDirection="row" justifyContent="space-between" paddingLeft={2} paddingRight={2}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {props.title ?? "File Changes Found"}
+          {props.title ?? language.t("workspace.file_changes.title")}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          {language.t("dialog.esc")}
         </text>
       </box>
       <box paddingLeft={2} paddingRight={2}>
         <text fg={theme.textMuted} wrapMode="word">
-          {props.message ?? "Do you want to move these changes with the session?"}
+          {props.message ?? language.t("workspace.file_changes.message")}
         </text>
       </box>
       <scrollbox
@@ -121,7 +123,9 @@ export function DialogWorkspaceFileChanges(props: {
                 dialog.clear()
               }}
             >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{item}</text>
+              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>
+                {language.t(`workspace.file_changes.${item}`)}
+              </text>
             </box>
           )}
         </For>

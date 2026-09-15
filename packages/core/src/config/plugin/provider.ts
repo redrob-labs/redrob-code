@@ -52,7 +52,30 @@ export const Plugin = define({
             const providerID = id
             catalog.provider.update(providerID, (provider) => {
               if (item.name !== undefined) provider.name = item.name
-              if (item.api !== undefined) provider.api = { ...item.api }
+              // Only the Redrob console provider is usable. Local config must not be able to
+              // introduce a new AI-SDK provider (`type: "aisdk"` with an npm `package`) or
+              // swap the `package` of an existing aisdk provider, either of which would reach
+              // DynamicProviderPlugin and install/import an arbitrary npm package — a way to
+              // run a non-console provider. Config may still refine a provider's
+              // endpoint/settings, but never the aisdk `package`.
+              if (item.api !== undefined) {
+                const itemApi = item.api
+                const introducesAisdk = itemApi.type === "aisdk" && provider.api.type !== "aisdk"
+                if (introducesAisdk) {
+                  // Config tries to turn the provider into an aisdk provider — refuse it.
+                } else if (
+                  itemApi.type === "aisdk" &&
+                  provider.api.type === "aisdk" &&
+                  itemApi.package !== provider.api.package
+                ) {
+                  // Existing aisdk provider — refine endpoint/settings but keep the trusted
+                  // `package`, never the config-supplied one.
+                  const { package: _ignored, ...rest } = itemApi
+                  provider.api = { ...provider.api, ...rest }
+                } else {
+                  provider.api = { ...item.api }
+                }
+              }
               if (item.request !== undefined) {
                 Object.assign(provider.request.headers, item.request.headers)
                 Object.assign(provider.request.body, item.request.body)
@@ -62,7 +85,28 @@ export const Plugin = define({
               catalog.model.update(providerID, id, (model) => {
                 if (config.family !== undefined) model.family = config.family
                 if (config.name !== undefined) model.name = config.name
-                if (config.api !== undefined) model.api = { ...model.api, ...config.api }
+                // Same guard as the provider-level api above: local config may refine an
+                // existing model's api (id/url/settings) but must never introduce a new aisdk
+                // `package` or swap the `package` of an already-aisdk console model. Either
+                // would reach DynamicProviderPlugin and install/import an arbitrary npm
+                // package. When config would change the `package`, drop that field from the
+                // merge so the trusted console `package` always wins, while still applying the
+                // rest of the refinement (url/settings/id/etc.).
+                if (config.api !== undefined) {
+                  const configApi = config.api
+                  const configIsAisdk = "type" in configApi && configApi.type === "aisdk"
+                  if (configIsAisdk && model.api.type !== "aisdk") {
+                    // Config tries to turn a native model into an aisdk model — refuse the
+                    // whole transition, keeping the trusted native api untouched.
+                  } else if (configIsAisdk && model.api.type === "aisdk" && configApi.package !== model.api.package) {
+                    // Existing aisdk (console) model — allow refinement but keep the trusted
+                    // `package`, dropping only the config-supplied one from the merge.
+                    const { package: _ignored, ...rest } = configApi
+                    model.api = { ...model.api, ...rest }
+                  } else {
+                    model.api = { ...model.api, ...configApi }
+                  }
+                }
                 if (config.capabilities !== undefined) {
                   model.capabilities = {
                     tools: config.capabilities.tools,

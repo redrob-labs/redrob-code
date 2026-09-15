@@ -5,6 +5,7 @@ import { Show, createEffect, createSignal, onMount, type JSX } from "solid-js"
 import { Spinner } from "../component/spinner"
 import { useTuiConfig } from "../config"
 import { useBindings, useCommandShortcut } from "../keymap"
+import { useLanguage } from "../context/language"
 
 export type DialogPromptProps = {
   title: string
@@ -21,6 +22,7 @@ export function DialogPrompt(props: DialogPromptProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
+  const language = useLanguage()
   const submitShortcut = useCommandShortcut("dialog.prompt.submit")
   const [textareaTarget, setTextareaTarget] = createSignal<TextareaRenderable>()
   let textarea: TextareaRenderable
@@ -38,7 +40,7 @@ export function DialogPrompt(props: DialogPromptProps) {
     commands: [
       {
         name: "dialog.prompt.submit",
-        title: "Submit dialog prompt",
+        title: language.t("dialog.prompt.submit"),
         category: "Dialog",
         run: confirm,
       },
@@ -91,7 +93,7 @@ export function DialogPrompt(props: DialogPromptProps) {
             setTextareaTarget(val)
           }}
           initialValue={props.value}
-          placeholder={props.placeholder ?? "Enter text"}
+          placeholder={props.placeholder ?? language.t("dialog.prompt.placeholder")}
           placeholderColor={theme.textMuted}
           textColor={props.busy ? theme.textMuted : theme.text}
           focusedTextColor={props.busy ? theme.textMuted : theme.text}
@@ -99,14 +101,14 @@ export function DialogPrompt(props: DialogPromptProps) {
           cursorStyle={tuiConfig.cursor}
         />
         <Show when={props.busy}>
-          <Spinner color={theme.textMuted}>{props.busyText ?? "Working…"}</Spinner>
+          <Spinner color={theme.textMuted}>{props.busyText ?? language.t("dialog.prompt.working")}</Spinner>
         </Show>
       </box>
       <box paddingBottom={1} gap={1} flexDirection="row">
-        <Show when={!props.busy} fallback={<text fg={theme.textMuted}>processing…</text>}>
+        <Show when={!props.busy} fallback={<text fg={theme.textMuted}>{language.t("dialog.prompt.processing")}</text>}>
           <Show when={submitShortcut()}>
             <text fg={theme.text}>
-              {submitShortcut()} <span style={{ fg: theme.textMuted }}>submit</span>
+              {submitShortcut()} <span style={{ fg: theme.textMuted }}>{language.t("dialog.prompt.submit_hint")}</span>
             </text>
           </Show>
         </Show>

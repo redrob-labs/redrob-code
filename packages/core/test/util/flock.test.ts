@@ -3,8 +3,8 @@ import fs from "fs/promises"
 import { spawn } from "child_process"
 import path from "path"
 import os from "os"
-import { Flock } from "@opencode-ai/core/util/flock"
-import { Hash } from "@opencode-ai/core/util/hash"
+import { Flock } from "@redrob-code/core/util/flock"
+import { Hash } from "@redrob-code/core/util/hash"
 
 type Msg = {
   key: string
@@ -130,8 +130,15 @@ describe("util.flock", () => {
           done,
           active,
           holdMs: 30,
-          staleMs: 1_000,
-          timeoutMs: 15_000,
+          // Staleness has to sit well above how long a contender can be kept off
+          // the CPU, not just above holdMs. Each of these 16 workers cold-starts a
+          // runtime and imports the whole core graph; on a Windows runner that is
+          // slow enough that a 1s threshold judged a live lock holder dead, let a
+          // contender break the lock, and cost the test its mutual exclusion —
+          // which then surfaced as waiters starving to their own 30s timeout, not
+          // as the exclusion failure it actually was.
+          staleMs: 15_000,
+          timeoutMs: 30_000,
         }),
       ),
     )
@@ -144,7 +151,7 @@ describe("util.flock", () => {
       .map((x) => x.trim())
       .filter(Boolean)
     expect(lines.length).toBe(n)
-  }, 20_000)
+  }, 60_000)
 
   test("times out while waiting when lock is still healthy", async () => {
     await using tmp = await tmpdir()

@@ -2,6 +2,7 @@ import { TextAttributes } from "@opentui/core"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { createResource, createMemo, createSignal } from "solid-js"
 import { useDialog } from "../ui/dialog"
+import { useLanguage } from "../context/language"
 import { useSDK } from "../context/sdk"
 import { useTheme } from "../context/theme"
 import { errorMessage } from "../util/error"
@@ -12,6 +13,7 @@ export type DialogSkillProps = {
 
 export function DialogSkill(props: DialogSkillProps) {
   const dialog = useDialog()
+  const language = useLanguage()
   const sdk = useSDK()
   const { theme } = useTheme()
   dialog.setSize("large")
@@ -40,7 +42,7 @@ export function DialogSkill(props: DialogSkillProps) {
       title: skill.name.padEnd(maxWidth),
       description: skill.description?.replace(/\s+/g, " ").trim(),
       value: skill.name,
-      category: "Skills",
+      category: language.t("skill.category"),
       onSelect: () => {
         props.onSelect(skill.name)
         dialog.clear()
@@ -50,8 +52,8 @@ export function DialogSkill(props: DialogSkillProps) {
 
   return (
     <DialogSelect
-      title="Skills"
-      placeholder="Search skills…"
+      title={language.t("skill.dialog.title")}
+      placeholder={language.t("skill.dialog.placeholder")}
       options={options()}
       renderFilter={!showError()}
       locked={showError()}
@@ -59,7 +61,7 @@ export function DialogSkill(props: DialogSkillProps) {
         showError() ? (
           <box paddingLeft={4} paddingRight={4}>
             <text fg={theme.error} attributes={TextAttributes.BOLD}>
-              Could not load skills
+              {language.t("skill.load_error")}
             </text>
             <text fg={theme.textMuted}>{errorMessage(loadError())}</text>
           </box>

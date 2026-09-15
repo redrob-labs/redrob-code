@@ -1,10 +1,8 @@
 import { Context } from "effect"
 
-const opencodeOrigin = /^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/
-
 export type CorsOptions = { readonly cors?: ReadonlyArray<string> }
 
-export const CorsConfig = Context.Reference<CorsOptions | undefined>("@opencode/ServerCorsConfig", {
+export const CorsConfig = Context.Reference<CorsOptions | undefined>("@redrob/ServerCorsConfig", {
   defaultValue: () => undefined,
 })
 
@@ -15,7 +13,9 @@ export function isAllowedCorsOrigin(input: string | undefined, opts?: CorsOption
   if (input.startsWith("oc://renderer")) return true
   if (input === "tauri://localhost" || input === "http://tauri.localhost" || input === "https://tauri.localhost")
     return true
-  if (opencodeOrigin.test(input)) return true
+  // Remote browser origins, including `*.redrob.ai`, get no blanket allowance: Redrob Work is the
+  // sole GUI and talks to the local engine over local origins. Hosted pages must be opted in with
+  // an explicit `--cors` entry.
   return opts?.cors?.includes(input) ?? false
 }
 

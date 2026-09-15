@@ -5,6 +5,7 @@ import { tint } from "../../context/theme"
 import { createEffect, createMemo, For, Match, Switch } from "solid-js"
 import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
+import { useLanguage } from "../../context/language"
 
 const FILE_TREE_STATUS_WIDTH = 2
 
@@ -35,6 +36,7 @@ export type DiffViewerFileTreeProps = {
 }
 
 export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
+  const language = useLanguage()
   const tree = createMemo(() => buildFileTree(props.files))
   const rows = createMemo(() => flattenFileTree(tree(), props.expandedNodes))
   let scroll: ScrollBoxRenderable | undefined
@@ -63,7 +65,7 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
             <text />
           </Match>
           <Match when={props.files.length === 0}>
-            <text fg={props.theme.text}>No files</text>
+            <text fg={props.theme.text}>{language.t("diff.file_tree.empty")}</text>
           </Match>
           <Match when={props.files.length > 0}>
             <For each={rows()}>

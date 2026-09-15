@@ -1,16 +1,16 @@
-import { Database } from "@opencode-ai/core/database/database"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { EventV2 } from "@opencode-ai/core/event"
-import { Credential } from "@opencode-ai/core/credential"
-import { PermissionSaved } from "@opencode-ai/core/permission/saved"
-import { PtyTicket } from "@opencode-ai/core/pty/ticket"
-import { SessionV2 } from "@opencode-ai/core/session"
-import { SessionExecution } from "@opencode-ai/core/session/execution"
-import { LocationServiceMap } from "@opencode-ai/core/location-service-map"
-import { SessionExecutionLocal } from "@opencode-ai/core/session/execution/local"
-import { ToolOutputStore } from "@opencode-ai/core/tool-output-store"
+import { Database } from "@redrob-code/core/database/database"
+import { LayerNode } from "@redrob-code/core/effect/layer-node"
+import { httpClient } from "@redrob-code/core/effect/app-node-platform"
+import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
+import { EventV2 } from "@redrob-code/core/event"
+import { Credential } from "@redrob-code/core/credential"
+import { PermissionSaved } from "@redrob-code/core/permission/saved"
+import { PtyTicket } from "@redrob-code/core/pty/ticket"
+import { SessionV2 } from "@redrob-code/core/session"
+import { SessionExecution } from "@redrob-code/core/session/execution"
+import { LocationServiceMap } from "@redrob-code/core/location-service-map"
+import { SessionExecutionLocal } from "@redrob-code/core/session/execution/local"
+import { ToolOutputStore } from "@redrob-code/core/tool-output-store"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Layer, Option } from "effect"
@@ -39,13 +39,13 @@ const applicationServices = LayerNode.group([
 export function createRoutes(password?: string) {
   return makeRoutes(
     password
-      ? ServerAuth.Config.configLayer({ username: "opencode", password: Option.some(password) })
+      ? ServerAuth.Config.configLayer({ username: "redrob", password: Option.some(password) })
       : ServerAuth.Config.layer,
   )
 }
 
 export function createEmbeddedRoutes() {
-  return makeRoutes(ServerAuth.Config.configLayer({ username: "opencode", password: Option.none() }))
+  return makeRoutes(ServerAuth.Config.configLayer({ username: "redrob", password: Option.none() }))
 }
 
 function makeRoutes<AuthError, AuthServices>(auth: Layer.Layer<ServerAuth.Config, AuthError, AuthServices>) {

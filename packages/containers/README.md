@@ -9,14 +9,13 @@ Images
 - `base`: Ubuntu 24.04 with common build tools and utilities
 - `bun-node`: `base` plus Bun and Node.js 24
 - `rust`: `bun-node` plus Rust (stable, minimal profile)
-- `tauri-linux`: `rust` plus Tauri Linux build dependencies
 - `publish`: `bun-node` plus Docker CLI and AUR tooling
 
 Build
 
 ```
-REGISTRY=ghcr.io/anomalyco TAG=24.04 bun ./packages/containers/script/build.ts
-REGISTRY=ghcr.io/anomalyco TAG=24.04 bun ./packages/containers/script/build.ts --push
+REGISTRY=ghcr.io/redrob-labs TAG=24.04 bun ./packages/containers/script/build.ts
+REGISTRY=ghcr.io/redrob-labs TAG=24.04 bun ./packages/containers/script/build.ts --push
 ```
 
 Workflow usage
@@ -26,7 +25,7 @@ jobs:
   build-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/anomalyco/build/bun-node:24.04
+      image: ghcr.io/redrob-labs/build/bun-node:24.04
 ```
 
 Notes

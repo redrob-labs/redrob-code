@@ -1,6 +1,6 @@
 import type {
   Event,
-  createOpencodeClient,
+  createRedrobClient,
   Project,
   Model,
   Provider,
@@ -9,8 +9,8 @@ import type {
   Message,
   Part,
   Config as SDKConfig,
-} from "@opencode-ai/sdk"
-import type { Provider as ProviderV2, Model as ModelV2, Auth } from "@opencode-ai/sdk/v2"
+} from "@redrob-code/sdk"
+import type { Provider as ProviderV2, Model as ModelV2, Auth } from "@redrob-code/sdk/v2"
 
 import type { BunShell } from "./shell.js"
 import { type ToolDefinition } from "./tool.js"
@@ -54,7 +54,7 @@ export type WorkspaceAdapter = {
 }
 
 export type PluginInput = {
-  client: ReturnType<typeof createOpencodeClient>
+  client: ReturnType<typeof createRedrobClient>
   project: Project
   directory: string
   worktree: string

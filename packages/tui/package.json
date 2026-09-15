@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/tui",
-  "version": "1.18.31",
+  "name": "@redrob-code/tui",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -48,10 +48,9 @@
     "./component/register-spinner": "./src/component/register-spinner.ts"
   },
   "dependencies": {
-    "@opencode-ai/core": "workspace:*",
-    "@opencode-ai/plugin": "workspace:*",
-    "@opencode-ai/sdk": "workspace:*",
-    "@opencode-ai/ui": "workspace:*",
+    "@redrob-code/core": "workspace:*",
+    "@redrob-code/plugin": "workspace:*",
+    "@redrob-code/sdk": "workspace:*",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",

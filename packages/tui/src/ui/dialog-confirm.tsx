@@ -3,8 +3,8 @@ import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
 import { For } from "solid-js"
-import { Locale } from "../util/locale"
 import { useBindings } from "../keymap"
+import { useLanguage } from "../context/language"
 
 export type DialogConfirmProps = {
   title: string
@@ -19,6 +19,7 @@ export type DialogConfirmResult = boolean | undefined
 export function DialogConfirm(props: DialogConfirmProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const language = useLanguage()
   const [store, setStore] = createStore({
     active: "confirm" as "confirm" | "cancel",
   })
@@ -27,7 +28,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
     bindings: [
       {
         key: "return",
-        desc: "Confirm dialog selection",
+        desc: language.t("dialog.confirm_selection"),
         group: "Dialog",
         cmd: () => {
           if (store.active === "confirm") props.onConfirm?.()
@@ -37,7 +38,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
       },
       {
         key: "left",
-        desc: "Previous dialog option",
+        desc: language.t("dialog.option_previous"),
         group: "Dialog",
         cmd: () => {
           setStore("active", store.active === "confirm" ? "cancel" : "confirm")
@@ -45,7 +46,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
       },
       {
         key: "right",
-        desc: "Next dialog option",
+        desc: language.t("dialog.option_next"),
         group: "Dialog",
         cmd: () => {
           setStore("active", store.active === "confirm" ? "cancel" : "confirm")
@@ -60,7 +61,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
           {props.title}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          {language.t("dialog.esc")}
         </text>
       </box>
       <box paddingBottom={1}>
@@ -80,7 +81,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
               }}
             >
               <text fg={key === store.active ? theme.selectedListItemText : theme.textMuted}>
-                {Locale.titlecase(key === "cancel" ? (props.label ?? key) : key)}
+                {key === "cancel" ? (props.label ?? language.t("dialog.cancel")) : language.t("dialog.confirm")}
               </text>
             </box>
           )}

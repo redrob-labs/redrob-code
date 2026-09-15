@@ -5,9 +5,11 @@ import { useDirectory } from "../../context/directory"
 import { useConnected } from "../../component/use-connected"
 import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
+import { useLanguage } from "../../context/language"
 
 export function Footer() {
   const { theme } = useTheme()
+  const language = useLanguage()
   const sync = useSync()
   const route = useRoute()
   const mcp = createMemo(() => Object.values(sync.data.mcp).filter((x) => x.status === "connected").length)
@@ -56,18 +58,19 @@ export function Footer() {
         <Switch>
           <Match when={store.welcome}>
             <text fg={theme.text}>
-              Get started <span style={{ fg: theme.textMuted }}>/connect</span>
+              {language.t("footer.get_started")} <span style={{ fg: theme.textMuted }}>/connect</span>
             </text>
           </Match>
           <Match when={connected()}>
             <Show when={permissions().length > 0}>
               <text fg={theme.warning}>
-                <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
-                {permissions().length > 1 ? "s" : ""}
+                <span style={{ fg: theme.warning }}>△</span>{" "}
+                {language.plural("footer.permissions", permissions().length)}
               </text>
             </Show>
             <text fg={theme.text}>
-              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {lsp().length} LSP
+              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span>{" "}
+              {language.t("footer.lsp", { count: lsp().length })}
             </text>
             <Show when={mcp()}>
               <text fg={theme.text}>
@@ -79,7 +82,7 @@ export function Footer() {
                     <span style={{ fg: theme.success }}>⊙ </span>
                   </Match>
                 </Switch>
-                {mcp()} MCP
+                {language.t("footer.mcp", { count: mcp() })}
               </text>
             </Show>
             <text fg={theme.textMuted}>/status</text>

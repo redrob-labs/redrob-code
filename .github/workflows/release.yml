@@ -1,0 +1,113 @@
+name: release
+
+# Builds the CLI binaries and attaches them to a GitHub Release. This is the simple
+# path: no npm, Docker, Homebrew, AUR, or AWS. Those live in `publish.yml`, which needs
+# credentials this repository does not have.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the leading v (e.g. 0.0.1)"
+        required: true
+        type: string
+      single:
+        description: "Build only this runner's platform instead of every target"
+        required: false
+        default: false
+        type: boolean
+  # Paused during local-dev. Restore `push: {tags: [v*]}` to auto-release on tags.
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.value }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists"
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
+
+      # REDROB_RELEASE is deliberately unset: build.ts would then archive and upload the
+      # assets itself in one `gh release upload` call, which returns HTTP 400 when it
+      # pushes every target at once. Package and upload below instead.
+      - name: Build binaries
+        working-directory: packages/redrob
+        env:
+          REDROB_VERSION: ${{ steps.version.outputs.value }}
+        run: bun run build ${{ inputs.single && '--single' || '' }}
+
+      - name: Package binaries
+        working-directory: packages/redrob
+        run: |
+          set -euo pipefail
+          root=$(pwd)
+          mkdir -p upload
+          for dir in dist/*/; do
+            name=$(basename "$dir")
+            [ -d "$dir/bin" ] || continue
+            case "$name" in
+              *linux*) (cd "$dir/bin" && tar -czf "$root/upload/$name.tar.gz" *) ;;
+              *) (cd "$dir/bin" && zip -qr "$root/upload/$name.zip" *) ;;
+            esac
+          done
+          ls -l upload
+
+      - name: Upload assets
+        working-directory: packages/redrob
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          for file in upload/*; do
+            uploaded=false
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$file" --clobber; then
+                uploaded=true
+                break
+              fi
+              echo "attempt $attempt failed for $file, retrying"
+              sleep 15
+            done
+            if [ "$uploaded" != true ]; then
+              echo "::error::failed to upload $file"
+              exit 1
+            fi
+          done
+
+      - name: Summarize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.value }}
+        run: |
+          {
+            echo "### $TAG assets"
+            echo
+            gh release view "$TAG" --json assets --jq '.assets[] | "- \(.name) (\(.size) bytes)"'
+          } >> "$GITHUB_STEP_SUMMARY"

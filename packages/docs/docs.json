@@ -1,13 +1,27 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "@opencode-ai/docs",
+  "name": "@redrob-code/docs",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2b52ff",
+    "light": "#507fff",
+    "dark": "#1733d5"
   },
-  "favicon": "/favicon-v3.svg",
+  "fonts": {
+    "heading": {
+      "family": "Pretendard Variable",
+      "source": "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/woff2/PretendardVariable.woff2",
+      "format": "woff2",
+      "weight": 700
+    },
+    "body": {
+      "family": "Pretendard Variable",
+      "source": "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/woff2/PretendardVariable.woff2",
+      "format": "woff2",
+      "weight": 400
+    }
+  },
+  "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
@@ -16,7 +30,7 @@
           {
             "group": "Getting started",
             "pages": ["index", "quickstart", "development"],
-            "openapi": "https://opencode.ai/openapi.json"
+            "openapi": "https://code.redrob.ai/openapi.json"
           }
         ]
       }
@@ -31,13 +45,13 @@
     "links": [
       {
         "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "href": "https://github.com/redrob-labs/redrob-code/issues"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "Console",
+      "href": "https://console.redrob.ai"
     }
   },
   "contextual": {
@@ -45,9 +59,7 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/redrob-labs/redrob-code"
     }
   }
 }

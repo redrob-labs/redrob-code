@@ -1,17 +1,19 @@
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
 import { Tips } from "./tips-view"
 import { useBindings } from "../../keymap"
+import { useLanguage } from "../../context/language"
 
 const id = "internal:home-tips"
 
 function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connected: boolean }) {
+  const language = useLanguage()
   useBindings(() => ({
     commands: [
       {
         name: "tips.toggle",
-        title: props.hidden ? "Show tips" : "Hide tips",
+        title: props.hidden ? language.t("command.tips.show") : language.t("command.tips.hide"),
         category: "System",
         namespace: "palette",
         run() {
@@ -41,7 +43,7 @@ const tui: TuiPlugin = async (api) => {
         const first = createMemo(() => api.state.session.count() === 0)
         const connected = createMemo(() =>
           api.state.provider.some(
-            (item) => item.id !== "opencode" || Object.values(item.models).some((model) => model.cost?.input !== 0),
+            (item) => item.id !== "redrob" || Object.values(item.models).some((model) => model.cost?.input !== 0),
           ),
         )
         const show = createMemo(() => (!first() || !connected()) && !hidden())

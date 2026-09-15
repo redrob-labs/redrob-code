@@ -1,78 +1,167 @@
-import { describe, expect, beforeAll, beforeEach, afterAll } from "bun:test"
+import { describe, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test"
 import { Effect, Layer, Ref } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { Flag } from "@opencode-ai/core/flag/flag"
-import { Global } from "@opencode-ai/core/global"
-import { ModelsDev } from "@opencode-ai/core/models-dev"
+import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
+import { LayerNodePlatform } from "@redrob-code/core/effect/app-node-platform"
+import { Flag } from "@redrob-code/core/flag/flag"
+import { Credential } from "@redrob-code/core/credential"
+import { Integration } from "@redrob-code/core/integration"
+import { ModelsDev } from "@redrob-code/core/models-dev"
 import { it } from "./lib/effect"
-import { readFile, rm, writeFile, utimes, mkdir } from "fs/promises"
-import path from "path"
 
-// test/preload.ts pins OPENCODE_MODELS_PATH to a fixture so other tests can
-// resolve providers without network. These tests need to drive the on-disk
-// cache themselves and silence the eager refresh fork. Save/restore around
-// the suite — never leak the mutation to subsequent test files in the same
-// bun process.
-const ORIGINAL_MODELS_PATH = Flag.OPENCODE_MODELS_PATH
-const ORIGINAL_DISABLE_FETCH = Flag.OPENCODE_DISABLE_MODELS_FETCH
-beforeAll(() => {
-  Flag.OPENCODE_MODELS_PATH = undefined
-  Flag.OPENCODE_DISABLE_MODELS_FETCH = true
-})
+// The reworked ModelsDev.Service fetches the OpenAI-standard listing from
+// GET https://console.redrob.ai/api/backend/v1/models with `Authorization: Bearer <REDROB_API_KEY>`.
+// These tests drive that fetch through a mock HttpClient and assert the fallback + non-fatal
+// behavior. test/preload.ts pins REDROB_DISABLE_MODELS_FETCH=true; each fetching test flips it
+// off inside a save/restore so the mutation never leaks to other files in the bun process.
+const ORIGINAL_DISABLE_FETCH = Flag.REDROB_DISABLE_MODELS_FETCH
+const ORIGINAL_API_KEY = process.env["REDROB_API_KEY"]
 afterAll(() => {
-  Flag.OPENCODE_MODELS_PATH = ORIGINAL_MODELS_PATH
-  Flag.OPENCODE_DISABLE_MODELS_FETCH = ORIGINAL_DISABLE_FETCH
+  Flag.REDROB_DISABLE_MODELS_FETCH = ORIGINAL_DISABLE_FETCH
+  if (ORIGINAL_API_KEY === undefined) delete process.env["REDROB_API_KEY"]
+  else process.env["REDROB_API_KEY"] = ORIGINAL_API_KEY
 })
 
-const cacheFile = path.join(Global.Path.cache, "models.json")
+const CONSOLE_MODELS_URL = "https://console.redrob.ai/api/backend/v1/models"
 
-const fixture: Record<string, ModelsDev.Provider> = {
-  acme: {
-    id: "acme",
-    name: "Acme",
-    env: ["ACME_API_KEY"],
-    models: {
-      "acme-1": {
-        id: "acme-1",
-        name: "Acme One",
-        release_date: "2026-01-01",
-        attachment: false,
-        reasoning: false,
-        temperature: true,
-        tool_call: true,
-        limit: { context: 128000, output: 8192 },
+// The EXACT body returned by the live GET https://console.redrob.ai/api/backend/v1/models
+// endpoint (verified against the real console with a real key): an OpenAI-standard listing with the
+// six served models, each carrying vendor-specific `redrob` pricing and `capabilities` blocks the
+// internal schema does not model. Pinned verbatim so a decoding regression against the real shape —
+// including the `owned_by` field and those extra blocks — fails here. `redrob-ai` and
+// `redrob-translate` are deliberately absent: they are retired ids the console does not serve.
+const modelList = {
+  object: "list",
+  data: [
+    {
+      id: "auto",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: { inputPricePerMillionUsd: 0.6, outputPricePerMillionUsd: 1.8, inputMultiplier: 1, outputMultiplier: 1 },
+      capabilities: {
+        shortContextTokens: 272000,
+        maxContextTokens: 1000000,
+        thinkingLevels: [],
+        fastMode: false,
+        requiresProviderDataShare: false,
       },
     },
-  },
-}
-
-const fixture2: Record<string, ModelsDev.Provider> = {
-  beta: {
-    id: "beta",
-    name: "Beta",
-    env: ["BETA_API_KEY"],
-    models: {
-      "beta-1": {
-        id: "beta-1",
-        name: "Beta One",
-        release_date: "2026-02-01",
-        attachment: false,
-        reasoning: true,
-        temperature: false,
-        tool_call: false,
-        limit: { context: 64000, output: 4096 },
+    {
+      id: "gpt-5.6-sol",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: {
+        inputPricePerMillionUsd: 4,
+        outputPricePerMillionUsd: 20,
+        inputMultiplier: 6.67,
+        outputMultiplier: 11.11,
+        longContextInputPricePerMillionUsd: 8,
+        longContextOutputPricePerMillionUsd: 30,
+      },
+      capabilities: {
+        shortContextTokens: 272000,
+        maxContextTokens: 1000000,
+        thinkingLevels: [],
+        fastMode: false,
+        requiresProviderDataShare: false,
       },
     },
-  },
+    {
+      id: "gpt-5.6-terra",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: {
+        inputPricePerMillionUsd: 2,
+        outputPricePerMillionUsd: 12,
+        inputMultiplier: 3.33,
+        outputMultiplier: 6.67,
+        longContextInputPricePerMillionUsd: 4,
+        longContextOutputPricePerMillionUsd: 18,
+      },
+      capabilities: {
+        shortContextTokens: 272000,
+        maxContextTokens: 1000000,
+        thinkingLevels: [],
+        fastMode: false,
+        requiresProviderDataShare: false,
+      },
+    },
+    {
+      id: "claude-opus-5",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: {
+        inputPricePerMillionUsd: 5,
+        outputPricePerMillionUsd: 25,
+        inputMultiplier: 8.33,
+        outputMultiplier: 13.89,
+      },
+      capabilities: {
+        shortContextTokens: 200000,
+        maxContextTokens: 1000000,
+        thinkingLevels: ["low", "medium", "high", "max"],
+        fastMode: true,
+        requiresProviderDataShare: false,
+      },
+    },
+    {
+      id: "claude-sonnet-5",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: { inputPricePerMillionUsd: 3, outputPricePerMillionUsd: 15, inputMultiplier: 5, outputMultiplier: 8.33 },
+      capabilities: {
+        shortContextTokens: 200000,
+        maxContextTokens: 1000000,
+        thinkingLevels: ["low", "medium", "high", "max"],
+        fastMode: true,
+        requiresProviderDataShare: false,
+      },
+    },
+    {
+      id: "claude-fable-5",
+      object: "model",
+      created: 1767225600,
+      owned_by: "redrob",
+      redrob: {
+        inputPricePerMillionUsd: 10,
+        outputPricePerMillionUsd: 50,
+        inputMultiplier: 16.67,
+        outputMultiplier: 27.78,
+      },
+      capabilities: {
+        shortContextTokens: 200000,
+        maxContextTokens: 1000000,
+        thinkingLevels: ["low", "medium", "high", "max"],
+        fastMode: true,
+        requiresProviderDataShare: true,
+      },
+    },
+  ],
 }
+
+// Every served console model, which the static/no-key fallback catalog must also surface, sorted so
+// it can be compared against Object.keys(...).sort().
+const CONSOLE_MODEL_IDS = ["auto", "claude-fable-5", "claude-opus-5", "claude-sonnet-5", "gpt-5.6-sol", "gpt-5.6-terra"]
+
+// The display names the static fallback must publish, in CONSOLE_MODELS order.
+const FALLBACK_MODEL_NAMES = [
+  ["auto", "Redrob Auto"],
+  ["gpt-5.6-sol", "GPT-5.6 Sol"],
+  ["gpt-5.6-terra", "GPT-5.6 Terra"],
+  ["claude-opus-5", "Claude Opus 5"],
+  ["claude-sonnet-5", "Claude Sonnet 5"],
+  ["claude-fable-5", "Claude Fable 5"],
+]
 
 interface MockState {
   body: string
   status: number
-  calls: Array<{ url: string; userAgent: string | null }>
+  calls: Array<{ url: string; authorization: string | null }>
 }
 
 const makeMockClient = (state: Ref.Ref<MockState>) =>
@@ -80,211 +169,385 @@ const makeMockClient = (state: Ref.Ref<MockState>) =>
     Effect.gen(function* () {
       yield* Ref.update(state, (s) => ({
         ...s,
-        calls: [...s.calls, { url: request.url, userAgent: request.headers["user-agent"] ?? null }],
+        calls: [...s.calls, { url: request.url, authorization: request.headers["authorization"] ?? null }],
       }))
       const s = yield* Ref.get(state)
       return HttpClientResponse.fromWeb(request, new Response(s.body, { status: s.status }))
     }),
   )
 
-const buildLayer = (state: Ref.Ref<MockState>) =>
-  // Layer.fresh is required because the ModelsDev implementation is a module-level Layer constant,
-  // and Effect.provide uses a process-global MemoMap by default — without fresh,
-  // every test would reuse the cachedInvalidateWithTTL state from the first run.
+// ModelsDev resolves the console key from the environment or from the credential store, so the
+// store is stubbed here rather than standing up a database. `storedKey` undefined means the user
+// never ran `redrob providers login`.
+const credentialLayer = (storedKey?: string) =>
+  Layer.succeed(
+    Credential.Service,
+    Credential.Service.of({
+      all: () => Effect.succeed([]),
+      list: () =>
+        Effect.succeed(
+          storedKey === undefined
+            ? []
+            : [
+                new Credential.Info({
+                  id: Credential.ID.make("cred_test"),
+                  integrationID: Integration.ID.make("redrob"),
+                  label: "default",
+                  value: { type: "key", key: storedKey },
+                }),
+              ],
+        ),
+      get: () => Effect.succeed(undefined),
+      create: () => Effect.die("Credential.create is not used by ModelsDev"),
+      update: () => Effect.void,
+      remove: () => Effect.void,
+    }),
+  )
+
+const buildLayer = (state: Ref.Ref<MockState>, storedKey?: string) =>
+  // Layer.fresh so each test gets its own cachedInvalidateWithTTL state rather than
+  // reusing the process-global MemoMap entry from a previous test.
   Layer.fresh(
     AppNodeBuilder.build(ModelsDev.node, [
       [LayerNodePlatform.httpClient, Layer.succeed(HttpClient.HttpClient, makeMockClient(state))],
+      [Credential.node, credentialLayer(storedKey)],
     ]),
   )
-
-const writeCacheText = (text: string, mtimeMs?: number) =>
-  Effect.promise(async () => {
-    await mkdir(Global.Path.cache, { recursive: true })
-    await writeFile(cacheFile, text)
-    if (mtimeMs !== undefined) {
-      const t = mtimeMs / 1000
-      await utimes(cacheFile, t, t)
-    }
-  })
-
-const writeCache = (data: object, mtimeMs?: number) => writeCacheText(JSON.stringify(data), mtimeMs)
 
 const provided = <A, E>(state: Ref.Ref<MockState>, eff: Effect.Effect<A, E, ModelsDev.Service>) =>
   eff.pipe(Effect.provide(buildLayer(state)))
 
-beforeEach(async () => {
-  await rm(cacheFile, { force: true })
-})
-
-afterAll(async () => {
-  await rm(cacheFile, { force: true })
-})
-
-const initialState: MockState = {
-  body: JSON.stringify(fixture),
-  status: 200,
-  calls: [],
-}
+const okState = (): MockState => ({ body: JSON.stringify(modelList), status: 200, calls: [] })
 
 describe("ModelsDev Service", () => {
-  it.live("get() returns providers from disk when cache file exists", () =>
+  beforeEach(() => {
+    Flag.REDROB_DISABLE_MODELS_FETCH = false
+    process.env["REDROB_API_KEY"] = "rrk_test_key"
+  })
+  afterEach(() => {
+    Flag.REDROB_DISABLE_MODELS_FETCH = ORIGINAL_DISABLE_FETCH
+    delete process.env["REDROB_API_KEY"]
+  })
+
+  it.live("get() fetches the console /models endpoint with a Bearer token when a key is set", () =>
     Effect.gen(function* () {
-      yield* writeCache(fixture)
-      const state = yield* Ref.make(initialState)
+      const state = yield* Ref.make(okState())
       const result = yield* provided(
         state,
         ModelsDev.Service.use((s) => s.get()),
       )
-      expect(result).toEqual(fixture)
-      const final = yield* Ref.get(state)
-      expect(final.calls).toEqual([])
-    }),
-  )
+      // A single 'redrob' provider populated from the /models data.
+      expect(Object.keys(result)).toEqual(["redrob"])
+      expect(result["redrob"].env).toEqual(["REDROB_API_KEY"])
+      expect(result["redrob"].api).toBe("https://console.redrob.ai/api/backend/v1")
+      // Every live model is surfaced; the extra `owned_by`, `redrob` and `capabilities` fields are
+      // tolerated and ignored.
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+      // release_date derives from the OpenAI `created` seconds field when present.
+      expect(result["redrob"].models["auto"].release_date).toBe("2026-01-01")
+      expect(result["redrob"].models["claude-opus-5"].release_date).toBe("2026-01-01")
 
-  it.live("get() returns empty catalog when disk empty, fetch disabled, and no bundled snapshot is injected", () =>
-    Effect.gen(function* () {
-      const state = yield* Ref.make(initialState)
-      const result = yield* provided(
-        state,
-        ModelsDev.Service.use((s) => s.get()),
-      )
-      expect(result).toEqual({})
-      const final = yield* Ref.get(state)
-      expect(final.calls).toEqual([])
-    }),
-  )
-
-  it.live("get() recovers from a corrupted cache file by fetching a fresh catalog", () =>
-    Effect.gen(function* () {
-      yield* writeCacheText("{")
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
-      const context = yield* Layer.build(buildLayer(state))
-      const result = yield* Effect.acquireUseRelease(
-        Effect.sync(() => {
-          Flag.OPENCODE_DISABLE_MODELS_FETCH = false
-        }),
-        () => ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context)),
-        () =>
-          Effect.sync(() => {
-            Flag.OPENCODE_DISABLE_MODELS_FETCH = true
-          }),
-      )
-      expect(result).toEqual(fixture2)
-      expect(yield* Effect.promise(() => readFile(cacheFile, "utf8"))).toBe(JSON.stringify(fixture2))
       const final = yield* Ref.get(state)
       expect(final.calls.length).toBe(1)
+      expect(final.calls[0].url).toBe(CONSOLE_MODELS_URL)
+      expect(final.calls[0].authorization).toBe("Bearer rrk_test_key")
     }),
   )
 
-  it.live("get() is single-flight under concurrent calls", () =>
+  it.live("get() degrades to the static console fallback when the fetch returns 401", () =>
     Effect.gen(function* () {
-      yield* writeCache(fixture)
-      const state = yield* Ref.make(initialState)
+      const state = yield* Ref.make({ ...okState(), status: 401, body: "unauthorized" })
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      expect(Object.keys(result)).toEqual(["redrob"])
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+      expect(result["redrob"].models["auto"].name).toBe("Redrob Auto")
+      expect(result["redrob"].models["claude-opus-5"].name).toBe("Claude Opus 5")
+      // The request was still attempted (proves wiring), then degraded non-fatally.
+      const final = yield* Ref.get(state)
+      expect(final.calls.length).toBeGreaterThanOrEqual(1)
+      expect(final.calls[0].url).toBe(CONSOLE_MODELS_URL)
+    }),
+  )
+
+  it.live("get() degrades to the static fallback when the response body is unparseable", () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make({ ...okState(), status: 200, body: "{not json" })
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+    }),
+  )
+
+  it.live("get() fetches using a credential stored by `redrob providers login` with no env key", () =>
+    Effect.gen(function* () {
+      delete process.env["REDROB_API_KEY"]
+      const state = yield* Ref.make(okState())
+      const result = yield* ModelsDev.Service.use((s) => s.get()).pipe(
+        Effect.provide(buildLayer(state, "rrk_stored_key")),
+      )
+
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+      const final = yield* Ref.get(state)
+      expect(final.calls.map((call) => call.url)).toEqual([CONSOLE_MODELS_URL])
+      expect(final.calls[0]?.authorization).toBe("Bearer rrk_stored_key")
+    }),
+  )
+
+  it.live("get() uses the static fallback and issues NO request when no REDROB_API_KEY is set", () =>
+    Effect.gen(function* () {
+      delete process.env["REDROB_API_KEY"]
+      const state = yield* Ref.make(okState())
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      // The no-key fallback lists every served console model, matching the live listing.
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+      expect(result["redrob"].models["claude-fable-5"].name).toBe("Claude Fable 5")
+      const final = yield* Ref.get(state)
+      expect(final.calls).toEqual([])
+    }),
+  )
+
+  // The no-key fallback is the only catalog a user without a key ever sees, so it must name exactly
+  // the ids the live console serves. `redrob-ai`/`redrob-translate` were pinned here for a while and
+  // are now retired, so listing them advertised models the console will not resolve. The ids and
+  // names are spelled out rather than read from CONSOLE_MODELS so a drift in the constant fails this
+  // test instead of silently agreeing with it.
+  it.live("the static fallback catalog names exactly the models the console serves", () =>
+    Effect.gen(function* () {
+      delete process.env["REDROB_API_KEY"]
+      const state = yield* Ref.make(okState())
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+
+      const provider = result["redrob"]
+      expect(provider.name).toBe("Redrob")
+      expect(provider.env).toEqual(["REDROB_API_KEY"])
+      expect(provider.api).toBe("https://console.redrob.ai/api/backend/v1")
+      expect(provider.npm).toBe("@ai-sdk/openai-compatible")
+      expect(Object.keys(provider.models)).toEqual(FALLBACK_MODEL_NAMES.map(([id]) => id))
+      for (const [id, name] of FALLBACK_MODEL_NAMES) {
+        expect(provider.models[id].name).toBe(name)
+        expect(provider.models[id].tool_call).toBe(true)
+        expect(provider.models[id].provider).toEqual({
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://console.redrob.ai/api/backend/v1",
+        })
+      }
+      // Retired ids must never be presented as models.
+      expect(provider.models["redrob-ai"]).toBeUndefined()
+      expect(provider.models["redrob-translate"]).toBeUndefined()
+    }),
+  )
+
+  it.live("get() uses the static fallback and issues NO request when REDROB_DISABLE_MODELS_FETCH is set", () =>
+    Effect.gen(function* () {
+      Flag.REDROB_DISABLE_MODELS_FETCH = true
+      const state = yield* Ref.make(okState())
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
+      const final = yield* Ref.get(state)
+      expect(final.calls).toEqual([])
+    }),
+  )
+
+  it.live("get() is single-flight and caches across calls until refresh invalidates", () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(okState())
       const results = yield* provided(
         state,
         Effect.gen(function* () {
           const svc = yield* ModelsDev.Service
-          return yield* Effect.all([svc.get(), svc.get(), svc.get(), svc.get(), svc.get()], {
-            concurrency: "unbounded",
-          })
+          const many = yield* Effect.all([svc.get(), svc.get(), svc.get()], { concurrency: "unbounded" })
+          // A second get() after the cache is warm must not issue another request.
+          const again = yield* svc.get()
+          return { many, again }
         }),
       )
-      for (const result of results) expect(result).toEqual(fixture)
-    }),
-  )
-
-  it.live("get() caches across calls (later disk writes are ignored until invalidate)", () =>
-    Effect.gen(function* () {
-      yield* writeCache(fixture)
-      const state = yield* Ref.make(initialState)
-      const first = yield* provided(
-        state,
-        Effect.gen(function* () {
-          const svc = yield* ModelsDev.Service
-          const a = yield* svc.get()
-          // mutate disk between calls — cache should mask the change
-          yield* writeCache(fixture2)
-          const b = yield* svc.get()
-          return { a, b }
-        }),
-      )
-      expect(first.a).toEqual(fixture)
-      expect(first.b).toEqual(fixture)
-    }),
-  )
-
-  it.live("refresh(true) fetches via HttpClient and updates the cache", () =>
-    Effect.gen(function* () {
-      yield* writeCache(fixture)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
-      const result = yield* provided(
-        state,
-        Effect.gen(function* () {
-          const svc = yield* ModelsDev.Service
-          const before = yield* svc.get()
-          yield* svc.refresh(true)
-          const after = yield* svc.get()
-          return { before, after }
-        }),
-      )
-      expect(result.before).toEqual(fixture)
-      expect(result.after).toEqual(fixture2)
+      for (const result of results.many) expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
       const final = yield* Ref.get(state)
+      // cachedInvalidateWithTTL collapses the concurrent + repeat gets into a single fetch.
       expect(final.calls.length).toBe(1)
-      expect(final.calls[0].url).toContain("/api.json")
-      expect(final.calls[0].userAgent).toContain("/cli")
     }),
   )
 
-  it.live("refresh(false) skips fetch when on-disk file is fresh", () =>
+  it.live("refresh() invalidates the cache so the next get() re-fetches /models", () =>
     Effect.gen(function* () {
-      // Fresh: mtime within the 5-minute TTL.
-      yield* writeCache(fixture, Date.now() - 1000)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
-      yield* provided(
-        state,
-        ModelsDev.Service.use((s) => s.refresh(false)),
-      )
-      const final = yield* Ref.get(state)
-      expect(final.calls).toEqual([])
-    }),
-  )
-
-  it.live("refresh(false) fetches when on-disk file is stale", () =>
-    Effect.gen(function* () {
-      // Stale: mtime 10 minutes ago, beyond the 5-minute TTL.
-      yield* writeCache(fixture, Date.now() - 10 * 60 * 1000)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const state = yield* Ref.make(okState())
       const after = yield* provided(
         state,
         Effect.gen(function* () {
           const svc = yield* ModelsDev.Service
-          yield* svc.refresh(false)
-          return yield* svc.get()
-        }),
-      )
-      const final = yield* Ref.get(state)
-      expect(final.calls.length).toBe(1)
-      expect(after).toEqual(fixture2)
-    }),
-  )
-
-  it.live("refresh swallows HTTP errors and leaves cache intact", () =>
-    Effect.gen(function* () {
-      yield* writeCache(fixture)
-      const state = yield* Ref.make({ ...initialState, status: 500, body: "boom" })
-      const result = yield* provided(
-        state,
-        Effect.gen(function* () {
-          const svc = yield* ModelsDev.Service
+          yield* svc.get()
           yield* svc.refresh(true)
           return yield* svc.get()
         }),
       )
-      expect(result).toEqual(fixture)
-      // retryTransient retries 5xx, so calls may be > 1.
+      expect(Object.keys(after["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
       const final = yield* Ref.get(state)
-      expect(final.calls.length).toBeGreaterThanOrEqual(1)
+      // One fetch before refresh, one after invalidation.
+      expect(final.calls.length).toBe(2)
+    }),
+  )
+})
+
+// OpenAI's listing shape has no field for a price or a context window, so the console publishes both
+// under vendor keys of its own: `redrob` for the per-million rates and `capabilities` for the window
+// plus the thinking/fast/data-share switches. These were decoded and thrown away until now, which
+// left every console model reporting `limit.context: 0` — and `isOverflow()` in
+// packages/redrob/src/session/overflow.ts returns false unconditionally at a zero context, so no
+// session on a Redrob model ever auto-compacted. Everything below reads the same pinned live body as
+// the suite above, so it needs no key and no network.
+describe("ModelsDev console model metadata", () => {
+  beforeEach(() => {
+    Flag.REDROB_DISABLE_MODELS_FETCH = false
+    process.env["REDROB_API_KEY"] = "rrk_test_key"
+  })
+  afterEach(() => {
+    Flag.REDROB_DISABLE_MODELS_FETCH = ORIGINAL_DISABLE_FETCH
+    delete process.env["REDROB_API_KEY"]
+  })
+
+  const fetched = Effect.fn(function* () {
+    const state = yield* Ref.make(okState())
+    const result = yield* provided(
+      state,
+      ModelsDev.Service.use((s) => s.get()),
+    )
+    return result["redrob"].models
+  })
+
+  it.live("projects the published per-million rates into cost", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      // `cost` is USD per million tokens, the same unit the console quotes, so the numbers carry
+      // across unscaled (packages/redrob/src/session/session.ts divides by 1_000_000 when billing).
+      expect(models["claude-opus-5"].cost).toEqual({ input: 5, output: 25, tiers: undefined })
+      expect(models["claude-sonnet-5"].cost).toEqual({ input: 3, output: 15, tiers: undefined })
+      expect(models["claude-fable-5"].cost).toEqual({ input: 10, output: 50, tiers: undefined })
+      expect(models["auto"].cost).toEqual({ input: 0.6, output: 1.8, tiers: undefined })
+    }),
+  )
+
+  it.live("projects a long-context card into a cost tier keyed to the short-context threshold", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      // Sol and Terra are the two ids with a separate rate above `shortContextTokens`; the tier size
+      // is that threshold, matching how ModelsDevPlugin already projects `context_over_200k`.
+      expect(models["gpt-5.6-sol"].cost).toEqual({
+        input: 4,
+        output: 20,
+        tiers: [{ input: 8, output: 30, tier: { type: "context", size: 272_000 } }],
+      })
+      expect(models["gpt-5.6-terra"].cost).toEqual({
+        input: 2,
+        output: 12,
+        tiers: [{ input: 4, output: 18, tier: { type: "context", size: 272_000 } }],
+      })
+      // The Claude ids publish no long-context card, so they get no tier rather than a half-priced
+      // one built from a missing rate.
+      expect(models["claude-opus-5"].cost?.tiers).toBeUndefined()
+    }),
+  )
+
+  it.live("projects maxContextTokens into limit.context and leaves limit.input unset", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      for (const id of CONSOLE_MODEL_IDS) {
+        expect(models[id].limit.context).toBe(1_000_000)
+        expect(models[id].limit.output).toBe(32_000)
+        // shortContextTokens is a pricing threshold, not an input cap. Setting limit.input from it
+        // would make `usable()` stop reserving room for the reply.
+        expect(models[id].limit.input).toBeUndefined()
+      }
+    }),
+  )
+
+  it.live("projects thinkingLevels into the reasoning flag without publishing effort variants", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      // The three Claude ids publish low/medium/high/max; auto, Sol and Terra publish none.
+      expect(models["claude-opus-5"].reasoning).toBe(true)
+      expect(models["claude-sonnet-5"].reasoning).toBe(true)
+      expect(models["claude-fable-5"].reasoning).toBe(true)
+      expect(models["auto"].reasoning).toBe(false)
+      expect(models["gpt-5.6-sol"].reasoning).toBe(false)
+      expect(models["gpt-5.6-terra"].reasoning).toBe(false)
+      // The console's control is a top-level `thinking` level and its chat endpoint rejects fields it
+      // does not whitelist, so no `reasoning_effort` variants may be synthesised from these levels.
+      for (const id of CONSOLE_MODEL_IDS) expect(models[id].reasoning_options).toEqual([])
+    }),
+  )
+
+  it.live("keeps every console model text-only with no attachment support", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      // The console's chat endpoint accepts a string or an array of text parts and nothing else, so
+      // there is no attachment to send and no modality beyond text to advertise. Pinned so the
+      // reason is recorded rather than inherited from the old all-zeros default.
+      for (const id of CONSOLE_MODEL_IDS) {
+        expect(models[id].attachment).toBe(false)
+        expect(models[id].modalities).toEqual({ input: ["text"], output: ["text"] })
+        expect(models[id].tool_call).toBe(true)
+        expect(models[id].temperature).toBe(true)
+      }
+    }),
+  )
+
+  it.live("tolerates a listing entry with no vendor blocks at all", () =>
+    Effect.gen(function* () {
+      // Forward and backward compatibility in one: an entry stripped of `redrob` and `capabilities`
+      // must still decode into a usable model rather than failing the parse and dropping the whole
+      // catalog to the static fallback.
+      const state = yield* Ref.make({
+        ...okState(),
+        body: JSON.stringify({ object: "list", data: [{ id: "auto", object: "model", created: 1767225600 }] }),
+      })
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      expect(Object.keys(result["redrob"].models)).toEqual(["auto"])
+      expect(result["redrob"].models["auto"].cost).toEqual({ input: 0, output: 0, tiers: undefined })
+      // Still a usable window, so compaction keeps working against a listing that says nothing.
+      expect(result["redrob"].models["auto"].limit).toEqual({ context: 1_000_000, output: 32_000 })
+    }),
+  )
+
+  it.live("the no-key fallback carries a usable context window for every model", () =>
+    Effect.gen(function* () {
+      delete process.env["REDROB_API_KEY"]
+      const state = yield* Ref.make(okState())
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      for (const id of CONSOLE_MODEL_IDS) {
+        const model = result["redrob"].models[id]
+        // Non-zero context is the whole point offline: at 0, `usable()` returns 0 and `isOverflow()`
+        // returns false, so a long session runs into the provider's limit instead of compacting.
+        expect(model.limit.context).toBe(1_000_000)
+        expect(model.limit.output).toBe(32_000)
+        // No key means no authoritative rate. Reporting a stale hardcoded price would be worse than
+        // reporting none, so cost stays 0 until the listing supplies it.
+        expect(model.cost).toEqual({ input: 0, output: 0 })
+      }
+      // Reasoning support does not depend on the network, so the offline catalog agrees with the
+      // live one on which ids think.
+      expect(result["redrob"].models["claude-opus-5"].reasoning).toBe(true)
+      expect(result["redrob"].models["auto"].reasoning).toBe(false)
+      expect(yield* Ref.get(state).pipe(Effect.map((s) => s.calls))).toEqual([])
     }),
   )
 })

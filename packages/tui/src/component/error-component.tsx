@@ -3,45 +3,49 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, For, Show } from "solid-js"
 import { getScrollAcceleration } from "../util/scroll"
 import { useClipboard } from "../context/clipboard"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { InstallationVersion } from "@redrob-code/core/installation/version"
+import { Brand } from "@redrob-code/core/theme/brand"
 import { useExit } from "../context/exit"
 import { describeOS, describeTerminal } from "../util/system"
+import { useLanguage } from "../context/language"
 
 export function ErrorComponent(props: { error: Error; reset: () => void; mode?: "dark" | "light" }) {
   const term = useTerminalDimensions()
   const exit = useExit()
+  const language = useLanguage()
   const clipboard = useClipboard()
   const [copied, setCopied] = createSignal(false)
 
-  // Safe fallback palette per mode (mirrors theme/assets/opencode.json) since the
-  // theme context may be the thing that crashed.
+  // Safe fallback palette per mode, read straight off the brand primitives so it cannot drift from
+  // theme/assets/redrob.json, which maps the same steps to the same roles. It exists because the
+  // theme context may be the thing that crashed, so nothing here may resolve a theme.
   const isLight = props.mode === "light"
   const colors = isLight
     ? {
-        bg: "#ffffff",
-        element: "#f5f5f5",
-        borderSubtle: "#d4d4d4",
-        text: "#1a1a1a",
-        muted: "#8a8a8a",
-        primary: "#3b7dd8",
-        onPrimary: "#ffffff",
-        error: "#d1383d",
-        success: "#3d9a57",
+        bg: Brand.gray1,
+        element: Brand.gray2,
+        borderSubtle: Brand.gray4,
+        text: Brand.gray9,
+        muted: Brand.gray7,
+        primary: Brand.blue6,
+        onPrimary: Brand.gray1,
+        error: Brand.red4,
+        success: Brand.green5,
       }
     : {
-        bg: "#0a0a0a",
-        element: "#1e1e1e",
-        borderSubtle: "#3c3c3c",
-        text: "#eeeeee",
-        muted: "#808080",
-        primary: "#fab283",
-        onPrimary: "#0a0a0a",
-        error: "#e06c75",
-        success: "#7fd88f",
+        bg: Brand.gray9,
+        element: Brand.gray8,
+        borderSubtle: Brand.gray7,
+        text: Brand.gray1,
+        muted: Brand.gray5,
+        primary: Brand.blue4,
+        onPrimary: Brand.gray9,
+        error: Brand.red3,
+        success: Brand.green3,
       }
 
-  const message = props.error.message || "An unknown error occurred."
-  const stack = props.error.stack || "No stack trace available."
+  const message = props.error.message || language.t("crash.unknown_error")
+  const stack = props.error.stack || language.t("crash.no_stack")
   const issueURL = buildIssueURL(message, stack)
 
   const copyReport = () => {
@@ -49,9 +53,14 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   }
 
   const actions = [
-    { key: "c", label: () => (copied() ? "✓ Copied" : "Copy report"), copy: true, onUse: copyReport },
-    { key: "r", label: () => "Restart", onUse: props.reset },
-    { key: "q", label: () => "Quit", onUse: () => exit() },
+    {
+      key: "c",
+      label: () => (copied() ? language.t("crash.action.copied") : language.t("crash.action.copy")),
+      copy: true,
+      onUse: copyReport,
+    },
+    { key: "r", label: () => language.t("crash.action.restart"), onUse: props.reset },
+    { key: "q", label: () => language.t("crash.action.quit"), onUse: () => exit() },
   ]
   const [selected, setSelected] = createSignal(0)
   const move = (delta: number) => setSelected((prev) => (prev + delta + actions.length) % actions.length)
@@ -108,10 +117,10 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         {/* Headline */}
         <box flexDirection="column" alignItems="center" flexShrink={0}>
           <text attributes={TextAttributes.BOLD} fg={colors.text}>
-            opencode crashed
+            {language.t("crash.title")}
           </text>
           <Show when={showSubtext()}>
-            <text fg={colors.muted}>An unexpected error stopped the session.</text>
+            <text fg={colors.muted}>{language.t("crash.subtitle")}</text>
           </Show>
         </box>
 
@@ -121,7 +130,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           border
           borderStyle="rounded"
           borderColor={colors.error}
-          title=" Error "
+          title={language.t("crash.error_panel")}
           titleColor={colors.error}
           paddingLeft={2}
           paddingRight={2}
@@ -168,9 +177,9 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           border
           borderStyle="rounded"
           borderColor={colors.borderSubtle}
-          title=" Stack trace "
+          title={language.t("crash.stack_panel")}
           titleColor={colors.muted}
-          bottomTitle=" ↑↓ scroll "
+          bottomTitle={language.t("crash.scroll_hint")}
           bottomTitleAlignment="right"
           paddingLeft={1}
           paddingRight={1}
@@ -188,11 +197,9 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         <Show when={showFooter()}>
           <box flexDirection="column" alignItems="center" flexShrink={0}>
             <text fg={colors.muted}>
-              {copied()
-                ? "Report copied — paste it into a new GitHub issue."
-                : "Copy the report and open a GitHub issue to help us fix this."}
+              {copied() ? language.t("crash.footer.copied") : language.t("crash.footer.default")}
             </text>
-            <text fg={colors.muted}>opencode {InstallationVersion}</text>
+            <text fg={colors.muted}>Redrob Code {InstallationVersion}</text>
           </box>
         </Show>
       </box>
@@ -201,27 +208,19 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
 }
 
 function buildIssueURL(message: string, stack: string) {
-  // Field keys match the ids in .github/ISSUE_TEMPLATE/bug-report.yml so the issue
-  // form opens pre-filled. Populating os/terminal/reproduce keeps the report past
-  // the contributing-guidelines compliance check, which pushes for system info.
-  const url = new URL("https://github.com/anomalyco/opencode/issues/new?template=bug-report.yml")
+  // There is no issue form to pre-fill, so system info goes inline in the body rather
+  // than into per-field ids that only an issue template would understand.
+  const url = new URL("https://github.com/redrob-labs/redrob-code/issues/new")
   url.searchParams.set("title", `TUI crash: ${message}`)
-  url.searchParams.set("opencode-version", InstallationVersion)
-  url.searchParams.set("os", describeOS())
-  url.searchParams.set("terminal", describeTerminal())
-  url.searchParams.set(
-    "reproduce",
-    "Reported automatically from the opencode crash screen. If you can, describe what you were doing when it crashed.",
-  )
 
   // Budget the stack against the fully URL-encoded length (not the raw length) so
   // the final link stays under GitHub's practical limit; flag truncation so a
   // clipped trace is obvious. searchParams.set handles encoding without throwing,
   // so measuring url.toString() is both correct and safe on any input.
   const MAX_URL_LENGTH = 6000
-  const marker = "\n… (truncated)"
-  const head = `The opencode TUI crashed with an unexpected error.\n\n**Error:** ${message}\n\n**Stack trace:**\n`
-  const setBody = (body: string) => url.searchParams.set("description", head + "```\n" + body + "\n```")
+  const marker = "\n... (truncated)"
+  const head = `The Redrob Code TUI crashed with an unexpected error.\n\n**Version:** ${InstallationVersion}\n**OS:** ${describeOS()}\n**Terminal:** ${describeTerminal()}\n\n**Error:** ${message}\n\n**Stack trace:**\n`
+  const setBody = (body: string) => url.searchParams.set("body", head + "```\n" + body + "\n```")
 
   setBody(stack)
   if (url.toString().length <= MAX_URL_LENGTH) return url

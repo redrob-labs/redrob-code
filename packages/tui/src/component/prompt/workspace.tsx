@@ -12,9 +12,11 @@ import {
   type WorkspaceSelection,
 } from "../dialog-workspace-create"
 import type { WorkspaceStatus } from "../workspace-label"
+import { useLanguage } from "../../context/language"
 
 export function usePromptWorkspace(sessionID?: string) {
   const dialog = useDialog()
+  const language = useLanguage()
   const sdk = useSDK()
   const project = useProject()
   const sync = useSync()
@@ -32,14 +34,14 @@ export function usePromptWorkspace(sessionID?: string) {
     } catch (err) {
       setSelection(undefined)
       setCreating(false)
-      toast.show({ title: "Creating workspace failed", message: errorMessage(err), variant: "error" })
+      toast.show({ title: language.t("prompt.workspace.create_failed"), message: errorMessage(err), variant: "error" })
       return
     }
     if (result.error || !result.data) {
       setSelection(undefined)
       setCreating(false)
       toast.show({
-        title: "Creating workspace failed",
+        title: language.t("prompt.workspace.create_failed"),
         message: errorMessage(result.error ?? "no response"),
         variant: "error",
       })
@@ -73,7 +75,7 @@ export function usePromptWorkspace(sessionID?: string) {
 
     const workspace =
       selection.type === "none"
-        ? { id: null, name: "local project" }
+        ? { id: null, name: language.t("prompt.workspace.local_project") }
         : selection.type === "existing"
           ? { id: selection.workspaceID, name: selection.workspaceName }
           : await create(selection)
@@ -85,6 +87,7 @@ export function usePromptWorkspace(sessionID?: string) {
       sync,
       project,
       toast,
+      language,
       sourceWorkspaceID,
       workspaceID: workspace.id,
       sessionID,
@@ -94,7 +97,7 @@ export function usePromptWorkspace(sessionID?: string) {
   }
 
   function showNotice(name: string) {
-    setNotice(`Warped to ${name}`)
+    setNotice(language.t("prompt.workspace.warped", { name }))
     setTimeout(() => setNotice(undefined), 4000)
   }
 
@@ -103,7 +106,7 @@ export function usePromptWorkspace(sessionID?: string) {
   }
 
   function open() {
-    void openWorkspaceSelect({ dialog, sdk, sync, project, toast, onSelect: warp })
+    void openWorkspaceSelect({ dialog, sdk, sync, project, toast, language, onSelect: warp })
   }
 
   createEffect(() => {

@@ -4,8 +4,12 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useBindings, useKeymapSelector } from "../../keymap"
 import type { ActiveKey } from "@opentui/keymap"
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
+import { Brand } from "@redrob-code/core/theme/brand"
 import type { BuiltinTuiPlugin } from "../builtins"
+import { useLanguage, type LanguageContext } from "../../context/language"
+import { kvTranslator, splitTemplate } from "../../i18n"
+import { TuiKeybind } from "../../config/keybind"
 
 const command = {
   toggle: "which-key.toggle",
@@ -46,7 +50,6 @@ const MAX_PANEL_HEIGHT = 16
 const PANEL_TOP_PADDING = 1
 const FOOTER_HEIGHT = 1
 const FOOTER_MARGIN = 1
-const UNKNOWN = "Unknown"
 
 type Layout = "dock" | "overlay"
 
@@ -99,31 +102,47 @@ function ink(api: TuiPluginApi, name: string, fallback: string): Color {
 }
 
 function skin(api: TuiPluginApi): Skin {
+  // The fallbacks are the dark steps of the default theme, from the brand primitives, so a plugin
+  // host that hands over a theme missing a role still paints in Redrob's colours rather than a
+  // guessed xterm approximation.
   return {
-    panel: ink(api, "backgroundMenu", "#1c1c1c"),
-    text: ink(api, "text", "#f0f0f0"),
-    muted: ink(api, "textMuted", "#a5a5a5"),
-    subtle: ink(api, "borderSubtle", "#6f6f6f"),
-    key: ink(api, "warning", "#ffd75f"),
-    accent: ink(api, "primary", "#5f87ff"),
-    tab: ink(api, "primary", "#5f87ff"),
-    tabText: ink(api, "selectedListItemText", "#ffffff"),
+    panel: ink(api, "backgroundMenu", Brand.mix(Brand.gray8, Brand.gray9, 0.45)),
+    text: ink(api, "text", Brand.gray1),
+    muted: ink(api, "textMuted", Brand.gray5),
+    subtle: ink(api, "borderSubtle", Brand.gray7),
+    key: ink(api, "warning", Brand.orange3),
+    accent: ink(api, "primary", Brand.blue4),
+    tab: ink(api, "primary", Brand.blue4),
+    tabText: ink(api, "selectedListItemText", Brand.gray9),
   }
 }
 
-function activeKeyLabel(active: ActiveKey<Renderable, KeyEvent>) {
-  if (active.continues) return text(active.tokenName) ?? text(active.display) ?? UNKNOWN
+function activeKeyLabel(language: LanguageContext, active: ActiveKey<Renderable, KeyEvent>) {
+  const unknown = language.t("palette.category.unknown")
+  if (active.continues) return text(active.tokenName) ?? text(active.display) ?? unknown
+  // A binding that only carries a config default has its English `desc` baked in at
+  // config resolve time, so translate through the command name instead.
+  const commandName = typeof active.command === "string" ? active.command : text(active.bindingAttrs?.cmd)
+  const defaultKey = commandName ? TuiKeybind.CommandDescriptionKeys[commandName] : undefined
   return (
-    text(active.commandAttrs?.title) ?? text(active.bindingAttrs?.desc) ?? text(active.commandAttrs?.desc) ?? UNKNOWN
+    text(active.commandAttrs?.title) ??
+    (defaultKey ? language.t(defaultKey) : undefined) ??
+    text(active.bindingAttrs?.desc) ??
+    text(active.commandAttrs?.desc) ??
+    unknown
   )
 }
 
-function activeKeyGroup(active: ActiveKey<Renderable, KeyEvent>) {
-  if (active.continues) return "System"
-  return text(active.commandAttrs?.category) ?? text(active.bindingAttrs?.group) ?? UNKNOWN
+function activeKeyGroup(language: LanguageContext, active: ActiveKey<Renderable, KeyEvent>) {
+  if (active.continues) return language.category("System")!
+  return (
+    language.category(active.commandAttrs?.category) ??
+    language.category(active.bindingAttrs?.group) ??
+    language.t("palette.category.unknown")
+  )
 }
 
-function activeKeyEntry(api: TuiPluginApi, active: ActiveKey<Renderable, KeyEvent>): Entry {
+function activeKeyEntry(api: TuiPluginApi, language: LanguageContext, active: ActiveKey<Renderable, KeyEvent>): Entry {
   const key = api.keys.formatSequence([
     {
       stroke: active.stroke,
@@ -131,12 +150,12 @@ function activeKeyEntry(api: TuiPluginApi, active: ActiveKey<Renderable, KeyEven
       tokenName: active.tokenName,
     },
   ])
-  const label = activeKeyLabel(active)
+  const label = activeKeyLabel(language, active)
   return {
     type: "entry",
     key,
     label: active.continues ? `+${label}` : label,
-    group: activeKeyGroup(active),
+    group: activeKeyGroup(language, active),
     continues: active.continues,
   }
 }
@@ -171,11 +190,17 @@ function layout(value: unknown): Layout {
 function HomeHint(props: { api: TuiPluginApi }) {
   const trigger = commandShortcut(props.api, command.toggle)
   const look = createMemo(() => skin(props.api))
+  const language = useLanguage()
+  // The shortcut is a keyboard legend that keeps its own colour, so the sentence is split
+  // around the placeholder instead of interpolated.
+  const parts = createMemo(() => splitTemplate(language.t("whichkey.home_hint"), "shortcut"))
 
   return (
     <box width="100%" maxWidth={75} alignItems="center" paddingTop={1} flexShrink={0}>
       <text fg={look().muted} wrapMode="none">
-        Show keyboard shortcuts with <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
+        {parts()[0]}
+        <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
+        {parts()[1]}
       </text>
     </box>
   )
@@ -189,6 +214,7 @@ function WhichKeyPanel(props: {
   pinned: () => boolean
 }) {
   const dimensions = useTerminalDimensions()
+  const language = useLanguage()
   const [offset, setOffset] = createSignal(0)
   const [activeGroup, setActiveGroup] = createSignal<string | undefined>()
   const pending = useKeymapSelector((keymap) => keymap.getPendingSequence())
@@ -206,7 +232,7 @@ function WhichKeyPanel(props: {
   const columns = createMemo(() =>
     Math.max(1, Math.min(3, Math.floor((contentWidth() + COLUMN_GAP) / (MAX_COLUMN_WIDTH + COLUMN_GAP)) || 1)),
   )
-  const entries = createMemo(() => active().map((item) => activeKeyEntry(props.api, item)))
+  const entries = createMemo(() => active().map((item) => activeKeyEntry(props.api, language, item)))
   const groups = createMemo(() => grouped(entries()))
   const tabsVisible = createMemo(() => !pendingMode() && groups().length > 0)
   const headerVisible = createMemo(() => tabsVisible() || pendingMode())
@@ -264,7 +290,9 @@ function WhichKeyPanel(props: {
     )
     return Math.max(MIN_TAB_GAP, Math.min(TAB_GAP, Math.floor((contentWidth() - itemWidth) / (itemCount - 1))))
   })
-  const nextMode = createMemo(() => (props.mode() === "dock" ? "overlay" : "dock"))
+  const nextModeLabel = createMemo(() =>
+    props.mode() === "dock" ? language.t("whichkey.layout.overlay") : language.t("whichkey.layout.dock"),
+  )
   const look = createMemo(() => skin(props.api))
   const columnWidth = createMemo(() =>
     Math.max(1, Math.min(MAX_COLUMN_WIDTH, Math.floor((contentWidth() - (columns() - 1) * COLUMN_GAP) / columns()))),
@@ -289,8 +317,8 @@ function WhichKeyPanel(props: {
     commands: [
       {
         name: command.groupPrevious,
-        title: "Previous key binding group",
-        desc: "Show the previous which-key group",
+        title: language.t("whichkey.command.group_previous"),
+        desc: language.t("whichkey.command.group_previous.desc"),
         category: "System",
         run() {
           moveGroup(-1)
@@ -298,8 +326,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.groupNext,
-        title: "Next key binding group",
-        desc: "Show the next which-key group",
+        title: language.t("whichkey.command.group_next"),
+        desc: language.t("whichkey.command.group_next.desc"),
         category: "System",
         run() {
           moveGroup(1)
@@ -307,8 +335,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.scrollUp,
-        title: "Scroll key bindings up",
-        desc: "Scroll the which-key panel up",
+        title: language.t("whichkey.command.scroll_up"),
+        desc: language.t("whichkey.command.scroll_up.desc"),
         category: "System",
         run() {
           scroll(-columns())
@@ -316,8 +344,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.scrollDown,
-        title: "Scroll key bindings down",
-        desc: "Scroll the which-key panel down",
+        title: language.t("whichkey.command.scroll_down"),
+        desc: language.t("whichkey.command.scroll_down.desc"),
         category: "System",
         run() {
           scroll(columns())
@@ -325,8 +353,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.pageUp,
-        title: "Page key bindings up",
-        desc: "Page the which-key panel up",
+        title: language.t("whichkey.command.page_up"),
+        desc: language.t("whichkey.command.page_up.desc"),
         category: "System",
         run() {
           scroll(-pageSize())
@@ -334,8 +362,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.pageDown,
-        title: "Page key bindings down",
-        desc: "Page the which-key panel down",
+        title: language.t("whichkey.command.page_down"),
+        desc: language.t("whichkey.command.page_down.desc"),
         category: "System",
         run() {
           scroll(pageSize())
@@ -343,8 +371,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.home,
-        title: "First key binding",
-        desc: "Jump to the first which-key binding",
+        title: language.t("whichkey.command.home"),
+        desc: language.t("whichkey.command.home.desc"),
         category: "System",
         run() {
           setOffset(0)
@@ -352,8 +380,8 @@ function WhichKeyPanel(props: {
       },
       {
         name: command.end,
-        title: "Last key binding",
-        desc: "Jump to the last which-key binding",
+        title: language.t("whichkey.command.end"),
+        desc: language.t("whichkey.command.end.desc"),
         category: "System",
         run() {
           setOffset(maxOffset())
@@ -455,7 +483,7 @@ function WhichKeyPanel(props: {
           <box height={TAB_CONTENT_GAP} flexShrink={0} />
         </Show>
         <box height={rows()} flexShrink={0} flexDirection="column">
-          <Show when={shown().length > 0} fallback={<text fg={look().muted}>No reachable bindings</text>}>
+          <Show when={shown().length > 0} fallback={<text fg={look().muted}>{language.t("whichkey.empty")}</text>}>
             <For each={rowIndexes()}>
               {(row) => (
                 <box width="100%" flexDirection="row" justifyContent="center" gap={COLUMN_GAP}>
@@ -514,12 +542,12 @@ function WhichKeyPanel(props: {
           <box width="100%" flexDirection="row" justifyContent="space-between" flexShrink={0}>
             <box>
               <text fg={look().text} wrapMode="none">
-                toggle <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
+                {language.t("whichkey.toggle")} <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
               </text>
             </box>
             <box>
               <text fg={look().text} wrapMode="none">
-                {nextMode()} <span style={{ fg: look().subtle }}>{modeTrigger() || command.toggleLayout}</span>
+                {nextModeLabel()} <span style={{ fg: look().subtle }}>{modeTrigger() || command.toggleLayout}</span>
               </text>
             </box>
           </box>
@@ -534,13 +562,20 @@ const tui: TuiPlugin = async (api) => {
   const [mode, setMode] = createSignal(layout(api.kv.get(KV_LAYOUT, "dock")))
   const [pendingPreview, setPendingPreview] = createSignal(api.kv.get(KV_PENDING_PREVIEW, false))
 
+  // Registration happens at plugin bootstrap, outside the render tree, so the titles are
+  // getters over the persisted locale. Reading them from a Solid computation re-resolves
+  // them when the language changes.
   api.keymap.registerLayer({
     priority: LAYER_PRIORITY,
     commands: [
       {
         name: command.toggle,
-        title: "Show key bindings",
-        desc: "Toggle which-key overlay",
+        get title() {
+          return kvTranslator(api.kv).t("whichkey.command.toggle")
+        },
+        get desc() {
+          return kvTranslator(api.kv).t("whichkey.command.toggle.desc")
+        },
         category: "System",
         run() {
           setPinned((value) => !value)
@@ -548,8 +583,12 @@ const tui: TuiPlugin = async (api) => {
       },
       {
         name: command.toggleLayout,
-        title: "Toggle key bindings layout",
-        desc: "Switch which-key between dock and overlay mode",
+        get title() {
+          return kvTranslator(api.kv).t("whichkey.command.layout")
+        },
+        get desc() {
+          return kvTranslator(api.kv).t("whichkey.command.layout.desc")
+        },
         category: "System",
         run() {
           setMode((value) => {
@@ -561,8 +600,12 @@ const tui: TuiPlugin = async (api) => {
       },
       {
         name: command.togglePending,
-        title: "Toggle pending key preview",
-        desc: "Automatically show which-key for pending key sequences in overlay mode",
+        get title() {
+          return kvTranslator(api.kv).t("whichkey.command.pending")
+        },
+        get desc() {
+          return kvTranslator(api.kv).t("whichkey.command.pending.desc")
+        },
         category: "System",
         run() {
           setPendingPreview((value) => {

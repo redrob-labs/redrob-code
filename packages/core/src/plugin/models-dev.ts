@@ -1,9 +1,15 @@
 import { define } from "./internal"
-import type { ModelV2Info } from "@opencode-ai/sdk/v2/types"
+import type { ModelV2Info } from "@redrob-code/sdk/v2/types"
 import { Effect, Stream } from "effect"
 import { EventV2 } from "../event"
 import { ModelsDev } from "../models-dev"
 import { ProviderV2 } from "../provider"
+
+// Client-side allowlist keyed to OUR provider id. ModelsDevPlugin projects the catalog
+// returned by ModelsDev.Service (which now sources the console /models listing) into the V2
+// integration + catalog; we only surface the Redrob console provider ("redrob") so no other
+// provider can be re-introduced, regardless of what the service returns.
+const ALLOWED_PROVIDERS = new Set(["redrob"])
 
 function released(date: string) {
   const time = Date.parse(date)
@@ -125,6 +131,7 @@ export const ModelsDevPlugin = define({
       Effect.fn(function* (integrations) {
         const data = yield* modelsDev.get()
         for (const item of Object.values(data)) {
+          if (!ALLOWED_PROVIDERS.has(item.id)) continue
           if (item.env.length === 0) continue
           const integrationID = item.id
           integrations.update(integrationID, (integration) => (integration.name = item.name))
@@ -143,6 +150,7 @@ export const ModelsDevPlugin = define({
       Effect.fn(function* (catalog) {
         const data = yield* modelsDev.get()
         for (const item of Object.values(data)) {
+          if (!ALLOWED_PROVIDERS.has(item.id)) continue
           const providerID = ProviderV2.ID.make(item.id)
           catalog.provider.update(providerID, (provider) => {
             provider.name = item.name

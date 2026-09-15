@@ -12,6 +12,17 @@ import { which } from "../util/which"
 
 export namespace RipgrepBinary {
   const VERSION = "15.1.0"
+  /**
+   * Ceiling on the one-off ripgrep download.
+   *
+   * Chosen to fire BEFORE whatever is waiting on us gives up, which is the only
+   * way the message below is ever read: the test harness kills a case at 30s, so a
+   * more generous ceiling would mean the download is still pending when the
+   * process dies and the failure says nothing about a download. 20s is a modest
+   * floor for a few MB, and the error names the two ways to skip the download
+   * entirely, so a genuinely slow link has an answer that is not "wait longer".
+   */
+  const DOWNLOAD_TIMEOUT_SECONDS = 20
   const PLATFORM = {
     "arm64-darwin": { platform: "aarch64-apple-darwin", extension: "tar.gz" },
     "arm64-linux": { platform: "aarch64-unknown-linux-gnu", extension: "tar.gz" },
@@ -26,7 +37,7 @@ export namespace RipgrepBinary {
     readonly filepath: Effect.Effect<string, Error>
   }
 
-  export class Service extends Context.Service<Service, Interface>()("@opencode/RipgrepBinary") {}
+  export class Service extends Context.Service<Service, Interface>()("@redrob/RipgrepBinary") {}
 
   const layer = Layer.effect(
     Service,
@@ -111,6 +122,22 @@ export namespace RipgrepBinary {
               http.execute,
               Effect.flatMap((response) => response.arrayBuffer),
               Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
+              // Bounded on purpose. This resolver is `Effect.cached`, so a download
+              // that never answers is not one slow call — every later caller awaits
+              // the same pending effect and the process stalls with no indication
+              // why. That is exactly what a CI runner with no route to github.com
+              // looked like: five ripgrep tests all dying at the harness timeout,
+              // none of them mentioning that a download was involved.
+              Effect.timeoutOrElse({
+                duration: `${DOWNLOAD_TIMEOUT_SECONDS} seconds`,
+                orElse: () =>
+                  Effect.fail(
+                    new Error(
+                      `timed out after ${DOWNLOAD_TIMEOUT_SECONDS}s downloading ripgrep from ${url}. ` +
+                        `Put \`rg\` on PATH, or place the binary at ${target}, to skip the download.`,
+                    ),
+                  ),
+              }),
             )
             if (bytes.byteLength === 0) throw new Error(`failed to download ripgrep from ${url}`)
 

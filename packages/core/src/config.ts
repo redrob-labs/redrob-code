@@ -4,7 +4,7 @@ import { makeLocationNode } from "./effect/app-node"
 import path from "path"
 import { type ParseError, parse } from "jsonc-parser"
 import { Context, Effect, Layer, Option, Schema } from "effect"
-import { Permission } from "@opencode-ai/schema/permission"
+import { Permission } from "@redrob-code/schema/permission"
 import { FSUtil } from "./fs-util"
 import { Global } from "./global"
 import { Location } from "./location"
@@ -130,7 +130,7 @@ export interface Interface {
   readonly entries: () => Effect.Effect<Entry[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Config") {}
+export class Service extends Context.Service<Service, Interface>()("@redrob/v2/Config") {}
 
 const layer = Layer.effect(
   Service,
@@ -139,7 +139,25 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const location = yield* Location.Service
     const policy = yield* Policy.Service
-    const names = ["opencode.json", "opencode.jsonc"]
+    const names = ["redrob.json", "redrob.jsonc"]
+
+    // Config FOLDER names searched while walking up from the opened directory.
+    //
+    // The config FILE names above were renamed to redrob.json and this list was not, so discovery
+    // looked only in `.opencode` while `redrob mcp add` writes `.redrob/redrob.json`
+    // (cli/cmd/mcp.ts) and the config skill tells the agent that redrob's own settings live "under
+    // .redrob/". A user who followed either had their config silently ignored -- no error, no
+    // warning, just no effect.
+    //
+    // `.opencode` is the LEGACY name and stays supported so existing checkouts keep working.
+    //
+    // ORDER MATTERS AND IT IS INVERTED HERE. `fs.up` walks upward and, within each directory,
+    // appends in the order of this list; the discovered set is then `toReversed()` below so a
+    // nearer config wins over a farther one. That reversal also flips co-located entries, so
+    // `.redrob` must be listed FIRST to end up applied LAST and win the merge. ConfigPaths in
+    // packages/redrob lists the opposite order because it does not reverse.
+    const CONFIG_DIRECTORY_NAMES = [".redrob", ".opencode"]
+    const isConfigDirectory = (item: string) => CONFIG_DIRECTORY_NAMES.includes(path.basename(item))
     const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
     const decodeInfo = Schema.decodeUnknownOption(Info, decodeOptions)
     const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
@@ -178,7 +196,7 @@ const layer = Layer.effect(
       ? []
       : yield* fs
           .up({
-            targets: [".opencode", ...names.toReversed()],
+            targets: [...CONFIG_DIRECTORY_NAMES, ...names.toReversed()],
             start: location.directory,
             stop: location.project.directory,
           })
@@ -186,13 +204,13 @@ const layer = Layer.effect(
     const directories = [
       globalDirectory,
       ...discovered
-        .filter((item) => path.basename(item) === ".opencode")
+        .filter((item) => isConfigDirectory(item))
         .toReversed()
         .map((directory) => AbsolutePath.make(directory)),
     ]
     // A config closer to the opened directory should win over one higher up.
     // Search starts nearby, so reverse the results before applying them.
-    const directPaths = discovered.filter((item) => path.basename(item) !== ".opencode").toReversed()
+    const directPaths = discovered.filter((item) => !isConfigDirectory(item)).toReversed()
     const direct = yield* Effect.forEach(directPaths, loadFile).pipe(
       Effect.orDie,
       Effect.map((configs) => configs.filter((config): config is Document => config !== undefined)),

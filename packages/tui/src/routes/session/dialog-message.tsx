@@ -6,12 +6,14 @@ import { useRoute } from "../../context/route"
 import { useClipboard } from "../../context/clipboard"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
+import { useLanguage } from "../../context/language"
 
 export function DialogMessage(props: {
   messageID: string
   sessionID: string
   setPrompt?: (prompt: PromptInfo) => void
 }) {
+  const language = useLanguage()
   const sync = useSync()
   const sdk = useSDK()
   const message = createMemo(() => sync.data.message[props.sessionID]?.find((x) => x.id === props.messageID))
@@ -20,12 +22,12 @@ export function DialogMessage(props: {
 
   return (
     <DialogSelect
-      title="Message Actions"
+      title={language.t("session.dialog.message.title")}
       options={[
         {
-          title: "Revert",
+          title: language.t("session.dialog.message.revert"),
           value: "session.revert",
-          description: "undo messages and file changes",
+          description: language.t("session.dialog.message.undo"),
           onSelect: (dialog) => {
             const msg = message()
             if (!msg) return
@@ -54,9 +56,9 @@ export function DialogMessage(props: {
           },
         },
         {
-          title: "Copy",
+          title: language.t("session.dialog.message.copy_title"),
           value: "message.copy",
-          description: "message text to clipboard",
+          description: language.t("session.dialog.message.copy"),
           onSelect: async (dialog) => {
             const msg = message()
             if (!msg) return
@@ -74,9 +76,9 @@ export function DialogMessage(props: {
           },
         },
         {
-          title: "Fork",
+          title: language.t("session.dialog.message.fork_title"),
           value: "session.fork",
-          description: "create a new session",
+          description: language.t("session.dialog.message.fork"),
           onSelect: async (dialog) => {
             const result = await sdk.client.session.fork({
               sessionID: props.sessionID,

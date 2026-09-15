@@ -6,8 +6,9 @@ import { useDialog, type DialogContext } from "../ui/dialog"
 import { Link } from "../ui/link"
 import { BgPulse } from "./bg-pulse"
 import { useBindings } from "../keymap"
+import { useLanguage } from "../context/language"
 
-const GO_URL = "https://opencode.ai/go"
+const GO_URL = "https://code.redrob.ai/go"
 const PAD_X = 3
 const PAD_TOP_OUTER = 1
 const FOREGROUND_ALPHA = 186
@@ -39,6 +40,7 @@ function panelOverlay(color: RGBA) {
 export function DialogRetryAction(props: DialogRetryActionProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const language = useLanguage()
   const fg = selectedForeground(theme)
   const showGoTreatment = () => props.link === GO_URL
   const textBg = () => (showGoTreatment() ? panelOverlay(theme.backgroundPanel) : undefined)
@@ -48,25 +50,25 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
     bindings: [
       {
         key: "left",
-        desc: "Previous retry option",
+        desc: language.t("session.retry.binding.previous"),
         group: "Dialog",
         cmd: () => setSelected((value) => (value === "action" ? "dismiss" : "action")),
       },
       {
         key: "right",
-        desc: "Next retry option",
+        desc: language.t("session.retry.binding.next"),
         group: "Dialog",
         cmd: () => setSelected((value) => (value === "action" ? "dismiss" : "action")),
       },
       {
         key: "tab",
-        desc: "Next retry option",
+        desc: language.t("session.retry.binding.next"),
         group: "Dialog",
         cmd: () => setSelected((value) => (value === "action" ? "dismiss" : "action")),
       },
       {
         key: "return",
-        desc: "Confirm retry option",
+        desc: language.t("session.retry.binding.confirm"),
         group: "Dialog",
         cmd: () => {
           if (selected() === "action") runAction(props, dialog)
@@ -89,7 +91,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
             {props.title}
           </text>
           <text fg={theme.textMuted} bg={textBg()} onMouseUp={() => dialog.clear()}>
-            esc
+            {language.t("dialog.esc")}
           </text>
         </box>
         <box gap={0}>
@@ -123,7 +125,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
               bg={selected() === "dismiss" ? undefined : textBg()}
               attributes={selected() === "dismiss" ? TextAttributes.BOLD : undefined}
             >
-              don't show again
+              {language.t("dialog.retry.dismiss")}
             </text>
           </box>
           <box

@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPlugin, TuiPluginApi, TuiRouteCurrent } from "@opencode-ai/plugin/tui"
-import type { SnapshotFileDiff, VcsFileDiff } from "@opencode-ai/sdk/v2"
+import type { TuiPlugin, TuiPluginApi, TuiRouteCurrent } from "@redrob-code/plugin/tui"
+import type { SnapshotFileDiff, VcsFileDiff } from "@redrob-code/sdk/v2"
 import {
   TextAttributes,
   type BorderSides,
@@ -11,6 +11,8 @@ import {
 import { LANGUAGE_EXTENSIONS } from "../../util/filetype"
 import { useBindings, useCommandShortcut } from "../../keymap"
 import { useTheme } from "../../context/theme"
+import { useLanguage, type LanguageContext } from "../../context/language"
+import { kvTranslator } from "../../i18n"
 import { useTerminalDimensions } from "@opentui/solid"
 import path from "path"
 import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
@@ -38,7 +40,7 @@ import {
 const ROUTE = "diff"
 const MIN_SPLIT_WIDTH = 100
 const FILE_TREE_WIDTH = 32
-const PLAIN_TEXT_FILETYPE = "opencode-plain-text"
+const PLAIN_TEXT_FILETYPE = "redrob-plain-text"
 const VCS_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
 const KV_SINGLE_PATCH = "diff_viewer_single_patch"
@@ -82,14 +84,15 @@ function storedView(value: unknown): DiffView | undefined {
   if (value === "split" || value === "unified") return value
 }
 
-function diffSourceLabel(mode: DiffMode) {
-  if (mode === "last-turn") return "last turn"
-  if (mode === "branch") return "main branch"
-  return "working tree"
+function diffSourceLabel(language: LanguageContext, mode: DiffMode) {
+  if (mode === "last-turn") return language.t("diff.source.last_turn")
+  if (mode === "branch") return language.t("diff.source.branch")
+  return language.t("diff.source.working_tree")
 }
 
 function DiffViewer(props: { api: TuiPluginApi }) {
   const dimensions = useTerminalDimensions()
+  const language = useLanguage()
   const themeState = useTheme()
   const theme = () => props.api.theme.current
   const params = () =>
@@ -433,7 +436,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const commands = [
     {
       name: "diff.close",
-      title: "Close diff viewer",
+      title: language.t("keybind.diff_close"),
       category: "VCS",
       run() {
         const returnRoute = params()?.returnRoute
@@ -447,7 +450,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.down",
-      title: "Move diff viewer down",
+      title: language.t("diff.command.down"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -461,7 +464,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.up",
-      title: "Move diff viewer up",
+      title: language.t("diff.command.up"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -475,7 +478,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.page.down",
-      title: "Page diff viewer down",
+      title: language.t("diff.command.page_down"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -489,7 +492,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.page.up",
-      title: "Page diff viewer up",
+      title: language.t("diff.command.page_up"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -503,7 +506,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.toggle",
-      title: "Toggle diff viewer item",
+      title: language.t("keybind.diff_toggle"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -514,7 +517,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.expand",
-      title: "Expand diff viewer item",
+      title: language.t("keybind.diff_expand"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -532,7 +535,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.expand_all",
-      title: "Expand all diff viewer folders",
+      title: language.t("keybind.diff_expand_all"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -543,7 +546,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.collapse",
-      title: "Collapse diff viewer item",
+      title: language.t("keybind.diff_collapse"),
       category: "VCS",
       run: focusRunner({
         files() {
@@ -562,7 +565,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.next_hunk",
-      title: "Jump to next diff hunk",
+      title: language.t("keybind.diff_next_hunk"),
       category: "VCS",
       run() {
         jumpRelativeHunk(1)
@@ -570,7 +573,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.previous_hunk",
-      title: "Jump to previous diff hunk",
+      title: language.t("keybind.diff_previous_hunk"),
       category: "VCS",
       run() {
         jumpRelativeHunk(-1)
@@ -578,7 +581,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.next_file",
-      title: "Jump to next diff file",
+      title: language.t("keybind.diff_next_file"),
       category: "VCS",
       run() {
         jumpRelativePatchFile(1)
@@ -586,7 +589,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.previous_file",
-      title: "Jump to previous diff file",
+      title: language.t("keybind.diff_previous_file"),
       category: "VCS",
       run() {
         jumpRelativePatchFile(-1)
@@ -594,7 +597,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.mark_reviewed",
-      title: "Toggle selected diff file reviewed",
+      title: language.t("diff.command.mark_reviewed"),
       category: "VCS",
       run() {
         toggleSelectedFileReviewed()
@@ -602,7 +605,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.switch_focus",
-      title: "Switch diff viewer focus",
+      title: language.t("keybind.diff_switch_focus"),
       category: "VCS",
       run() {
         if (!showFileTree()) return
@@ -615,7 +618,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.toggle_file_tree",
-      title: "Toggle diff viewer file tree",
+      title: language.t("keybind.diff_toggle_file_tree"),
       category: "VCS",
       run() {
         const next = !fileTreeEnabled()
@@ -626,7 +629,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.single_patch",
-      title: "Toggle single patch view",
+      title: language.t("keybind.diff_single_patch"),
       category: "VCS",
       run() {
         setSelectedHunk(undefined)
@@ -653,7 +656,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.switch_source",
-      title: "Switch diff viewer source",
+      title: language.t("keybind.diff_switch_source"),
       category: "VCS",
       run() {
         openSwitchDiffDialog()
@@ -661,7 +664,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.toggle_view",
-      title: "Toggle diff viewer split or unified view",
+      title: language.t("keybind.diff_toggle_view"),
       category: "VCS",
       run() {
         if (!splitAvailable()) return
@@ -673,7 +676,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     },
     {
       name: "diff.help",
-      title: "Show more diff viewer shortcuts",
+      title: language.t("keybind.diff_help"),
       category: "VCS",
       run() {
         openHelpDialog()
@@ -685,23 +688,23 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     const vcs = props.api.state.vcs
     return [
       {
-        title: "Working tree",
+        title: language.t("diff.switch.working_tree"),
         value: "git" as const,
-        description: "Show current git changes",
+        description: language.t("diff.switch.working_tree.description"),
       },
       ...(vcs?.branch && vcs.default_branch && vcs.branch !== vcs.default_branch
         ? [
             {
-              title: "Main branch",
+              title: language.t("diff.switch.branch"),
               value: "branch" as const,
-              description: "Show changes compared to main branch",
+              description: language.t("diff.switch.branch.description"),
             },
           ]
         : []),
       {
-        title: "Last turn",
+        title: language.t("diff.switch.last_turn"),
         value: "last-turn" as const,
-        description: "Show changes from the last assistant turn",
+        description: language.t("diff.switch.last_turn.description"),
       },
     ]
   })
@@ -709,7 +712,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const openSwitchDiffDialog = () => {
     props.api.ui.dialog.replace(() => (
       <DialogSelect
-        title="Switch source"
+        title={language.t("diff.switch.title")}
         skipFilter={true}
         renderFilter={false}
         current={mode()}
@@ -737,11 +740,11 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   useBindings(() => ({
     commands,
     bindings: [
-      { key: "j,down", cmd: "diff.down", desc: "Move diff viewer down" },
-      { key: "k,up", cmd: "diff.up", desc: "Move diff viewer up" },
-      { key: "pagedown,ctrl+f", cmd: "diff.page.down", desc: "Page diff viewer down" },
-      { key: "pageup,ctrl+b", cmd: "diff.page.up", desc: "Page diff viewer up" },
-      { key: "m", cmd: "diff.mark_reviewed", desc: "Mark selected file reviewed" },
+      { key: "j,down", cmd: "diff.down", desc: language.t("diff.command.down") },
+      { key: "k,up", cmd: "diff.up", desc: language.t("diff.command.up") },
+      { key: "pagedown,ctrl+f", cmd: "diff.page.down", desc: language.t("diff.command.page_down") },
+      { key: "pageup,ctrl+b", cmd: "diff.page.up", desc: language.t("diff.command.page_up") },
+      { key: "m", cmd: "diff.mark_reviewed", desc: language.t("diff.binding.mark_reviewed") },
       ...props.api.tuiConfig.keybinds.gather(
         "diff",
         commands.map((command) => command.name),
@@ -753,12 +756,10 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     <box position="absolute" zIndex={2500} left={0} top={0} width={dimensions().width} height={dimensions().height}>
       <PanelGroup axis="y" width="100%" height="100%">
         <Panel border="none" flexShrink={0} padding={0} paddingLeft={1}>
-          <text fg={theme().text}>Diff </text>
-          <text fg={theme().textMuted}>{diffSourceLabel(mode())}</text>
+          <text fg={theme().text}>{language.t("diff.title")} </text>
+          <text fg={theme().textMuted}>{diffSourceLabel(language, mode())}</text>
           <box flexGrow={1} />
-          <text fg={theme().textMuted}>
-            {files().length} {files().length === 1 ? "file" : "files"}
-          </text>
+          <text fg={theme().textMuted}>{language.plural("diff.files", files().length)}</text>
         </Panel>
 
         <box flexGrow={1} minHeight={0}>
@@ -766,19 +767,19 @@ function DiffViewer(props: { api: TuiPluginApi }) {
             <Match when={diff.loading}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().textMuted}>Loading diff…</text>
+                <text fg={theme().textMuted}>{language.t("diff.loading")}</text>
               </box>
             </Match>
             <Match when={!diff.loading && files().length === 0}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().textMuted}>No diff!</text>
+                <text fg={theme().textMuted}>{language.t("diff.empty")}</text>
               </box>
             </Match>
             <Match when={!diff.loading && diff.error}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().error}>Failed to load diff</text>
+                <text fg={theme().error}>{language.t("diff.error")}</text>
               </box>
             </Match>
             <Match when={!diff.loading}>
@@ -836,7 +837,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                             <Separator axis="x" start={showFileTree() ? "edge" : undefined} />
                             <Show
                               when={entry.file.patch}
-                              fallback={<text fg={theme().textMuted}>No patch available for this file.</text>}
+                              fallback={<text fg={theme().textMuted}>{language.t("diff.no_patch")}</text>}
                             >
                               {(patch) => (
                                 <box border={patchLeftBorder()} borderColor={theme().border}>
@@ -884,56 +885,56 @@ function DiffViewer(props: { api: TuiPluginApi }) {
           <Show when={switchFocusShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>focus file tree</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.focus_file_tree")}</span>
               </text>
             )}
           </Show>
           <Show when={nextFileShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>next file</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.next_file")}</span>
               </text>
             )}
           </Show>
           <Show when={nextHunkShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>next hunk</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.next_hunk")}</span>
               </text>
             )}
           </Show>
           <Show when={previousHunkShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>previous hunk</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.previous_hunk")}</span>
               </text>
             )}
           </Show>
           <Show when={previousFileShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>previous file</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.previous_file")}</span>
               </text>
             )}
           </Show>
           <Show when={switchSourceShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>switch source</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.switch_source")}</span>
               </text>
             )}
           </Show>
           <Show when={markReviewedShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>mark reviewed</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.mark_reviewed")}</span>
               </text>
             )}
           </Show>
           <Show when={helpShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>all</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{language.t("diff.hint.all")}</span>
               </text>
             )}
           </Show>
@@ -945,85 +946,38 @@ function DiffViewer(props: { api: TuiPluginApi }) {
 
 function DiffViewerHelpDialog() {
   const { theme } = useTheme()
+  const language = useLanguage()
   const rows = [
-    {
-      shortcut: () => "q",
-      action: "Close viewer",
-      description: "Quit the diff viewer",
-    },
-    {
-      shortcut: useCommandShortcut("diff.switch_focus"),
-      action: "Focus file tree",
-      description: "Move keyboard focus between the file tree and patch pane",
-    },
-    {
-      shortcut: useCommandShortcut("diff.next_hunk"),
-      action: "Next hunk",
-      description: "Jump to the next diff hunk",
-    },
-    {
-      shortcut: useCommandShortcut("diff.previous_hunk"),
-      action: "Previous hunk",
-      description: "Jump to the previous diff hunk",
-    },
-    {
-      shortcut: useCommandShortcut("diff.next_file"),
-      action: "Next file",
-      description: "Select the next changed file in file-tree order",
-    },
-    {
-      shortcut: useCommandShortcut("diff.previous_file"),
-      action: "Previous file",
-      description: "Select the previous changed file in file-tree order",
-    },
-    {
-      shortcut: useCommandShortcut("diff.toggle_file_tree"),
-      action: "Toggle file tree",
-      description: "Show or hide the file tree sidebar",
-    },
-    {
-      shortcut: useCommandShortcut("diff.single_patch"),
-      action: "Toggle patches",
-      description: "Switch between one selected patch and all patches",
-    },
-    {
-      shortcut: useCommandShortcut("diff.switch_source"),
-      action: "Switch source",
-      description: "Choose working tree, main branch, or last-turn changes",
-    },
-    {
-      shortcut: useCommandShortcut("diff.toggle_view"),
-      action: "Toggle view",
-      description: "Switch between split and unified diff layout",
-    },
-    {
-      shortcut: useCommandShortcut("diff.expand_all"),
-      action: "Expand all folders",
-      description: "Open every folder in the file tree",
-    },
-    {
-      shortcut: useCommandShortcut("diff.mark_reviewed"),
-      action: "Mark reviewed",
-      description: "Toggle reviewed state for the selected file",
-    },
-  ]
+    { shortcut: () => "q", name: "close" },
+    { shortcut: useCommandShortcut("diff.switch_focus"), name: "switch_focus" },
+    { shortcut: useCommandShortcut("diff.next_hunk"), name: "next_hunk" },
+    { shortcut: useCommandShortcut("diff.previous_hunk"), name: "previous_hunk" },
+    { shortcut: useCommandShortcut("diff.next_file"), name: "next_file" },
+    { shortcut: useCommandShortcut("diff.previous_file"), name: "previous_file" },
+    { shortcut: useCommandShortcut("diff.toggle_file_tree"), name: "toggle_file_tree" },
+    { shortcut: useCommandShortcut("diff.single_patch"), name: "single_patch" },
+    { shortcut: useCommandShortcut("diff.switch_source"), name: "switch_source" },
+    { shortcut: useCommandShortcut("diff.toggle_view"), name: "toggle_view" },
+    { shortcut: useCommandShortcut("diff.expand_all"), name: "expand_all" },
+    { shortcut: useCommandShortcut("diff.mark_reviewed"), name: "mark_reviewed" },
+  ] as const
 
   return (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Diff shortcuts
+          {language.t("diff.help.title")}
         </text>
-        <text fg={theme.textMuted}>esc</text>
+        <text fg={theme.textMuted}>{language.t("dialog.esc")}</text>
       </box>
       <box flexDirection="row">
         <text fg={theme.textMuted} width={5} wrapMode="none">
-          Key
+          {language.t("diff.help.column.key")}
         </text>
         <text fg={theme.textMuted} width={22} wrapMode="none">
-          Action
+          {language.t("diff.help.column.action")}
         </text>
-        <text fg={theme.textMuted}>Description</text>
+        <text fg={theme.textMuted}>{language.t("diff.help.column.description")}</text>
       </box>
       <For each={rows}>
         {(row) => (
@@ -1032,9 +986,9 @@ function DiffViewerHelpDialog() {
               {row.shortcut() || "-"}
             </text>
             <text fg={theme.text} width={22} wrapMode="none">
-              {row.action}
+              {language.t(`diff.help.${row.name}.action`)}
             </text>
-            <text fg={theme.textMuted}>{row.description}</text>
+            <text fg={theme.textMuted}>{language.t(`diff.help.${row.name}.description`)}</text>
           </box>
         )}
       </For>
@@ -1054,7 +1008,10 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "diff.open",
-        title: "Open diff viewer",
+        // Registered at plugin bootstrap, so the title resolves the persisted locale on read.
+        get title() {
+          return kvTranslator(api.kv).t("keybind.diff_open")
+        },
         slashName: "diff",
         category: "VCS",
         namespace: "palette",

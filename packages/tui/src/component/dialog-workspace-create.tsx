@@ -1,4 +1,4 @@
-import type { ExperimentalWorkspaceAdapterListResponse, Workspace } from "@opencode-ai/sdk/v2"
+import type { ExperimentalWorkspaceAdapterListResponse, Workspace } from "@redrob-code/sdk/v2"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useSync } from "../context/sync"
@@ -10,6 +10,7 @@ import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
 import { DialogAlert } from "../ui/dialog-alert"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
+import { useLanguage, type LanguageContext } from "../context/language"
 
 type Adapter = ExperimentalWorkspaceAdapterListResponse[number]
 
@@ -53,6 +54,7 @@ async function loadWorkspaceAdapters(input: {
   sdk: ReturnType<typeof useSDK>
   sync: ReturnType<typeof useSync>
   toast: ReturnType<typeof useToast>
+  language: LanguageContext
 }) {
   const dir = input.sync.path.directory || input.sdk.directory
   try {
@@ -61,7 +63,7 @@ async function loadWorkspaceAdapters(input: {
     return response.data
   } catch (err) {
     input.toast.show({
-      title: "Failed to load workspace adapters",
+      title: input.language.t("workspace.adapters.load_failed"),
       message: errorMessage(err),
       variant: "error",
     })
@@ -75,6 +77,7 @@ export async function openWorkspaceSelect(input: {
   sync: ReturnType<typeof useSync>
   project: ReturnType<typeof useProject>
   toast: ReturnType<typeof useToast>
+  language: LanguageContext
   onSelect: (selection: WorkspaceSelection) => Promise<void> | void
 }) {
   input.dialog.clear()
@@ -91,6 +94,7 @@ export async function warpWorkspaceSession(input: {
   sync: ReturnType<typeof useSync>
   project: ReturnType<typeof useProject>
   toast: ReturnType<typeof useToast>
+  language: LanguageContext
   sourceWorkspaceID?: string
   workspaceID: string | null
   sessionID: string
@@ -106,7 +110,7 @@ export async function warpWorkspaceSession(input: {
     })
   } catch (err) {
     input.toast.show({
-      title: "Failed to warp session",
+      title: input.language.t("workspace.warp.failed"),
       message: errorMessage(err),
       variant: "error",
     })
@@ -116,14 +120,14 @@ export async function warpWorkspaceSession(input: {
     if (result?.error && "name" in result.error && result.error.name === "VcsApplyError") {
       await DialogAlert.show(
         input.dialog,
-        "Unable to Warp Session",
-        "Unable to apply file changes to this workspace. It has existing changes that conflict or is based off a different branch. Session has not been warped.",
+        input.language.t("workspace.warp.conflict.title"),
+        input.language.t("workspace.warp.conflict.message"),
       )
       return false
     }
 
     input.toast.show({
-      title: "Failed to warp session",
+      title: input.language.t("workspace.warp.failed"),
       message: errorMessage(result?.error ?? "no response"),
       variant: "error",
     })
@@ -180,6 +184,7 @@ export function DialogWorkspaceSelect(props: {
   onSelect: (selection: WorkspaceSelection) => Promise<void> | void
 }) {
   const dialog = useDialog()
+  const language = useLanguage()
   const project = useProject()
   const route = useRoute()
   const sync = useSync()
@@ -192,7 +197,7 @@ export function DialogWorkspaceSelect(props: {
     dialog.setSize("medium")
     void (async () => {
       if (adapters()) return
-      const res = await loadWorkspaceAdapters({ sdk, sync, toast })
+      const res = await loadWorkspaceAdapters({ sdk, sync, toast, language })
       if (!res) return
       setAdapters(res)
     })()
@@ -211,13 +216,13 @@ export function DialogWorkspaceSelect(props: {
         title: adapter.name,
         value: { type: "new" as const, workspaceType: adapter.type, workspaceName: adapter.name },
         description: adapter.description,
-        category: "New workspace",
+        category: language.t("workspace.category.new"),
       })),
       {
-        title: "None",
+        title: language.t("workspace.option.none"),
         value: { type: "none" as const },
-        description: "Use the local project",
-        category: "Choose workspace",
+        description: language.t("workspace.option.none.description"),
+        category: language.t("workspace.category.choose"),
       },
       ...recent.map((workspace: Workspace) => ({
         title: workspace.name,
@@ -228,15 +233,15 @@ export function DialogWorkspaceSelect(props: {
           workspaceType: workspace.type,
           workspaceName: workspace.name,
         },
-        category: "Choose workspace",
+        category: language.t("workspace.category.choose"),
       })),
       ...(hasMore
         ? [
             {
-              title: "View all workspaces",
+              title: language.t("workspace.option.view_all"),
               value: { type: "existing-list" as const },
-              description: "Choose from all workspaces",
-              category: "Choose workspace",
+              description: language.t("workspace.option.view_all.description"),
+              category: language.t("workspace.category.choose"),
             },
           ]
         : []),
@@ -246,7 +251,7 @@ export function DialogWorkspaceSelect(props: {
   if (!adapters()) return null
   return (
     <DialogSelect<WorkspaceSelectValue>
-      title="Warp"
+      title={language.t("workspace.select.title")}
       skipFilter={true}
       renderFilter={false}
       options={options()}
@@ -277,6 +282,7 @@ function DialogExistingWorkspaceSelect(props: {
   omitWorkspaceID?: string
   onSelect: (selection: WorkspaceSelection) => Promise<void> | void
 }) {
+  const language = useLanguage()
   const project = useProject()
 
   const options = createMemo<DialogSelectOption<ExistingWorkspaceSelectValue>[]>(() =>
@@ -293,7 +299,7 @@ function DialogExistingWorkspaceSelect(props: {
 
   return (
     <DialogSelect<ExistingWorkspaceSelectValue>
-      title="Existing Workspace"
+      title={language.t("workspace.existing.title")}
       options={options()}
       onSelect={(option) => {
         void props.onSelect({

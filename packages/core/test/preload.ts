@@ -1,6 +1,5 @@
-import path from "path"
-
-process.env.OPENCODE_DB = ":memory:"
-process.env.NPM_CONFIG_AUDIT = "false"
-process.env.OPENCODE_MODELS_PATH = path.join(import.meta.dir, "plugin", "fixtures", "models-dev.json")
-process.env.OPENCODE_DISABLE_MODELS_FETCH = "true"
+process.env.REDROB_DB = ":memory:"
+// Gate the console /models fetch off so core tests stay offline/deterministic; the
+// ModelsDev.Service then serves the static console fallback catalog (redrob/auto and the rest of
+// CONSOLE_MODELS).
+process.env.REDROB_DISABLE_MODELS_FETCH = "true"

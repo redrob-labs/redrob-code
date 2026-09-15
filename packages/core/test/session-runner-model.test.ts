@@ -1,16 +1,16 @@
 import { describe, expect } from "bun:test"
-import { LLM } from "@opencode-ai/llm"
-import { LLMClient } from "@opencode-ai/llm/route"
+import { LLM, type Model } from "@redrob-code/llm"
+import { LLMClient } from "@redrob-code/llm/route"
 import { DateTime, Effect } from "effect"
 import { Headers } from "effect/unstable/http"
-import { Credential } from "@opencode-ai/core/credential"
-import { Integration } from "@opencode-ai/core/integration"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { ProviderV2 } from "@opencode-ai/core/provider"
-import { ProjectV2 } from "@opencode-ai/core/project"
-import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
-import { SessionV2 } from "@opencode-ai/core/session"
-import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Credential } from "@redrob-code/core/credential"
+import { Integration } from "@redrob-code/core/integration"
+import { ModelV2 } from "@redrob-code/core/model"
+import { ProviderV2 } from "@redrob-code/core/provider"
+import { ProjectV2 } from "@redrob-code/core/project"
+import { SessionRunnerModel } from "@redrob-code/core/session/runner/model"
+import { SessionV2 } from "@redrob-code/core/session"
+import { AbsolutePath } from "@redrob-code/core/schema"
 import { it } from "./lib/effect"
 
 type Api =
@@ -70,6 +70,38 @@ describe("SessionRunnerModel", () => {
 
       expect(JSON.stringify(prepared.body)).not.toContain("apiKey")
       expect(JSON.stringify(prepared.body)).not.toContain("secret")
+    }),
+  )
+
+  // `SessionRunner` derives one prompt cache key per Session and passes it in the `openai`
+  // providerOptions namespace. Only the Responses lowering may put it on the wire, and only
+  // under OpenAI's snake_case field name: Console rides the OpenAI-compatible Chat route,
+  // whose upstream rejects the camelCase form outright.
+  const cacheKeyRequest = (resolved: Model) =>
+    LLM.request({ model: resolved, prompt: "Hello", providerOptions: { openai: { promptCacheKey: "ses_cache_key" } } })
+
+  it.effect("sends the Session prompt cache key on the OpenAI Responses route", () =>
+    Effect.gen(function* () {
+      const resolved = yield* SessionRunnerModel.fromCatalogModel(
+        model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }),
+      )
+      const prepared = yield* LLMClient.prepare(cacheKeyRequest(resolved))
+
+      expect(prepared.body).toMatchObject({ prompt_cache_key: "ses_cache_key" })
+      expect(JSON.stringify(prepared.body)).not.toContain("promptCacheKey")
+    }),
+  )
+
+  it.effect("sends no prompt cache key on the OpenAI-compatible Chat route", () =>
+    Effect.gen(function* () {
+      const resolved = yield* SessionRunnerModel.fromCatalogModel(
+        model({ type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://console.example/v1" }),
+      )
+      const prepared = yield* LLMClient.prepare(cacheKeyRequest(resolved))
+
+      expect(prepared.route).toBe("openai-compatible-chat")
+      expect(JSON.stringify(prepared.body)).not.toContain("promptCacheKey")
+      expect(JSON.stringify(prepared.body)).not.toContain("prompt_cache_key")
     }),
   )
 

@@ -16,6 +16,9 @@ import {
   alwaysSeparate,
   toolDisplay,
 } from "../../../src/routes/session"
+import { createTranslator } from "../../../src/i18n"
+
+const en = createTranslator("en")
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined
 
@@ -30,25 +33,25 @@ const tools: readonly ToolFixture[] = [
   {
     icon: "✱",
     label:
-      'Grep "OPENCODE.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/opencode/src (151 matches)',
+      'Grep "OPENCODE.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/redrob/src (151 matches)',
   },
   {
     icon: "✱",
-    label: 'Glob "**/*db*" in packages/opencode (6 matches)',
+    label: 'Glob "**/*db*" in packages/redrob (6 matches)',
   },
   {
     icon: "→",
-    label: "Read packages/opencode/src/storage/db.ts [offset=1, limit=130]",
+    label: "Read packages/redrob/src/storage/db.ts [offset=1, limit=130]",
   },
   {
     icon: "→",
-    label: "Read packages/opencode/src/index.ts [offset=1, limit=100]",
+    label: "Read packages/redrob/src/index.ts [offset=1, limit=100]",
     error: "No LSP server available for this file type.",
   },
   {
     icon: "✱",
     label:
-      'Grep "export const OPENCODE_DB|OPENCODE_DB|OPENCODE_DEV|Global\\.Path\\.data|data =" in packages/opencode/src (115 matches)',
+      'Grep "export const REDROB_DB|REDROB_DB|REDROB_DEV|Global\\.Path\\.data|data =" in packages/redrob/src (115 matches)',
   },
 ] as const
 
@@ -195,7 +198,7 @@ function StickyScrollFixture(props: { separated: boolean; scroll: (scroll: Scrol
 
 function FailedPendingToolFixture() {
   return (
-    <InlineToolRow icon="%" complete={false} pending="Preparing patch…" failed={true} failure="Patch failed">
+    <InlineToolRow icon="%" complete={false} pending="Preparing patch..." failed={true} failure="Patch failed">
       Patch
     </InlineToolRow>
   )
@@ -203,7 +206,7 @@ function FailedPendingToolFixture() {
 
 function FailedCompleteToolFixture() {
   return (
-    <InlineToolRow icon="→" complete={true} pending="Reading file…" failed={true} failure="Read failed">
+    <InlineToolRow icon="→" complete={true} pending="Reading file..." failed={true} failure="Read failed">
       Read src/index.ts
     </InlineToolRow>
   )
@@ -274,21 +277,23 @@ describe("TUI inline tool wrapping", () => {
   })
 
   test("formats completed subagent toolcall details", () => {
-    expect(formatCompletedSubagentDetail(0, "501ms")).toBe("501ms")
-    expect(formatCompletedSubagentDetail(1, "501ms")).toBe("1 toolcall · 501ms")
-    expect(formatCompletedSubagentDetail(2, "501ms")).toBe("2 toolcalls · 501ms")
-    expect(formatSubagentToolcalls(0)).toBe("0 toolcalls")
+    expect(formatCompletedSubagentDetail(en, 0, "501ms")).toBe("501ms")
+    expect(formatCompletedSubagentDetail(en, 1, "501ms")).toBe("1 toolcall · 501ms")
+    expect(formatCompletedSubagentDetail(en, 2, "501ms")).toBe("2 toolcalls · 501ms")
+    expect(formatSubagentToolcalls(en, 0)).toBe("0 toolcalls")
   })
 
   test("keeps background state attached to the subagent identity", () => {
-    expect(formatSubagentTitle("Explore", "Inspect renderer", false)).toBe("Explore Task — Inspect renderer")
-    expect(formatSubagentTitle("Explore", "Inspect renderer", true)).toBe(
+    expect(formatSubagentTitle(en, "Explore", "Inspect renderer", false)).toBe("Explore Task — Inspect renderer")
+    expect(formatSubagentTitle(en, "Explore", "Inspect renderer", true)).toBe(
       "Explore Task (background) — Inspect renderer",
     )
   })
 
   test("keeps retry status ahead of wrapping messages", () => {
-    expect(formatSubagentRetry(2, "Rate limited by provider")).toBe("Retrying (attempt 2) · Rate limited by provider")
+    expect(formatSubagentRetry(en, 2, "Rate limited by provider")).toBe(
+      "Retrying (attempt 2) · Rate limited by provider",
+    )
   })
 
   test("snapshots consecutive grep, glob, and read rows at a narrow width", async () => {

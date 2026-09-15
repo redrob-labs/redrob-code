@@ -35,7 +35,7 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         const id = setTimeout(() => {
           const err = new Error("SSE read timed out")
           ctl.abort(err)
-          reader.cancel(err).catch(() => {})
+          void reader.cancel(err)
           reject(err)
         }, ms)
 
@@ -144,7 +144,7 @@ export interface Interface {
   readonly language: (model: ModelV2.Info) => Effect.Effect<LanguageModelV3, InitError>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/AISDK") {}
+export class Service extends Context.Service<Service, Interface>()("@redrob/v2/AISDK") {}
 
 export const locationLayer = Layer.effect(
   Service,

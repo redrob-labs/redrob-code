@@ -1,10 +1,12 @@
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Match, Show, Switch, createSignal } from "solid-js"
+import { useLanguage } from "../../context/language"
 
 const id = "internal:sidebar-mcp"
 
 function View(props: { api: TuiPluginApi }) {
+  const language = useLanguage()
   const [open, setOpen] = createSignal(true)
   const theme = () => props.api.theme.current
   const list = createMemo(() => props.api.state.mcp())
@@ -38,7 +40,9 @@ function View(props: { api: TuiPluginApi }) {
             <Show when={!open()}>
               <span style={{ fg: theme().textMuted }}>
                 {" "}
-                ({on()} active{bad() > 0 ? `, ${bad()} error${bad() > 1 ? "s" : ""}` : ""})
+                {bad() > 0
+                  ? language.plural("sidebar.mcp.summary_errors", bad(), { active: on() })
+                  : language.t("sidebar.mcp.summary", { active: on() })}
               </span>
             </Show>
           </text>
@@ -59,13 +63,15 @@ function View(props: { api: TuiPluginApi }) {
                   {item.name}{" "}
                   <span style={{ fg: theme().textMuted }}>
                     <Switch fallback={item.status}>
-                      <Match when={item.status === "connected"}>Connected</Match>
+                      <Match when={item.status === "connected"}>{language.t("status.mcp.connected")}</Match>
                       <Match when={item.status === "failed"}>
                         <i>{item.error}</i>
                       </Match>
-                      <Match when={item.status === "disabled"}>Disabled</Match>
-                      <Match when={item.status === "needs_auth"}>Needs auth</Match>
-                      <Match when={item.status === "needs_client_registration"}>Needs client ID</Match>
+                      <Match when={item.status === "disabled"}>{language.t("status.mcp.disabled.short")}</Match>
+                      <Match when={item.status === "needs_auth"}>{language.t("status.mcp.needs_auth.short")}</Match>
+                      <Match when={item.status === "needs_client_registration"}>
+                        {language.t("status.mcp.needs_client_id")}
+                      </Match>
                     </Switch>
                   </span>
                 </text>

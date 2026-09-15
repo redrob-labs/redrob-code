@@ -1,9 +1,10 @@
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Match, Show, Switch } from "solid-js"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { useHomeSessionDestination } from "../../routes/home/session-destination"
+import { useLanguage } from "../../context/language"
 
 const id = "internal:home-footer"
 
@@ -26,6 +27,7 @@ function Directory(props: { api: TuiPluginApi }) {
 
 function Mcp(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
+  const language = useLanguage()
   const list = createMemo(() => props.api.state.mcp())
   const has = createMemo(() => list().length > 0)
   const err = createMemo(() => list().some((item) => item.status === "failed"))
@@ -43,7 +45,7 @@ function Mcp(props: { api: TuiPluginApi }) {
               <span style={{ fg: count() > 0 ? theme().success : theme().textMuted }}>⊙ </span>
             </Match>
           </Switch>
-          {count()} MCP
+          {language.t("footer.mcp", { count: count() })}
         </text>
         <text fg={theme().textMuted}>/status</text>
       </box>

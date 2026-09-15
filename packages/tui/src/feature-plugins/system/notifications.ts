@@ -1,6 +1,7 @@
-import type { Event } from "@opencode-ai/sdk/v2"
-import type { TuiAttentionSoundName, TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { Event } from "@redrob-code/sdk/v2"
+import type { TuiAttentionSoundName, TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
+import { kvTranslator, type TuiTranslator } from "../../i18n"
 
 const id = "internal:notifications"
 
@@ -17,13 +18,13 @@ function notify(api: TuiPluginApi, sessionID: string | undefined, message: strin
   })
 }
 
-function sessionErrorMessage(error: SessionError) {
-  if (error?.name === "MessageAbortedError") return "Session aborted"
+function sessionErrorMessage(translate: TuiTranslator, error: SessionError) {
+  if (error?.name === "MessageAbortedError") return translate.t("notification.session_aborted")
   const data = error?.data
   if (data && typeof data === "object" && "message" in data && data.message === "SSE read timed out") {
-    return "Model stopped responding"
+    return translate.t("notification.model_stopped")
   }
-  return "Session error"
+  return translate.t("notification.session_error")
 }
 
 const tui: TuiPlugin = async (api) => {
@@ -35,7 +36,7 @@ const tui: TuiPlugin = async (api) => {
   api.event.on("question.asked", (event) => {
     if (questions.has(event.properties.id)) return
     questions.add(event.properties.id)
-    notify(api, event.properties.sessionID, "Question needs input", "question")
+    notify(api, event.properties.sessionID, kvTranslator(api.kv).t("notification.question"), "question")
   })
 
   api.event.on("question.replied", (event) => {
@@ -49,7 +50,7 @@ const tui: TuiPlugin = async (api) => {
   api.event.on("permission.asked", (event) => {
     if (permissions.has(event.properties.id)) return
     permissions.add(event.properties.id)
-    notify(api, event.properties.sessionID, "Permission needs input", "permission")
+    notify(api, event.properties.sessionID, kvTranslator(api.kv).t("notification.permission"), "permission")
   })
 
   api.event.on("permission.replied", (event) => {
@@ -74,7 +75,12 @@ const tui: TuiPlugin = async (api) => {
     }
 
     const session = api.state.session.get(sessionID)
-    notify(api, sessionID, "Session done", session?.parentID ? "subagent_done" : "done")
+    notify(
+      api,
+      sessionID,
+      kvTranslator(api.kv).t("notification.session_done"),
+      session?.parentID ? "subagent_done" : "done",
+    )
   })
 
   api.event.on("session.error", (event) => {
@@ -82,7 +88,7 @@ const tui: TuiPlugin = async (api) => {
     if (!sessionID) return
     if (!active.has(sessionID)) return
     errored.add(sessionID)
-    notify(api, sessionID, sessionErrorMessage(event.properties.error), "error")
+    notify(api, sessionID, sessionErrorMessage(kvTranslator(api.kv), event.properties.error), "error")
   })
 }
 

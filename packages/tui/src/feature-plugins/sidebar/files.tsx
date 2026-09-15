@@ -1,7 +1,8 @@
-import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 import { Locale } from "../../util/locale"
+import { useLanguage } from "../../context/language"
 
 const id = "internal:sidebar-files"
 
@@ -12,6 +13,7 @@ function changeCountWidth(item: { additions: number; deletions: number }) {
 }
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
+  const language = useLanguage()
   const [open, setOpen] = createSignal(true)
   const theme = () => props.api.theme.current
   const list = createMemo(() => props.api.state.session.diff(props.session_id))
@@ -24,7 +26,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
             <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
           </Show>
           <text fg={theme().text}>
-            <b>Modified Files</b>
+            <b>{language.t("sidebar.modified_files")}</b>
           </text>
         </box>
         <Show when={list().length <= 2 || open()}>

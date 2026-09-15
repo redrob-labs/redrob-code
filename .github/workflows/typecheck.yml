@@ -1,15 +1,15 @@
 name: typecheck
 
 on:
-  push:
-    branches: [dev]
-  pull_request:
-    branches: [dev]
   workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   typecheck:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -18,4 +18,11 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Run typecheck
-        run: bun typecheck
+        # Bound turbo's fan-out. tsgo peaks at ~5.3 GB on packages/redrob and
+        # ~2.4 GB each on core and tui, so turbo's default concurrency of 10
+        # co-schedules them and the 16 GB ubuntu-latest runner OOM-kills the
+        # workers (exit 137 on client/protocol/tui/redrob). tsgo is already
+        # internally parallel across the 4 vCPUs, so 2 tasks at a time costs no
+        # wall time: all 30 packages finish in ~43s at either 2 or 3, and 2
+        # keeps combined tsgo RSS near 6 GB.
+        run: bun turbo typecheck --concurrency=2

@@ -19,6 +19,7 @@ import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
+import { useLanguage } from "../context/language"
 
 export interface DialogSelectProps<T> {
   title: string
@@ -85,6 +86,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
+  const language = useLanguage()
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
 
   const [store, setStore] = createStore({
@@ -373,7 +375,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       commands: [
         {
           name: "dialog.select.prev",
-          title: "Previous item",
+          title: language.t("dialog.item_previous"),
           category: "Dialog",
           run() {
             setStore("input", "keyboard")
@@ -382,7 +384,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.next",
-          title: "Next item",
+          title: language.t("dialog.item_next"),
           category: "Dialog",
           run() {
             setStore("input", "keyboard")
@@ -391,7 +393,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.page_up",
-          title: "Page up",
+          title: language.t("dialog.page_up"),
           category: "Dialog",
           run() {
             setStore("input", "keyboard")
@@ -400,7 +402,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.page_down",
-          title: "Page down",
+          title: language.t("dialog.page_down"),
           category: "Dialog",
           run() {
             setStore("input", "keyboard")
@@ -409,7 +411,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.home",
-          title: "First item",
+          title: language.t("dialog.item_first"),
           category: "Dialog",
           run() {
             if (props.locked) return
@@ -419,7 +421,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.end",
-          title: "Last item",
+          title: language.t("dialog.item_last"),
           category: "Dialog",
           run() {
             if (props.locked) return
@@ -429,7 +431,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         },
         {
           name: "dialog.select.submit",
-          title: "Select item",
+          title: language.t("dialog.item_select"),
           category: "Dialog",
           run: submit,
         },
@@ -462,13 +464,13 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           ? [
               {
                 key: "tab",
-                desc: "Next dialog action",
+                desc: language.t("dialog.action_next"),
                 group: "Dialog",
                 cmd: () => moveAction(1),
               },
               {
                 key: "shift+tab",
-                desc: "Previous dialog action",
+                desc: language.t("dialog.action_previous"),
                 group: "Dialog",
                 cmd: () => moveAction(-1),
               },
@@ -590,7 +592,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                   input.focus()
                 }, 1)
               }}
-              placeholder={props.placeholder ?? "Search"}
+              placeholder={props.placeholder ?? language.t("dialog.search")}
               placeholderColor={theme.textMuted}
             />
           </box>
@@ -602,7 +604,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           fallback={
             props.emptyView ?? (
               <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-                <text fg={theme.textMuted}>No results found</text>
+                <text fg={theme.textMuted}>{language.t("dialog.no_results")}</text>
               </box>
             )
           }

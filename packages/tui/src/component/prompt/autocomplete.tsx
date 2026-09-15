@@ -20,9 +20,10 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { Locale } from "../../util/locale"
 import type { PromptInfo } from "../../prompt/history"
 import { useFrecency } from "../../prompt/frecency"
-import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keymap"
+import { useBindings, useCommandSlashes, useRedrobModeStack } from "../../keymap"
 import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
-import type { FileSystemEntry } from "@opencode-ai/sdk/v2"
+import type { FileSystemEntry } from "@redrob-code/sdk/v2"
+import { useLanguage } from "../../context/language"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -84,13 +85,14 @@ export function Autocomplete(props: {
   agentStyleId: number
   promptPartTypeId: () => number
 }) {
+  const language = useLanguage()
   const editor = useEditorContext()
   const sdk = useSDK()
   const sync = useSync()
   const data = useData()
   const project = useProject()
   const slashes = useCommandSlashes()
-  const modeStack = useOpencodeModeStack()
+  const modeStack = useRedrobModeStack()
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const frecency = useFrecency()
@@ -584,7 +586,7 @@ export function Autocomplete(props: {
     commands: [
       {
         name: "prompt.autocomplete.prev",
-        title: "Previous autocomplete item",
+        title: language.t("autocomplete.binding.previous"),
         category: "Autocomplete",
         run() {
           setStore("input", "keyboard")
@@ -593,7 +595,7 @@ export function Autocomplete(props: {
       },
       {
         name: "prompt.autocomplete.next",
-        title: "Next autocomplete item",
+        title: language.t("autocomplete.binding.next"),
         category: "Autocomplete",
         run() {
           setStore("input", "keyboard")
@@ -602,7 +604,7 @@ export function Autocomplete(props: {
       },
       {
         name: "prompt.autocomplete.hide",
-        title: "Hide autocomplete",
+        title: language.t("autocomplete.binding.hide"),
         category: "Autocomplete",
         run() {
           hide()
@@ -610,7 +612,7 @@ export function Autocomplete(props: {
       },
       {
         name: "prompt.autocomplete.select",
-        title: "Select autocomplete item",
+        title: language.t("autocomplete.binding.select"),
         category: "Autocomplete",
         run() {
           select()
@@ -618,7 +620,7 @@ export function Autocomplete(props: {
       },
       {
         name: "prompt.autocomplete.complete",
-        title: "Complete autocomplete item",
+        title: language.t("autocomplete.binding.complete"),
         category: "Autocomplete",
         run() {
           const selected = options()[store.selected]
@@ -741,7 +743,7 @@ export function Autocomplete(props: {
           each={options()}
           fallback={
             <box paddingLeft={1} paddingRight={1}>
-              <text fg={theme.textMuted}>No matching items</text>
+              <text fg={theme.textMuted}>{language.t("autocomplete.empty")}</text>
             </box>
           }
         >

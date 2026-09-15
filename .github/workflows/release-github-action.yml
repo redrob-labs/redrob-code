@@ -1,11 +1,7 @@
 name: release-github-action
 
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - "github/**"
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -24,6 +20,6 @@ jobs:
 
       - name: Release
         run: |
-          git config --global user.email "opencode@sst.dev"
-          git config --global user.name "opencode"
+          git config --global user.email "redrob@sst.dev"
+          git config --global user.name "redrob"
           ./github/script/release
