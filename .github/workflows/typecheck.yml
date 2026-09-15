@@ -3,9 +3,8 @@ name: typecheck
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
-    branches: [main]
 
 jobs:
   typecheck:
