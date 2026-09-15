@@ -152,5 +152,8 @@ bun typecheck                # 전체 패키지
 cd packages/core && bun test # 테스트는 패키지 디렉터리에서 실행 (저장소 루트 금지)
 ```
 
-`bun@1.3.14`이 필요하며 pre-push 훅이 이를 검사합니다. 브랜치, 커밋, 스타일 규칙은
-[AGENTS.md](./AGENTS.md)를 참고하세요.
+`bun@1.3.14`이 필요하며 pre-push 훅이 이를 검사합니다.
+
+브랜치 모델, 풀 리퀘스트 방법, 그리고 상류 릴리스를 흡수하는 절차는
+[docs/BRANCHING.md](./docs/BRANCHING.md)에 있습니다. 마지막 항목이 포크에서 가장
+중요하면서 가장 틀리기 쉬운 작업입니다.
