@@ -373,6 +373,13 @@ jobs:
           WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
         run: |
           set -euo pipefail
+          # An annotated tag records a tagger, and a bare runner has no git identity, so
+          # `git tag -a` fails with "empty ident name" AFTER the build, the signing and the
+          # notarization have all succeeded -- the most expensive possible place to
+          # discover it. The tag stays annotated rather than lightweight because it is what
+          # a release points at and it should say who made it and when.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           {
             echo "Tracks [opencode v$UPSTREAM](https://github.com/anomalyco/opencode/releases/tag/v$UPSTREAM)."
             echo
@@ -400,9 +407,19 @@ jobs:
             echo
             echo "Checksums are in \`SHA256SUMS\`."
           } > notes.md
-          git tag -a "$TAG" -m "Redrob Code $TAG — tracks opencode v$UPSTREAM"
-          git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --notes-file notes.md assets/*
+          git tag -a "$TAG" -m "Redrob Code $TAG — tracks opencode v$UPSTREAM" 2>/dev/null || \
+            echo "tag $TAG already exists locally"
+          # A release that fails after tagging must be retryable. Without this a single
+          # transient failure in the steps below leaves the version permanently unusable:
+          # the tag exists, so every retry dies on push before reaching the release.
+          git push origin "$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::notice::release $TAG exists; replacing its notes and assets"
+            gh release edit "$TAG" --notes-file notes.md
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md assets/*
+          fi
 
       - name: Open the release pull request into main
         if: ${{ !inputs.dry_run }}
