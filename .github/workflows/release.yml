@@ -212,6 +212,11 @@ jobs:
   sign-windows:
     needs: [version, build]
     runs-on: windows-latest
+    outputs:
+      # Carried to `publish` so the release notes state what actually happened. Notes that
+      # claim a signature the run did not produce are worse than no claim: a reader has no
+      # way to tell, and the whole point of saying "signed" is that it can be relied on.
+      signed: ${{ steps.result.outputs.signed }}
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -283,13 +288,18 @@ jobs:
           exclude-azure-developer-cli-credential: true
           exclude-interactive-browser-credential: true
 
-      # An unsigned Windows binary is a SmartScreen warning, not a broken release, and the
-      # macOS and Linux artifacts should not be held hostage to an Azure outage. Reported
-      # loudly; the release notes say which platforms are signed.
-      - name: Note an unsigned Windows build
-        if: steps.config.outputs.signing != 'true' || steps.sign.outcome == 'failure'
+      - name: Record the signing outcome
+        id: result
+        if: always()
         shell: bash
-        run: echo "::warning::the Windows binaries in this release are NOT signed"
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.config.outputs.signing }}" = "true" ] && [ "${{ steps.sign.outcome }}" = "success" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::the Windows binaries in this release are NOT signed"
+          fi
 
       - name: Repack
         shell: bash
@@ -360,6 +370,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
           UPSTREAM: ${{ inputs.upstream_version }}
+          WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
         run: |
           set -euo pipefail
           {
@@ -371,8 +382,17 @@ jobs:
             echo "## Verifying"
             echo
             echo "macOS binaries are signed with a Developer ID certificate and notarized."
-            echo "Windows binaries are signed through Azure Trusted Signing. Every archive"
-            echo "carries build provenance attesting it was produced by this workflow:"
+            if [ "$WINDOWS_SIGNED" = "true" ]; then
+              echo "Windows binaries are signed through Azure Trusted Signing."
+            else
+              echo "**Windows binaries in this release are NOT signed**, so Windows will show a"
+              echo "SmartScreen warning on first run. Verify the archive against \`SHA256SUMS\`"
+              echo "and the provenance attestation below before running it."
+            fi
+            echo
+            echo "Every archive carries build provenance attesting it was produced by this"
+            echo "workflow, which a code signature alone does not establish -- a signature says"
+            echo "the key was used, not where:"
             echo
             echo '```sh'
             echo "gh attestation verify redrob-darwin-arm64.zip --repo ${{ github.repository }}"
