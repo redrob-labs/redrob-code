@@ -16,9 +16,6 @@
     "@redrob-code/core#test": {
       "dependsOn": ["^build"],
       "outputs": []
-    },
-    "@redrob-code/function#test": {
-      "outputs": []
     }
   }
 }

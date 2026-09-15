@@ -2,14 +2,22 @@ name: test
 
 on:
   workflow_dispatch:
+  # `develop` is the integration branch, so it has to be here for two reasons. It is the
+  # branch releases are cut from, and — less obviously — GitHub scopes the Actions cache
+  # to a branch and its base. A pull request can only restore a cache written by its base
+  # branch, so a workflow that never runs on `develop` writes no cache a pull request can
+  # read, and every run starts cold. That is why all five turbo tasks were cache misses.
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
 
 concurrency:
-  # Keep every run on main so cancelled checks do not pollute the default branch
-  # commit history. PRs and other branches still share a group and cancel stale runs.
-  group: ${{ case(github.ref == 'refs/heads/main', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
+  # Keep every run on the long-lived branches so cancelled checks do not pollute their
+  # commit history. PRs and other branches share a group and cancel stale runs.
+  group: >-
+    ${{ (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        && format('{0}-{1}', github.workflow, github.run_id)
+        || format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref) }}
   cancel-in-progress: true
 
 permissions:
