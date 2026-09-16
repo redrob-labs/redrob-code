@@ -68,13 +68,25 @@ export function tags<const Config extends { readonly [Name in keyof Config]: rea
 
 // Nodes ---------------------------------------------------------------------
 
+// `deps` is a THUNK, not an array, and that is the whole point of it.
+//
+// These nodes form import cycles by design: a module's `deps` names other modules' nodes,
+// and those modules name it back, directly or transitively. As an array literal the
+// references were evaluated while the cycle was still resolving, so whether a given node
+// was initialized depended on which module the runtime happened to enter first. It worked
+// only because something always warmed the order -- and `ReferenceError: Cannot access
+// 'node' before initialization` was one import away, in production as much as in tests.
+//
+// Deferring the list to a call moves every reference past module evaluation, which makes
+// the entry order irrelevant. `dependencies` below is a getter, so consumers still read it
+// as a plain property and nothing resolves until a graph is actually built.
 type MakeInput<
   Implementation extends Layer.Any,
   Items extends NodeList,
   T extends Tag | undefined = undefined,
 > = NodeIdentity & {
   readonly layer: Implementation
-  readonly deps: Items & CheckDependencies<Implementation, NoInfer<Items>>
+  readonly deps: () => Items & CheckDependencies<Implementation, NoInfer<Items>>
   readonly tag?: T
 }
 
@@ -90,7 +102,9 @@ export function make<
     name: input.service !== undefined ? input.service.key : input.name,
     service: input.service,
     implementation: input.layer,
-    dependencies: input.deps,
+    get dependencies() {
+      return input.deps()
+    },
     tag: input.tag,
   }
 }
@@ -138,7 +152,7 @@ function replacementNode(source: AnyNode, replacement: AnyNode | Layer.Any) {
     : make({
         ...nodeMakeIdentity(source),
         layer: replacement as Layer.Layer<unknown, unknown>,
-        deps: [],
+        deps: () => [],
         tag: source.tag,
       })
   if (source.name !== replacementNode.name) {

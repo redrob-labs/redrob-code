@@ -629,7 +629,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Auth.node, Npm.node, httpClient],
+  deps: () => [FSUtil.node, Auth.node, Npm.node, httpClient],
 })
 
 export * as Config from "./config"

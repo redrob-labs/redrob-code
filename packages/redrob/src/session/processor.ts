@@ -710,7 +710,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [
+  deps: () => [
     Session.node,
     Config.node,
     Snapshot.node,
