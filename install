@@ -24,8 +24,8 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://code.redrob.ai/install | bash
-    curl -fsSL https://code.redrob.ai/install | bash -s -- --version 1.0.180
+    curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
+    curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash -s -- --version 1.0.180
     ./install --binary /path/to/redrob
 EOF
 }
@@ -497,6 +497,6 @@ echo -e ""
 echo -e "cd <project>  ${MUTED}# Open directory${NC}"
 echo -e "redrob      ${MUTED}# Run command${NC}"
 echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://code.redrob.ai/docs"
+echo -e "${MUTED}For more information visit ${NC}https://github.com/redrob-labs/redrob-code#readme"
 echo -e ""
 echo -e ""

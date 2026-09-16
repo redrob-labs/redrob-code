@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://code.redrob.ai">
+  <a href="https://github.com/redrob-labs/redrob-code">
     <picture>
       <source srcset="packages/identity/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
       <source srcset="packages/identity/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
@@ -14,7 +14,7 @@
   <a href="README.ko.md">한국어</a>
 </p>
 
-[![Redrob Code Terminal UI](packages/identity/screenshot.png)](https://code.redrob.ai)
+[![Redrob Code Terminal UI](packages/identity/screenshot.png)](https://github.com/redrob-labs/redrob-code)
 
 ---
 
@@ -32,10 +32,11 @@ against upstream's `v1.18.31`.
 ### Installation
 
 ```bash
-curl -fsSL https://code.redrob.ai/install | bash
+curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
-The installer picks the first writable location from this list:
+That serves [`install`](./install) from this repository, so the script you run is the one you
+can read here. It picks the first writable location from this list:
 
 1. `$REDROB_INSTALL_DIR` — explicit override
 2. `$XDG_BIN_DIR` — XDG Base Directory path
@@ -43,8 +44,8 @@ The installer picks the first writable location from this list:
 4. `$HOME/.redrob/bin` — fallback
 
 ```bash
-REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://code.redrob.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://code.redrob.ai/install | bash
+REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
+XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
 Then start it in any project:
