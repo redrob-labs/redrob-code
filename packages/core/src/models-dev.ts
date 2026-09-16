@@ -351,6 +351,51 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/ModelsDev") {}
 
+/**
+ * A bot-protection challenge standing between this CLI and the console.
+ *
+ * The console is fronted by Vercel, whose bot protection answers a request it does not recognise as
+ * a browser with `403` and an HTML interstitial. This CLI is compiled with Bun, and Bun's fetch is
+ * one of the clients that gets challenged: the same key and the same URL answer `200` to curl and
+ * `403` here, whatever headers are sent. There is no header to add and no retry that helps -- the
+ * challenge wants a browser to solve it, and there is no browser.
+ *
+ * Named so it does not read as "no models available". Without this, the failure was indistinguishable
+ * from an expired key: the catalogue quietly fell back to six built-in ids and the only trace was one
+ * log line, so a user saw a short model list and no reason for it.
+ */
+export class ConsoleBotChallenge extends Error {
+  readonly _tag = "ConsoleBotChallenge"
+  constructor(readonly status: number) {
+    super(
+      `The console refused this request with ${status} at its bot-protection layer, not at authentication. ` +
+        `The API key was accepted; the request never reached the API. ` +
+        `Allow this CLI through: in the console project's Vercel dashboard, add a Firewall bypass rule for ` +
+        `the /api/backend/* path (Firewall > Configure > New Rule > path starts with /api/backend > Bypass), ` +
+        `or exclude that path from the Bot Protection managed ruleset. Until then the model list falls back ` +
+        `to the built-in ids and chat requests fail the same way.`,
+    )
+  }
+}
+
+/**
+ * Whether a 4xx body is a bot-protection interstitial rather than an API error.
+ *
+ * Matched on the challenge's own markers. An API error is JSON with a message; this is an HTML page
+ * whose title says what it is, so the two are not confusable and a real 403 from the API -- a key
+ * without access to a model, say -- is left alone.
+ */
+export function isBotChallengeBody(body: string): boolean {
+  const head = body.slice(0, 4000)
+  if (!/^\s*</.test(head)) return false
+  return (
+    /Vercel Security Checkpoint/i.test(head) ||
+    /security checkpoint/i.test(head) ||
+    /_vercel\/challenge/i.test(head) ||
+    /cf-challenge|__cf_chl/i.test(head)
+  )
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -368,13 +413,24 @@ const layer = Layer.effect(
     // crashing the CLI. The endpoint returns 401 without a valid key, which is an expected and
     // acceptable outcome that must degrade gracefully.
     const fetchModels = Effect.fn("ModelsDev.fetchModels")(function* (apiKey: string) {
-      const response = yield* HttpClientRequest.get(`${CONSOLE_URL}/models`).pipe(
+      const request = HttpClientRequest.get(`${CONSOLE_URL}/models`).pipe(
         HttpClientRequest.setHeader("User-Agent", USER_AGENT),
         HttpClientRequest.bearerToken(apiKey),
-        http.execute,
-        Effect.flatMap((res) => res.text),
-        Effect.timeout("10 seconds"),
       )
+      // The body is read even on a non-2xx, because a bot-protection challenge and an API error
+      // arrive with the same status and are told apart only by what they contain. So the response is
+      // taken raw and the status checked here, rather than letting a 4xx fail the effect before the
+      // body exists.
+      const res = yield* http.execute(request).pipe(Effect.timeout("10 seconds"))
+      const body = yield* res.text
+      if (res.status === 403 || res.status === 401) {
+        if (isBotChallengeBody(body)) return yield* Effect.fail(new ConsoleBotChallenge(res.status))
+        return yield* Effect.fail(new Error(`console /models refused the request with ${res.status}`))
+      }
+      if (res.status < 200 || res.status >= 300) {
+        return yield* Effect.fail(new Error(`console /models returned ${res.status}`))
+      }
+      const response = body
       const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ConsoleModelList))(response)
       if (decoded._tag === "None") return yield* Effect.fail(new Error("Failed to parse console /models response"))
       const models: Record<string, Model> = {}
@@ -414,7 +470,12 @@ const layer = Layer.effect(
       if (Flag.REDROB_DISABLE_MODELS_FETCH || !apiKey) return fallbackCatalog()
       return yield* fetchModels(apiKey).pipe(
         Effect.tapCause((cause) =>
-          Effect.logWarning("ModelsDev console /models fetch failed; using static fallback", { cause }),
+          // A bot challenge is not the same event as a bad key or a timeout, and reporting it as
+          // "fetch failed" is what made a blocked CLI look like an empty catalogue. The named error
+          // carries what to do about it, so it is logged at error level and its own message is used.
+          String(cause).includes("ConsoleBotChallenge")
+            ? Effect.logError(`ModelsDev: ${String(cause)}`)
+            : Effect.logWarning("ModelsDev console /models fetch failed; using static fallback", { cause }),
         ),
         Effect.orElseSucceed(fallbackCatalog),
       )

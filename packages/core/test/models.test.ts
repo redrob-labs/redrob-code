@@ -6,7 +6,7 @@ import { LayerNodePlatform } from "@redrob-code/core/effect/app-node-platform"
 import { Flag } from "@redrob-code/core/flag/flag"
 import { Credential } from "@redrob-code/core/credential"
 import { Integration } from "@redrob-code/core/integration"
-import { ModelsDev } from "@redrob-code/core/models-dev"
+import { ConsoleBotChallenge, isBotChallengeBody, ModelsDev } from "@redrob-code/core/models-dev"
 import { it } from "./lib/effect"
 
 // The reworked ModelsDev.Service fetches the OpenAI-standard listing from
@@ -544,6 +544,32 @@ describe("ModelsDev console model metadata", () => {
       expect(models["auto"].limit.output).toBe(64000)
       // No published cap on this one, so it keeps this CLI's ceiling.
       expect(models["claude-opus-5"].limit.output).toBe(32_000)
+    }),
+  )
+
+  it.live("names a bot-protection challenge instead of reporting an empty catalogue", () =>
+    Effect.gen(function* () {
+      // Measured against the live console: Bun's fetch is challenged by the bot protection in front
+      // of it, so the same key that answers 200 to curl answers 403 here with an HTML interstitial.
+      // Reported as "fetch failed", that was indistinguishable from an expired key -- the catalogue
+      // fell back to six built-in ids and the only trace was one warning line, which is exactly how
+      // a blocked CLI came to look like a short model list.
+      const challengeBody =
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+        "<title>Vercel Security Checkpoint</title></head><body></body></html>"
+      expect(isBotChallengeBody(challengeBody)).toBe(true)
+      // An API error is JSON with a message, so the two are not confusable and a real 403 -- a key
+      // without access to something -- is left alone.
+      expect(isBotChallengeBody('{"error":{"message":"Forbidden","type":"invalid_request_error"}}')).toBe(false)
+      expect(isBotChallengeBody("")).toBe(false)
+
+      const message = new ConsoleBotChallenge(403).message
+      // The message has to say the key was fine and name the fix, because the failure looks like an
+      // auth problem and is not one.
+      expect(message).toContain("bot-protection layer")
+      expect(message).toContain("The API key was accepted")
+      expect(message).toContain("/api/backend")
+      expect(new ConsoleBotChallenge(403).status).toBe(403)
     }),
   )
 
