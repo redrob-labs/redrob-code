@@ -154,6 +154,6 @@ export namespace RipgrepBinary {
   export const node = makeGlobalNode({
     service: Service,
     layer: layer,
-    deps: [FSUtil.node, httpClient, CrossSpawnSpawner.node],
+    deps: () => [FSUtil.node, httpClient, CrossSpawnSpawner.node],
   })
 }

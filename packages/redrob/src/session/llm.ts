@@ -389,7 +389,7 @@ export const hasToolCalls = LLMRequestPrep.hasToolCalls
 export const node = LayerNode.make({
   service: Service,
   layer: live,
-  deps: [
+  deps: () => [
     Auth.node,
     Config.node,
     Provider.node,

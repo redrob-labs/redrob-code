@@ -16,4 +16,4 @@ export const layer = Layer.succeed(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [] })
+export const node = makeGlobalNode({ service: Service, layer, deps: () => [] })

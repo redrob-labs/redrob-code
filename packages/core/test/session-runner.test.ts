@@ -151,7 +151,7 @@ const echo = Layer.effectDiscard(
     }),
   ),
 )
-const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [ToolRegistry.node] })
+const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: () => [ToolRegistry.node] })
 let modelResolveHook = Effect.void
 let currentModel = model
 const models = SessionRunnerModel.layerWith((session) =>

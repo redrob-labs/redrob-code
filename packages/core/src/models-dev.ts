@@ -375,7 +375,7 @@ const layer = Layer.effect(
 export const node = makeGlobalNode({
   service: Service,
   layer: layer,
-  deps: [EventV2.node, Credential.node, httpClient],
+  deps: () => [EventV2.node, Credential.node, httpClient],
 })
 
 export * as ModelsDev from "./models-dev"
