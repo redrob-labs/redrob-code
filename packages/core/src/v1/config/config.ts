@@ -164,6 +164,10 @@ export const Info = Schema.Struct({
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),
+      threshold: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "How full the context may get before compacting, as a percentage of the window (1-100, default 70). Scales with the model, where `reserved` does not: a 20,000-token reserve is most of a small window and 2% of a 1,000,000-token one, which put the trigger at 98% and made the turn that crossed it the turn that failed. An explicit `reserved` still wins over this.",
+      }),
     }),
   ),
   experimental: Schema.optional(

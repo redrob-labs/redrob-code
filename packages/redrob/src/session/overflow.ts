@@ -7,16 +7,49 @@ import type { MessageV2 } from "./message-v2"
 
 const COMPACTION_BUFFER = 20_000
 
+/**
+ * Where compaction fires, as a percentage of the model's context window.
+ *
+ * 70 rather than "whatever is left after a 20,000-token reserve". That reserve was written for windows
+ * measured in tens of thousands of tokens; against a 1,000,000-token model it puts the trigger at 98%,
+ * which is late enough that the turn which crosses it is also the turn that fails. A percentage scales
+ * with the window instead of shrinking as a fraction of it, and 70% leaves room for a long reply and a
+ * summarisation pass without cutting the usable conversation short.
+ */
+const DEFAULT_COMPACTION_THRESHOLD_PERCENT = 70
+
 export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outputTokenMax?: number }) {
   const context = input.model.limit.context
   if (context === 0) return 0
 
-  const reserved =
-    input.cfg.compaction?.reserved ??
-    Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
-  return input.model.limit.input
-    ? Math.max(0, input.model.limit.input - reserved)
-    : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
+  /*
+   * An explicit `reserved` still wins, because it is the older and more specific knob: a caller who set
+   * a token budget meant that number and not a percentage of a window they may not know.
+   */
+  if (input.cfg.compaction?.reserved !== undefined) {
+    // Truthy, for the same reason as below: a published 0 means "no separate input cap", not a cap of zero.
+    return input.model.limit.input
+      ? Math.max(0, input.model.limit.input - input.cfg.compaction.reserved)
+      : Math.max(0, context - input.cfg.compaction.reserved)
+  }
+
+  const percent = input.cfg.compaction?.threshold ?? DEFAULT_COMPACTION_THRESHOLD_PERCENT
+  const clamped = Math.min(100, Math.max(1, percent))
+  /*
+   * A TRUTHY check, not `??`. `limit.input` is 0 for a model that does not publish a separate input cap,
+   * and `0 ?? context` is 0 - which made `usable()` return 0, made every session overflow on its first
+   * turn, and made a run summarise in a loop until the harness killed it at 30s. The original code used
+   * this same truthy form for exactly this reason.
+   */
+  const budget = input.model.limit.input || context
+  /*
+   * Still leave room for the reply. A threshold of 100 would mean "compact once the window is full",
+   * which is the same failure the reserve was there to avoid, so the output allowance is subtracted
+   * either way and the threshold applies to what is left.
+   */
+  const output = ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax)
+  const headroom = Math.max(0, budget - Math.min(COMPACTION_BUFFER, output))
+  return Math.floor((headroom * clamped) / 100)
 }
 
 export function isOverflow(input: {
