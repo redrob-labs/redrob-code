@@ -1,6 +1,8 @@
 import { Context, Duration, Effect, Layer, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelsDev } from "@redrob-code/schema/models-dev"
+import { join } from "path"
+import { Global } from "./global"
 import { Flag } from "./flag/flag"
 import { InstallationChannel, InstallationVersion } from "./installation/version"
 import { Credential } from "./credential"
@@ -405,6 +407,34 @@ export function isBotChallengeBody(body: string): boolean {
   )
 }
 
+/**
+ * The console key as `PUT /auth/redrob` leaves it, read straight from `auth.json`.
+ *
+ * The Auth service that owns this file lives in the `redrob` package, which depends on this one, so it
+ * cannot be imported here. Reading the file is the whole of that service's behaviour for this case, and
+ * the alternative - a callback the server has to remember to wire - fails silently in exactly the way
+ * this bug already failed once.
+ *
+ * Deliberately forgiving: a missing file, unreadable JSON, an entry of some other `type`, or a blank key
+ * all mean "no key here", not an error. The catalogue's keyless branch is a legitimate state, and the
+ * only thing this must never do is turn a readable key into a crash.
+ */
+function authStoreApiKey(): Effect.Effect<string | undefined> {
+  return Effect.tryPromise(() => Bun.file(join(Global.Path.data, "auth.json")).json()).pipe(
+    Effect.map((data) => {
+      if (typeof data !== "object" || data === null) return undefined
+      const entry = (data as Record<string, unknown>)["redrob"]
+      if (typeof entry !== "object" || entry === null) return undefined
+      const record = entry as Record<string, unknown>
+      // auth.json spells an api key `type: "api"`, where the Credential store spells it `type: "key"`.
+      if (record["type"] !== "api") return undefined
+      const key = record["key"]
+      return typeof key === "string" && key.trim() ? key : undefined
+    }),
+    Effect.orElseSucceed(() => undefined),
+  )
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -472,11 +502,32 @@ const layer = Layer.effect(
     // redrob integration by `redrob providers login`. Only reading the environment made the
     // dynamic catalog silently fall back to the static list for anyone who logged in through
     // the CLI, so check the credential store too.
+    /**
+     * The console key, from wherever the user actually put it.
+     *
+     * Three origins, and they are not interchangeable historically. `REDROB_API_KEY` is the one a
+     * terminal user exports. The Credential store is what `redrob providers login` writes. And
+     * `auth.json` is what `PUT /auth/redrob` writes, which is the route the DESKTOP APP uses for both
+     * of its connect paths, the pasted key and "Connect Redrob" - that flow ends by handing the key to
+     * this same route, so the app never populates the Credential store at all.
+     *
+     * Reading only the first two is why a user who connected through the app saw six models: the key
+     * was present, in auth.json, and the catalogue could not see it, so `populate` took the keyless
+     * branch and returned the built-in list. Nothing bridges the two stores - the Credential store is
+     * SQL, auth.json is a file, and no migration copies one into the other - so the catalogue has to
+     * read both.
+     *
+     * Note the shapes differ as well as the locations: the Credential store discriminates on
+     * `type: "key"`, auth.json on `type: "api"`. Matching only one of those spellings was the second
+     * half of the same bug.
+     */
     const resolveApiKey = Effect.fn("ModelsDev.resolveApiKey")(function* () {
       const fromEnv = process.env["REDROB_API_KEY"]
       if (fromEnv) return fromEnv
       const stored = yield* credential.list(Integration.ID.make("redrob"))
-      return stored.flatMap((item) => (item.value.type === "key" ? [item.value.key] : []))[0]
+      const fromCredential = stored.flatMap((item) => (item.value.type === "key" ? [item.value.key] : []))[0]
+      if (fromCredential) return fromCredential
+      return yield* authStoreApiKey()
     })
 
     const populate = Effect.gen(function* () {
