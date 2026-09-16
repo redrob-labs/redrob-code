@@ -223,40 +223,68 @@ jobs:
       AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
       AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
       AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-unsigned
           path: dist
 
-      # Signing is all-or-nothing on six values. Deciding once, here, keeps every later
-      # step from re-deriving it, and an incomplete configuration is reported as such
-      # rather than failing inside an Azure login with an unrelated message.
+      # There are two ways to sign here and the choice is made once, up front, so no later
+      # step re-derives it and a half-configured method is reported as such rather than
+      # failing inside an Azure login with an unrelated message.
+      #
+      # Azure Trusted Signing is preferred when configured: the key never reaches the
+      # runner. The organization Authenticode PFX is the fallback, and it does put a private
+      # key on the runner, which is why it is second and why the file is deleted immediately
+      # after use.
       - name: Detect the signing configuration
         id: config
         shell: bash
         run: |
           set -euo pipefail
-          present=0
-          missing=()
+
+          azure_present=0
+          azure_missing=()
           for name in \
             AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
             AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT \
             AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE; do
-            if [ -n "${!name:-}" ]; then present=$((present + 1)); else missing+=("$name"); fi
+            if [ -n "${!name:-}" ]; then azure_present=$((azure_present + 1)); else azure_missing+=("$name"); fi
           done
-          if [ "$present" -eq 6 ]; then
-            echo "signing=true" >> "$GITHUB_OUTPUT"
-          elif [ "$present" -eq 0 ]; then
-            echo "signing=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Azure signing is not configured; the Windows binaries will be unsigned"
-          else
-            echo "::error::partial Azure signing configuration; missing: ${missing[*]}"
+
+          pfx_present=0
+          pfx_missing=()
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -n "${!name:-}" ]; then pfx_present=$((pfx_present + 1)); else pfx_missing+=("$name"); fi
+          done
+
+          # A PARTIAL configuration is a mistake, not a choice, so it is fatal either way --
+          # silently falling back from a half-configured Azure to a PFX would hide the
+          # mistake and sign with something other than what was intended.
+          if [ "$azure_present" -gt 0 ] && [ "$azure_present" -lt 6 ]; then
+            echo "::error::partial Azure signing configuration; missing: ${azure_missing[*]}"
+            exit 1
+          fi
+          if [ "$pfx_present" -eq 1 ]; then
+            echo "::error::partial Authenticode configuration; missing: ${pfx_missing[*]}"
             exit 1
           fi
 
+          if [ "$azure_present" -eq 6 ]; then
+            echo "method=azure" >> "$GITHUB_OUTPUT"
+            echo "::notice::signing Windows binaries with Azure Trusted Signing"
+          elif [ "$pfx_present" -eq 2 ]; then
+            echo "method=pfx" >> "$GITHUB_OUTPUT"
+            echo "::notice::signing Windows binaries with the organization Authenticode certificate"
+          else
+            echo "method=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::no Windows signing method is configured; the binaries will be unsigned"
+          fi
+
       - name: Azure login
-        if: steps.config.outputs.signing == 'true'
+        if: steps.config.outputs.method == 'azure'
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
@@ -264,9 +292,9 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign with Azure Trusted Signing
-        id: sign
+        id: sign-azure
         continue-on-error: true
-        if: steps.config.outputs.signing == 'true'
+        if: steps.config.outputs.method == 'azure'
         uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
         with:
           endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
@@ -287,14 +315,86 @@ jobs:
           exclude-azure-developer-cli-credential: true
           exclude-interactive-browser-credential: true
 
+      # The fallback. Unlike Trusted Signing this puts a private key on the runner, so the
+      # PFX is written, imported, and deleted within the one step -- `finally` so a signing
+      # failure does not leave it behind.
+      - name: Sign with the organization Authenticode certificate
+        id: sign-pfx
+        continue-on-error: true
+        if: steps.config.outputs.method == 'pfx'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pfx = Join-Path $env:RUNNER_TEMP "redrob-code-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
+            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
+            $files = @(
+              "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
+              "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
+              "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
+            )
+            foreach ($file in $files) {
+              # Timestamped, so the signature outlives the certificate's own validity.
+              $result = Set-AuthenticodeSignature -FilePath $file -Certificate $cert `
+                -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
+              if (-not $result.SignerCertificate) {
+                throw "Authenticode signing failed for ${file}: $($result.StatusMessage)"
+              }
+            }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      # Reads the signature back off the artifacts rather than trusting the signing step's
+      # exit code. This is what makes "signed" in the release notes a checked claim: the
+      # previous release said Windows was signed while nothing had signed it.
+      - name: Verify the Windows signatures
+        id: verify
+        continue-on-error: true
+        if: steps.config.outputs.method != 'none'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $files = @(
+            "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
+            "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
+            "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
+          )
+          foreach ($file in $files) {
+            $sig = Get-AuthenticodeSignature $file
+            if (-not $sig.SignerCertificate) {
+              throw "no Authenticode signer certificate on ${file}"
+            }
+            # A runner does not trust the organization's own CA chain, so `NotTrusted` and
+            # `UnknownError` are expected for the PFX path and mean "signed, chain not
+            # verifiable here" rather than "unsigned". Trusted Signing must be outright Valid.
+            $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
+            if ($accepted -notcontains $sig.Status.ToString()) {
+              throw "unexpected signature status on ${file}: $($sig.Status) $($sig.StatusMessage)"
+            }
+            Write-Host "$([IO.Path]::GetFileName($file)): $($sig.Status), signer $($sig.SignerCertificate.Subject)"
+          }
+
       - name: Record the signing outcome
         id: result
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ steps.config.outputs.signing }}" = "true" ] && [ "${{ steps.sign.outcome }}" = "success" ]; then
+          method="${{ steps.config.outputs.method }}"
+          case "$method" in
+            azure) signed="${{ steps.sign-azure.outcome }}" ;;
+            pfx)   signed="${{ steps.sign-pfx.outcome }}" ;;
+            *)     signed="skipped" ;;
+          esac
+          # Both the signing step AND the read-back have to succeed. Either alone can be
+          # green while the artifacts are unsigned.
+          if [ "$signed" = "success" ] && [ "${{ steps.verify.outcome }}" = "success" ]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Windows binaries signed via $method and verified"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "::warning::the Windows binaries in this release are NOT signed"
