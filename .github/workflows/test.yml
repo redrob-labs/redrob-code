@@ -182,15 +182,25 @@ jobs:
           echo "all linux test jobs succeeded"
 
   windows:
-    name: unit (windows)
+    name: unit (windows ${{ matrix.shard }}/4)
     runs-on: windows-latest
-    timeout-minutes: 20
-    # Windows runs and reports, but does not block. The suite itself passes; the STEP then
-    # sits for roughly 17 more minutes and dies at the limit, because something does not
-    # release after `bun test` returns — the log shows "failed to abort ACP backing session",
-    # "decode failed" and "notification failed" around that point. Until whatever holds that
-    # handle is found, making this required would mean shipping a gate that cannot pass.
-    # Unsharded on purpose: sharding a job that hangs would just hang four times.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    # Windows runs and reports, but does not block. Two path-normalization tests were failing
+    # here for a real reason — a drive-less rooted path resolved against the runner's D:
+    # workspace instead of the C: temp directory — and that is fixed; whether anything else is
+    # Windows-specific is not yet established, so this stays advisory until it has been green
+    # for a while.
+    #
+    # Sharded now, which the earlier diagnosis said not to do. That diagnosis was wrong: the
+    # job was not hanging after its tests. Turbo buffers each task's output until the task
+    # ends, so `core` flushing at 88s and `redrob` flushing 14 minutes later read as a stall.
+    # The engine suite genuinely takes 906s here against 381s on Linux, which is what nearly
+    # hit the 20-minute limit. Splitting it is the fix, and it is the same mechanism already
+    # proven on Linux.
     continue-on-error: true
     defaults:
       run:
@@ -217,7 +227,43 @@ jobs:
           git config --global user.email "bot@code.redrob.ai"
           git config --global user.name "redrob"
 
-      - name: Run unit tests
-        run: GITHUB_ACTIONS=false bun turbo test
+      - name: Run engine tests
+        run: ./scripts/test-shard.sh packages/redrob ${{ matrix.shard }} 4
+        env:
+          REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
+
+  windows-core:
+    name: unit (windows core)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          choco install ripgrep -y --no-progress
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      - name: Run core tests
+        working-directory: packages/core
+        run: bun test --timeout 30000 --only-failures
         env:
           REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
