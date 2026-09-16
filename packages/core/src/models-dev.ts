@@ -155,13 +155,25 @@ const ConsoleModelCapabilities = Schema.Struct({
   // The token count above which the long-context rates apply, not an input cap.
   shortContextTokens: Schema.Finite,
   maxContextTokens: Schema.Finite,
-  // The console's own set is low/medium/high/max; decoded as plain strings so a new level does not
-  // fail the parse and drop the whole catalog.
+  // The console's own set is low/medium/high/xhigh/max; decoded as plain strings so a new level does
+  // not fail the parse and drop the whole catalog.
   thinkingLevels: Schema.Array(Schema.String),
   // `fastMode` and `requiresProviderDataShare` are request switches on the console's chat endpoint
   // with no counterpart in this schema, so they are decoded to pin the shape and left unprojected.
   fastMode: Schema.Boolean,
   requiresProviderDataShare: Schema.Boolean,
+  // What the model accepts and returns beyond text. The console publishes these per model -- 177 of
+  // its models take an image -- and its chat endpoint accepts an `image_url` content part, so these
+  // are the flags that decide whether an attachment can be sent at all. Optional because a listing
+  // written before they existed must still decode.
+  imageInput: Schema.optional(Schema.Boolean),
+  audioInput: Schema.optional(Schema.Boolean),
+  fileInput: Schema.optional(Schema.Boolean),
+  videoInput: Schema.optional(Schema.Boolean),
+  imageOutput: Schema.optional(Schema.Boolean),
+  audioOutput: Schema.optional(Schema.Boolean),
+  // The published reply cap, where CONSOLE_OUTPUT_TOKENS is only this CLI's own request ceiling.
+  maxOutputTokens: Schema.optional(Schema.Finite),
 })
 
 // Assumed OpenAI-standard /v1/models listing shape returned by the console endpoint:
@@ -182,10 +194,42 @@ const ConsoleModelList = Schema.Struct({
   data: Schema.Array(ConsoleModel),
 })
 
-// The console gateway is text-in/text-out: its chat endpoint accepts a string or an array of text
-// parts and nothing else, so there is no attachment to send and no modality beyond text to
-// advertise. Shared by the fallback and the live projection so the two cannot disagree.
-const CONSOLE_MODALITIES = { input: ["text"], output: ["text"] } as const satisfies Model["modalities"]
+// The console's chat endpoint accepts `image_url` and `input_audio` content parts, and publishes per
+// model which of them that model can actually read. So modalities are read from the listing rather
+// than asserted here.
+//
+// This used to be hardcoded to text-in/text-out, on the belief that the gateway took nothing but
+// text. That belief was the reason an attachment never reached a model: ProviderTransform consults
+// `capabilities.input[modality]` and, finding image false, replaces the image with the text
+// `ERROR: Cannot read image (this model does not support image input)`. The flags below are what
+// stop that happening for the 177 models that do take one.
+//
+// Text is always in the input set: every console model reads text, and a listing that omitted the
+// flags entirely must still describe a usable model.
+const TEXT_ONLY_MODALITIES = { input: ["text"], output: ["text"] } as const satisfies Model["modalities"]
+
+const consoleAttachment = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): boolean =>
+  Boolean(
+    capabilities?.imageInput || capabilities?.audioInput || capabilities?.fileInput || capabilities?.videoInput,
+  )
+
+const consoleModalities = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): Model["modalities"] => {
+  if (!capabilities) return TEXT_ONLY_MODALITIES
+  const input: NonNullable<Model["modalities"]>["input"][number][] = ["text"]
+  if (capabilities.imageInput) input.push("image")
+  if (capabilities.audioInput) input.push("audio")
+  if (capabilities.videoInput) input.push("video")
+  // `fileInput` has no modality of its own in this schema: a PDF arrives as a file part and is
+  // gated by the mime-to-modality mapping, so there is nothing to advertise for it here.
+  const output: NonNullable<Model["modalities"]>["output"][number][] = ["text"]
+  if (capabilities.imageOutput) output.push("image")
+  if (capabilities.audioOutput) output.push("audio")
+  return { input, output }
+}
 
 // The console's thinking control is a top-level `thinking` level on its chat endpoint, not OpenAI's
 // `reasoning_effort`, and that endpoint rejects fields it does not whitelist. An empty option list
@@ -210,7 +254,10 @@ const redrobFallbackModel = (model: ConsoleModelInfo): Model => ({
   tool_call: true,
   cost: { input: 0, output: 0 },
   limit: { context: CONSOLE_CONTEXT_TOKENS, output: CONSOLE_OUTPUT_TOKENS },
-  modalities: CONSOLE_MODALITIES,
+  // Text only, deliberately: with no key there is no listing, and claiming an attachment the
+  // model may not read would produce a failed request instead of an unavailable button. The live
+  // listing is what turns image input on.
+  modalities: TEXT_ONLY_MODALITIES,
   // No status: the schema status set is alpha/beta/deprecated; ModelsDevPlugin defaults an
   // absent status to "active" when projecting into the V2 catalog.
   provider: { npm: CONSOLE_PACKAGE, api: CONSOLE_URL },
@@ -237,7 +284,9 @@ const consoleModel = (model: Schema.Schema.Type<typeof ConsoleModel>): Model => 
   id: model.id,
   name: model.id,
   release_date: model.created ? new Date(model.created * 1000).toISOString().slice(0, 10) : "",
-  attachment: false,
+  // `attachment` is what a client reads to decide whether to offer a file button at all, so it has
+  // to agree with the modalities below rather than stay false while they say an image is fine.
+  attachment: consoleAttachment(model.capabilities),
   // Published thinking levels are what makes a model a reasoning model here; an empty list means
   // the console serves it without any thinking control.
   reasoning: (model.capabilities?.thinkingLevels.length ?? 0) > 0,
@@ -249,9 +298,10 @@ const consoleModel = (model: Schema.Schema.Type<typeof ConsoleModel>): Model => 
     // maxContextTokens is the whole window. There is no published input cap, so limit.input stays
     // absent and `usable()` reserves the reply out of the window instead.
     context: model.capabilities?.maxContextTokens ?? CONSOLE_CONTEXT_TOKENS,
-    output: CONSOLE_OUTPUT_TOKENS,
+    // The published reply cap when there is one; this CLI's own ceiling otherwise.
+    output: model.capabilities?.maxOutputTokens ?? CONSOLE_OUTPUT_TOKENS,
   },
-  modalities: CONSOLE_MODALITIES,
+  modalities: consoleModalities(model.capabilities),
   provider: { npm: CONSOLE_PACKAGE, api: CONSOLE_URL },
 })
 
