@@ -483,19 +483,28 @@ describe("ModelsDev console model metadata", () => {
     }),
   )
 
-  it.live("projects thinkingLevels into the reasoning flag without publishing effort variants", () =>
+  it.live("publishes the effort variants each console model actually offers", () =>
     Effect.gen(function* () {
       const models = yield* fetched()
-      // The three Claude ids publish low/medium/high/max; auto, Sol and Terra publish none.
+      // The three Claude ids publish low/medium/high/max; auto, Sol and Terra publish none in this
+      // fixture.
       expect(models["claude-opus-5"].reasoning).toBe(true)
       expect(models["claude-sonnet-5"].reasoning).toBe(true)
       expect(models["claude-fable-5"].reasoning).toBe(true)
       expect(models["auto"].reasoning).toBe(false)
       expect(models["gpt-5.6-sol"].reasoning).toBe(false)
       expect(models["gpt-5.6-terra"].reasoning).toBe(false)
-      // The console's control is a top-level `thinking` level and its chat endpoint rejects fields it
-      // does not whitelist, so no `reasoning_effort` variants may be synthesised from these levels.
-      for (const id of CONSOLE_MODEL_IDS) expect(models[id].reasoning_options).toEqual([])
+      // Levels are published VERBATIM, not mapped onto OpenAI's three-value effort scale: the
+      // console validates `thinking` against its own enum, so mapping would drop xhigh and max.
+      // ProviderTransform turns these into `thinking` for this provider, never `reasoning_effort`.
+      expect(models["claude-opus-5"].reasoning_options).toEqual([
+        { type: "effort", values: ["low", "medium", "high", "max"] },
+      ])
+      // A model that publishes no levels still publishes an EMPTY list rather than undefined, which
+      // is what tells reasoningVariants to synthesise nothing at all.
+      for (const id of ["auto", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+        expect(models[id].reasoning_options).toEqual([])
+      }
     }),
   )
 
@@ -577,9 +586,14 @@ describe("ModelsDev console model metadata", () => {
         expect(model.cost).toEqual({ input: 0, output: 0 })
       }
       // Reasoning support does not depend on the network, so the offline catalog agrees with the
-      // live one on which ids think.
+      // live one on which ids think. `auto` is one of them: the router publishes the full
+      // low..max range, and claiming otherwise offline would hide its thinking control.
       expect(result["redrob"].models["claude-opus-5"].reasoning).toBe(true)
-      expect(result["redrob"].models["auto"].reasoning).toBe(false)
+      expect(result["redrob"].models["auto"].reasoning).toBe(true)
+      // Offline there is no listing, so no LEVELS are known and no variant may be synthesised --
+      // an effort the console might reject is worse than none offered.
+      expect(result["redrob"].models["auto"].reasoning_options).toEqual([])
+      expect(result["redrob"].models["claude-opus-5"].reasoning_options).toEqual([])
       expect(yield* Ref.get(state).pipe(Effect.map((s) => s.calls))).toEqual([])
     }),
   )

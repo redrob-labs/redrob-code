@@ -232,11 +232,29 @@ const consoleModalities = (
 }
 
 // The console's thinking control is a top-level `thinking` level on its chat endpoint, not OpenAI's
-// `reasoning_effort`, and that endpoint rejects fields it does not whitelist. An empty option list
-// is how ProviderTransform is told to publish no effort variants: `reasoningVariants` returns `{}`
-// for it, which stops `variants()` from synthesising `reasoningEffort` variants the console would
-// refuse with a 400.
+// `reasoning_effort`, and that endpoint rejects fields it does not whitelist. So the effort values
+// come from the listing's own `capabilities.thinkingLevels` and ProviderTransform maps the chosen
+// one onto `thinking` for this provider — see the `redrob` case in `reasoningEffort`, which is what
+// keeps `reasoning_effort` off the wire.
+//
+// An empty list still means "publish no variants": `reasoningVariants` returns `{}` for it, which
+// stops `variants()` from synthesising efforts a model does not offer.
 const CONSOLE_REASONING_OPTIONS = [] as const satisfies Model["reasoning_options"]
+
+/**
+ * Effort variants for one console model, from the levels it publishes.
+ *
+ * Verbatim: the console validates `thinking` against its own enum
+ * (low | medium | high | xhigh | max), so a level is passed through as published rather than mapped
+ * onto OpenAI's three-value effort scale, which would lose `xhigh` and `max` entirely.
+ */
+const consoleReasoningOptions = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): Model["reasoning_options"] => {
+  const levels = capabilities?.thinkingLevels ?? []
+  if (levels.length === 0) return CONSOLE_REASONING_OPTIONS
+  return [{ type: "effort", values: [...levels] }]
+}
 
 // The static fallback catalog: mirrors the values RedrobPlugin registers into the V2 catalog so
 // `redrob models` always lists every served console model (CONSOLE_MODELS) even with no key or a
@@ -290,7 +308,7 @@ const consoleModel = (model: Schema.Schema.Type<typeof ConsoleModel>): Model => 
   // Published thinking levels are what makes a model a reasoning model here; an empty list means
   // the console serves it without any thinking control.
   reasoning: (model.capabilities?.thinkingLevels.length ?? 0) > 0,
-  reasoning_options: CONSOLE_REASONING_OPTIONS,
+  reasoning_options: consoleReasoningOptions(model.capabilities),
   temperature: true,
   tool_call: true,
   cost: consoleCost(model),

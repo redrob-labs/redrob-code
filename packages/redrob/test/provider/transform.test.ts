@@ -3356,6 +3356,48 @@ describe("ProviderTransform.reasoningVariants", () => {
     expect(ProviderTransform.reasoningVariants(model([]), target("@ai-sdk/openai"))).toEqual({})
   })
 
+  describe("the console maps effort onto its own `thinking` field", () => {
+    // The console shares @ai-sdk/openai-compatible with xai, mistral and groq but not their wire
+    // contract: it validates a top-level `thinking` level and rejects unwhitelisted fields with a
+    // 400, `reasoning_effort` included. So providerID discriminates it ahead of the package switch.
+    const consoleTarget = (id = "auto") =>
+      ({
+        id,
+        providerID: "redrob",
+        api: { id, npm: "@ai-sdk/openai-compatible", url: "https://console.redrob.ai/api/backend/v1" },
+        capabilities: { reasoning: true },
+        limit: { output: 32_000 },
+      }) as any
+
+    test("sends `thinking`, never `reasoning_effort`", () => {
+      const variants = ProviderTransform.reasoningVariants(
+        model([{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }]),
+        consoleTarget(),
+      )
+      // Every published level survives verbatim: mapping onto OpenAI's three-value scale would drop
+      // xhigh and max, which are exactly the levels only this console offers.
+      expect(Object.keys(variants ?? {})).toEqual(["low", "medium", "high", "xhigh", "max"])
+      expect(variants?.["xhigh"]).toEqual({ thinking: "xhigh" })
+      expect(variants?.["max"]).toEqual({ thinking: "max" })
+      for (const settings of Object.values(variants ?? {})) {
+        expect(settings).not.toHaveProperty("reasoningEffort")
+        expect(settings).not.toHaveProperty("reasoning_effort")
+      }
+    })
+
+    test("another openai-compatible provider still gets reasoningEffort", () => {
+      // The discriminator must be the provider, not the package: narrowing on the package would
+      // silently change xai, mistral, groq and the rest.
+      expect(
+        ProviderTransform.reasoningVariants(model([{ type: "effort", values: ["high"] }]), target("@ai-sdk/openai-compatible")),
+      ).toEqual({ high: { reasoningEffort: "high" } })
+    })
+
+    test("publishes nothing when the console publishes no levels", () => {
+      expect(ProviderTransform.reasoningVariants(model([]), consoleTarget())).toEqual({})
+    })
+  })
+
   test.each([
     ["@openrouter/ai-sdk-provider", { reasoning: { effort: "high" } }],
     ["@ai-sdk/anthropic", { thinking: { type: "adaptive" }, effort: "high" }, "claude-opus-4-6"],
