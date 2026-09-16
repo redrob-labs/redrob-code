@@ -384,13 +384,23 @@ describe("session.compaction.isOverflow", () => {
   const autoOn = { config: { compaction: { auto: true } } }
 
   it.live(
-    "returns false by default when compaction.auto is unset",
+    /*
+      This asserted the opposite - that an unset `compaction.auto` means no compaction - and that default
+      was the defect. Absent is what every workspace has until someone opens the settings page, and the
+      desktop app's settings screen read the same field as `auto !== false`, so it DISPLAYED the setting
+      as on while the engine had it off. A conversation grew until the gateway refused it for size while
+      the app claimed to be handling exactly that.
+    */
+    "compacts by default when compaction.auto is unset",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 100_000, output: 32_000 })
-        const tokens = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        const overflowing = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens: overflowing, model })).toBe(true)
+        // Still a threshold, not "always": a short session with the same unset config is not overflowing.
+        const small = { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens: small, model })).toBe(false)
       }),
     ),
   )

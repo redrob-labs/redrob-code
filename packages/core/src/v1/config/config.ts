@@ -149,7 +149,7 @@ export const Info = Schema.Struct({
   compaction: Schema.optional(
     Schema.Struct({
       auto: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable automatic compaction when context is full (default: false)",
+        description: "Compact automatically when the context fills. Default TRUE - set false to turn it off. It was false, which meant an untouched workspace never compacted while the desktop app displayed the setting as on.",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
         description: "Enable pruning of old tool outputs (default: false)",
