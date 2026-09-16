@@ -45,6 +45,12 @@ const modelList = {
         thinkingLevels: [],
         fastMode: false,
         requiresProviderDataShare: false,
+        // The live console publishes these per model; `auto` advertises the widest set.
+        imageInput: true,
+        audioInput: true,
+        fileInput: true,
+        imageOutput: true,
+        maxOutputTokens: 64000,
       },
     },
     {
@@ -106,6 +112,8 @@ const modelList = {
         thinkingLevels: ["low", "medium", "high", "max"],
         fastMode: true,
         requiresProviderDataShare: false,
+        // Image in and nothing else: the shape most of the console's vision models publish.
+        imageInput: true,
       },
     },
     {
@@ -466,7 +474,8 @@ describe("ModelsDev console model metadata", () => {
       const models = yield* fetched()
       for (const id of CONSOLE_MODEL_IDS) {
         expect(models[id].limit.context).toBe(1_000_000)
-        expect(models[id].limit.output).toBe(32_000)
+        // This CLI's own ceiling, except where the console publishes a cap of its own (auto does).
+        expect(models[id].limit.output).toBe(id === "auto" ? 64_000 : 32_000)
         // shortContextTokens is a pricing threshold, not an input cap. Setting limit.input from it
         // would make `usable()` stop reserving room for the reply.
         expect(models[id].limit.input).toBeUndefined()
@@ -490,18 +499,42 @@ describe("ModelsDev console model metadata", () => {
     }),
   )
 
-  it.live("keeps every console model text-only with no attachment support", () =>
+  it.live("advertises the modalities each console model publishes, and no others", () =>
     Effect.gen(function* () {
       const models = yield* fetched()
-      // The console's chat endpoint accepts a string or an array of text parts and nothing else, so
-      // there is no attachment to send and no modality beyond text to advertise. Pinned so the
-      // reason is recorded rather than inherited from the old all-zeros default.
-      for (const id of CONSOLE_MODEL_IDS) {
-        expect(models[id].attachment).toBe(false)
+      // The console's chat endpoint accepts `image_url` and `input_audio` parts and publishes per
+      // model which of them that model can read. This is load-bearing rather than cosmetic:
+      // ProviderTransform consults capabilities.input[modality] and replaces an image with the text
+      // "ERROR: Cannot read image (this model does not support image input)" when it is false, so a
+      // model whose modalities are understated can never receive an attachment at all.
+      expect(models["auto"].modalities).toEqual({
+        input: ["text", "image", "audio"],
+        output: ["text", "image"],
+      })
+      expect(models["auto"].attachment).toBe(true)
+      // fileInput has no modality of its own here -- a PDF arrives as a file part and is gated by
+      // the mime mapping -- but it does mean there is an attachment to offer.
+      expect(models["claude-opus-5"].modalities).toEqual({ input: ["text", "image"], output: ["text"] })
+      expect(models["claude-opus-5"].attachment).toBe(true)
+      // A model that publishes no modality flags stays text-only. Understating is the safe
+      // direction: the button is missing rather than the request failing.
+      for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "claude-sonnet-5", "claude-fable-5"]) {
         expect(models[id].modalities).toEqual({ input: ["text"], output: ["text"] })
+        expect(models[id].attachment).toBe(false)
+      }
+      for (const id of CONSOLE_MODEL_IDS) {
         expect(models[id].tool_call).toBe(true)
         expect(models[id].temperature).toBe(true)
       }
+    }),
+  )
+
+  it.live("takes the published reply cap when there is one, and this CLI's ceiling otherwise", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      expect(models["auto"].limit.output).toBe(64000)
+      // No published cap on this one, so it keeps this CLI's ceiling.
+      expect(models["claude-opus-5"].limit.output).toBe(32_000)
     }),
   )
 
