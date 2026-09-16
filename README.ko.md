@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://code.redrob.ai">
+  <a href="https://github.com/redrob-labs/redrob-code">
     <picture>
       <source srcset="packages/identity/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
       <source srcset="packages/identity/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
@@ -14,7 +14,7 @@
   <a href="README.ko.md">한국어</a>
 </p>
 
-[![레드롭 코드 터미널 UI](packages/identity/screenshot.png)](https://code.redrob.ai)
+[![레드롭 코드 터미널 UI](packages/identity/screenshot.png)](https://github.com/redrob-labs/redrob-code)
 
 ---
 
@@ -30,10 +30,11 @@
 ### 설치
 
 ```bash
-curl -fsSL https://code.redrob.ai/install | bash
+curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
-설치 스크립트는 아래 순서에서 처음으로 쓸 수 있는 경로를 선택합니다.
+이 저장소의 [`install`](./install) 을 그대로 내려받으므로, 실행하는 스크립트를 여기서 읽어볼 수
+있습니다. 아래 순서에서 처음으로 쓸 수 있는 경로를 선택합니다.
 
 1. `$REDROB_INSTALL_DIR`: 직접 지정한 경로
 2. `$XDG_BIN_DIR`: XDG Base Directory 경로
@@ -41,8 +42,8 @@ curl -fsSL https://code.redrob.ai/install | bash
 4. `$HOME/.redrob/bin`: 기본 폴백
 
 ```bash
-REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://code.redrob.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://code.redrob.ai/install | bash
+REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
+XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
 설치 후 아무 프로젝트에서 실행합니다.
