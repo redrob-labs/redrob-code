@@ -173,7 +173,11 @@ const ConsoleModelCapabilities = Schema.Struct({
   imageOutput: Schema.optional(Schema.Boolean),
   audioOutput: Schema.optional(Schema.Boolean),
   // The published reply cap, where CONSOLE_OUTPUT_TOKENS is only this CLI's own request ceiling.
-  maxOutputTokens: Schema.optional(Schema.Finite),
+  // Nullable, not merely absent: the console publishes an explicit `null` for the models it has no
+  // cap for (7 of its 323 at the time of writing). Declared `number | undefined`, that one null
+  // failed the whole-array decode and took all 323 models down with it, which is what left the
+  // catalog showing six built-in ids.
+  maxOutputTokens: Schema.optional(Schema.NullOr(Schema.Finite)),
 })
 
 // Assumed OpenAI-standard /v1/models listing shape returned by the console endpoint:
@@ -191,7 +195,12 @@ const ConsoleModel = Schema.Struct({
 
 const ConsoleModelList = Schema.Struct({
   object: Schema.optional(Schema.String),
-  data: Schema.Array(ConsoleModel),
+  // Entries stay `unknown` here and are decoded one at a time below. Decoding the array as a whole
+  // is all-or-nothing: a single unexpected value anywhere in 323 entries rejects the entire listing
+  // and the catalog silently becomes the six-id fallback. One model this CLI cannot describe should
+  // cost that one model, not the catalog -- the same reason `thinkingLevels` is decoded as plain
+  // strings a few lines up.
+  data: Schema.Array(Schema.Unknown),
 })
 
 // The console's chat endpoint accepts `image_url` and `input_audio` content parts, and publishes per
@@ -434,7 +443,24 @@ const layer = Layer.effect(
       const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ConsoleModelList))(response)
       if (decoded._tag === "None") return yield* Effect.fail(new Error("Failed to parse console /models response"))
       const models: Record<string, Model> = {}
-      for (const model of decoded.value.data) models[model.id] = consoleModel(model)
+      let rejected = 0
+      for (const entry of decoded.value.data) {
+        const model = Schema.decodeUnknownOption(ConsoleModel)(entry)
+        if (model._tag === "None") {
+          rejected++
+          continue
+        }
+        models[model.value.id] = consoleModel(model.value)
+      }
+      // Silence here is what hid the previous failure, so a dropped entry is reported. It is a warning
+      // rather than an error: the catalog is usable, just short by however many entries this CLI could
+      // not describe.
+      if (rejected > 0)
+        yield* Effect.logWarning(
+          `ModelsDev: dropped ${rejected} of ${decoded.value.data.length} console models this build cannot describe`,
+        )
+      if (Object.keys(models).length === 0)
+        return yield* Effect.fail(new Error("console /models returned no model this build can describe"))
       // Always guarantee the primary `auto` model lists even if the endpoint omits it. Only the
       // primary is backfilled: with a key the listing is authoritative, so a model it stops
       // advertising must not be resurrected from the static list.

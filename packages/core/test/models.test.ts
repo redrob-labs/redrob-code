@@ -7,6 +7,7 @@ import { Flag } from "@redrob-code/core/flag/flag"
 import { Credential } from "@redrob-code/core/credential"
 import { Integration } from "@redrob-code/core/integration"
 import { ConsoleBotChallenge, isBotChallengeBody, ModelsDev } from "@redrob-code/core/models-dev"
+import { CONSOLE_OUTPUT_TOKENS } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { it } from "./lib/effect"
 
 // The reworked ModelsDev.Service fetches the OpenAI-standard listing from
@@ -30,6 +31,23 @@ const CONSOLE_MODELS_URL = "https://console.redrob.ai/api/backend/v1/models"
 // internal schema does not model. Pinned verbatim so a decoding regression against the real shape —
 // including the `owned_by` field and those extra blocks — fails here. `redrob-ai` and
 // `redrob-translate` are deliberately absent: they are retired ids the console does not serve.
+// A minimal valid listing entry, so a test can vary exactly the one field it is about.
+const consoleEntry = (id: string, capabilities: Record<string, unknown>) => ({
+  id,
+  object: "model",
+  created: 1767225600,
+  owned_by: "redrob",
+  redrob: { inputPricePerMillionUsd: 1, outputPricePerMillionUsd: 2, inputMultiplier: 1, outputMultiplier: 1 },
+  capabilities: {
+    shortContextTokens: 200000,
+    maxContextTokens: 200000,
+    thinkingLevels: [],
+    fastMode: false,
+    requiresProviderDataShare: false,
+    ...capabilities,
+  },
+})
+
 const modelList = {
   object: "list",
   data: [
@@ -544,6 +562,66 @@ describe("ModelsDev console model metadata", () => {
       expect(models["auto"].limit.output).toBe(64000)
       // No published cap on this one, so it keeps this CLI's ceiling.
       expect(models["claude-opus-5"].limit.output).toBe(32_000)
+    }),
+  )
+
+  it.live("keeps the catalogue when the console publishes a null maxOutputTokens", () =>
+    Effect.gen(function* () {
+      // Measured against the live listing: 7 of the console's 323 models publish
+      // `capabilities.maxOutputTokens: null` rather than omitting it. Declared `number | undefined`,
+      // that single null rejected the whole-array decode and took all 323 down, leaving the six-id
+      // fallback -- the entire "only 6 models" symptom, one null wide.
+      const body = JSON.stringify({
+        object: "list",
+        data: [
+          consoleEntry("keeps-cap", { maxOutputTokens: 64000 }),
+          consoleEntry("null-cap", { maxOutputTokens: null }),
+        ],
+      })
+      const state = yield* Ref.make<MockState>({ body, status: 200, calls: [] })
+      const catalog = yield* provided(
+        state,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          return yield* svc.get()
+        }),
+      )
+      const models = catalog["redrob"]!.models
+      // Both survive: the null is absence, not a parse failure.
+      expect(Object.keys(models)).toContain("keeps-cap")
+      expect(Object.keys(models)).toContain("null-cap")
+      expect(models["keeps-cap"]!.limit.output).toBe(64000)
+      // A null cap falls back to this CLI's own request ceiling rather than becoming null downstream.
+      expect(models["null-cap"]!.limit.output).toBe(CONSOLE_OUTPUT_TOKENS)
+    }),
+  )
+
+  it.live("drops only the entry it cannot describe, not the catalogue", () =>
+    Effect.gen(function* () {
+      // The deeper defect behind the null: the array decoded all-or-nothing, so ONE unexpected value
+      // anywhere in the listing cost every model. An external contract that keeps growing will
+      // eventually publish something this build has no schema for, and that must cost one model.
+      const body = JSON.stringify({
+        object: "list",
+        data: [
+          consoleEntry("good-one", {}),
+          { id: 42, capabilities: "not an object" },
+          consoleEntry("good-two", {}),
+        ],
+      })
+      const state = yield* Ref.make<MockState>({ body, status: 200, calls: [] })
+      const catalog = yield* provided(
+        state,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          return yield* svc.get()
+        }),
+      )
+      const models = catalog["redrob"]!.models
+      expect(Object.keys(models)).toContain("good-one")
+      expect(Object.keys(models)).toContain("good-two")
+      // And it is the live listing that was kept, not the static fallback standing in for it.
+      expect(Object.keys(models)).not.toContain("claude-opus-5")
     }),
   )
 
