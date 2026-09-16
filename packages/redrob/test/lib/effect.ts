@@ -146,32 +146,69 @@ export const testEffect = <R, E>(layer: Layer.Layer<R, E>) =>
 export const testEffectShared = <R, E>(layer: Layer.Layer<R, E>) =>
   make<R, E>(Layer.provideMerge(layer, testEnv), Layer.provideMerge(layer, liveEnv), sharedRun)
 
+// These two helpers exist to NAME a failure, not to impose a deadline tighter than the
+// harness already applies. `bun test --timeout 30000` is the real bound; a helper that gives
+// up at 5 seconds is making its own bet about how fast the machine is, and that bet lost —
+// `prompt.test.ts` failed in CI at 5114ms against a 5000ms ceiling while passing on an idle
+// 16-core host.
+//
+// Waiting on an event rather than a clock would be better and is not available here. These
+// wait on state behind an HTTP API — has this message been promoted, is the search index
+// ready — with nothing to subscribe to. Making them event-driven means the server exposing a
+// readiness signal per resource: a product change across 26 different waits, not a test one.
+//
+// So the ceilings are generous instead of tight. That costs nothing when the condition holds,
+// because a poll returns the moment it does; it only bounds how long a genuine failure takes
+// to report. The message now says how long it actually waited, so the next failure is
+// diagnosable rather than merely late.
+const describeWait = (message: string, startedAt: number, attempts?: number) => {
+  const elapsed = Math.round(Date.now() - startedAt)
+  return attempts === undefined
+    ? `${message} (waited ${elapsed}ms)`
+    : `${message} (waited ${elapsed}ms over ${attempts} attempt(s))`
+}
+
 export const awaitWithTimeout = <A, E, R>(
   self: Effect.Effect<A, E, R>,
   message: string,
-  duration: Duration.Input = "2 seconds",
+  duration: Duration.Input = "10 seconds",
 ) =>
-  self.pipe(
-    Effect.timeoutOrElse({
-      duration,
-      orElse: () => Effect.fail(new Error(message)),
-    }),
-  )
+  // `suspend` so the clock starts when the effect RUNS, not when it is described. Reading
+  // Date.now() at construction would measure from whenever the test built its pipeline.
+  Effect.suspend(() => {
+    const startedAt = Date.now()
+    return self.pipe(
+      Effect.timeoutOrElse({
+        duration,
+        orElse: () => Effect.fail(new Error(describeWait(message, startedAt))),
+      }),
+    )
+  })
 
 export const pollWithTimeout = <A, E, R>(
   self: Effect.Effect<A | undefined, E, R>,
   message: string,
-  duration: Duration.Input = "5 seconds",
+  duration: Duration.Input = "20 seconds",
 ) =>
-  Effect.gen(function* () {
-    while (true) {
-      const result = yield* self
-      if (result !== undefined) return result
-      yield* Effect.sleep("20 millis")
-    }
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration,
-      orElse: () => Effect.fail(new Error(message)),
-    }),
-  )
+  Effect.suspend(() => {
+    const startedAt = Date.now()
+    let attempts = 0
+    return Effect.gen(function* () {
+      // Backs off from 20ms to a 250ms cap. A fixed 20ms interval under a 20-second ceiling
+      // is up to a thousand requests aimed at the very thing being waited for, which can slow
+      // down what it is waiting for. Starting tight keeps a fast condition fast.
+      let interval = 20
+      while (true) {
+        attempts++
+        const result = yield* self
+        if (result !== undefined) return result
+        yield* Effect.sleep(Duration.millis(interval))
+        interval = Math.min(interval * 2, 250)
+      }
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration,
+        orElse: () => Effect.fail(new Error(describeWait(message, startedAt, attempts))),
+      }),
+    )
+  })
