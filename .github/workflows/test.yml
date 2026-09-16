@@ -6,7 +6,7 @@ on:
   # branch releases are cut from, and — less obviously — GitHub scopes the Actions cache
   # to a branch and its base. A pull request can only restore a cache written by its base
   # branch, so a workflow that never runs on `develop` writes no cache a pull request can
-  # read, and every run starts cold. That is why all five turbo tasks were cache misses.
+  # read, and every run starts cold.
   push:
     branches: [develop, main]
   pull_request:
@@ -27,38 +27,35 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The engine suite is sharded across JOBS rather than parallelised across workers inside
+# one. The suite contains tests whose assertion is "this finished within N milliseconds",
+# so their budget is really a statement about machine load: `bun test --parallel` passed on
+# a 16-core idle host and failed in CI, where four workers sharing a runner's cores pushed
+# a 3s wait past a 5s ceiling. A shard gets a runner to itself, so per-test wall clock stays
+# what it was serially and only the total divides. See docs/TEST-PARALLELISM.md.
+#
+# `unit (linux)` is an aggregator that does no work. It exists so the required status check
+# keeps a stable name while the jobs underneath it change shape — renaming a required check
+# in the same pull request that introduces it is a deadlock, because the check the rule
+# demands never reports.
+
 jobs:
-  unit:
-    name: unit (${{ matrix.settings.name }})
+  engine:
+    name: engine (linux ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
+      # Every shard reports. Cancelling siblings on the first failure hides how much else
+      # is broken, which is the thing you want to know from a red run.
       fail-fast: false
       matrix:
-        settings:
-          - name: linux
-            host: ubuntu-latest
-            required: true
-          # Windows runs and reports, but does not block yet. The six hangs this
-          # PR fixed are gone — the suite reports 934 tests, 0 failures — and then
-          # the STEP sits for another ~17 minutes and dies at the 20-minute limit,
-          # because something on Windows does not release after `bun test` returns.
-          # The log shows "failed to abort ACP backing session", "decode failed"
-          # and "notification failed" around that point. Linux exits cleanly in
-          # 9m23s. Until whatever holds that handle is found, making this required
-          # would mean shipping a gate that cannot pass; remove `required: false`
-          # in the same change that fixes the non-exit.
-          - name: windows
-            host: windows-latest
-            required: false
-    runs-on: ${{ matrix.settings.host }}
-    continue-on-error: ${{ !matrix.settings.required }}
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -68,23 +65,12 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
-      # The ripgrep tests resolve `rg` from PATH, then a cache dir, and only then
-      # download it from github.com. Relying on that download made five tests hang
-      # to the harness timeout on the Windows runner with nothing in the log naming
-      # a download as the cause. Provisioning it here means the tests exercise
-      # ripgrep rather than the network. `binary.ts` still bounds the download for
-      # anyone running without this step.
+      # The ripgrep tests resolve `rg` from PATH, then a cache dir, and only then download
+      # it from github.com. Relying on that download made tests hang to the harness timeout
+      # with nothing in the log naming the cause, so it is provisioned up front.
       - name: Provision ripgrep
         run: |
-          set -euo pipefail
-          if command -v rg >/dev/null 2>&1; then
-            echo "rg already present: $(rg --version | head -1)"
-            exit 0
-          fi
-          case "${{ matrix.settings.name }}" in
-            linux)   sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ;;
-            windows) choco install ripgrep -y --no-progress ;;
-          esac
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
           rg --version | head -1
 
       - name: Configure git identity
@@ -92,27 +78,146 @@ jobs:
           git config --global user.email "bot@code.redrob.ai"
           git config --global user.name "redrob"
 
-      - name: Cache Turbo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: node_modules/.cache/turbo
-          key: turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-${{ github.sha }}
-          restore-keys: |
-            turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
-            turbo-${{ runner.os }}-
-
-      - name: Run unit tests
-        timeout-minutes: 20
-        run: GITHUB_ACTIONS=false bun turbo test
+      - name: Run engine tests
+        run: ./scripts/test-shard.sh packages/redrob ${{ matrix.shard }} 4
         env:
-          REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}
+          REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: "false"
+
+  core:
+    name: core (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      # Not sharded: 933 tests in ~22s. Splitting it would cost more in runner setup than
+      # it saves.
+      - name: Run core tests
+        working-directory: packages/core
+        run: bun test --timeout 30000 --only-failures
 
       - name: Check generated client
-        if: runner.os == 'Linux'
         working-directory: packages/client
         run: bun run check:generated
 
+  httpapi:
+    name: httpapi (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      # Its own job rather than a step after the tests: ~1m38s that has no reason to sit
+      # behind anything else.
       - name: Run HttpApi exerciser gates
-        if: runner.os == 'Linux'
         working-directory: packages/redrob
         run: bun run test:httpapi
+
+  unit:
+    name: unit (linux)
+    needs: [engine, core, httpapi]
+    # `always()` so a failing dependency still reports here rather than leaving the required
+    # check permanently "expected" — a skipped required check never resolves and blocks the
+    # pull request with no visible failure to fix.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          set -euo pipefail
+          printf 'engine  %s\ncore    %s\nhttpapi %s\n' \
+            "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"
+          # A matrix dependency reports one aggregated result, so a single red shard makes
+          # `needs.engine.result` a failure.
+          for result in "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::a linux test job did not succeed"
+              exit 1
+            fi
+          done
+          echo "all linux test jobs succeeded"
+
+  windows:
+    name: unit (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    # Windows runs and reports, but does not block. The suite itself passes; the STEP then
+    # sits for roughly 17 more minutes and dies at the limit, because something does not
+    # release after `bun test` returns — the log shows "failed to abort ACP backing session",
+    # "decode failed" and "notification failed" around that point. Until whatever holds that
+    # handle is found, making this required would mean shipping a gate that cannot pass.
+    # Unsharded on purpose: sharding a job that hangs would just hang four times.
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          choco install ripgrep -y --no-progress
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      - name: Run unit tests
+        run: GITHUB_ACTIONS=false bun turbo test
+        env:
+          REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
