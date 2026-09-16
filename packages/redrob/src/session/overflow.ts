@@ -25,7 +25,19 @@ export function isOverflow(input: {
   model: Provider.Model
   outputTokenMax?: number
 }) {
-  if (input.cfg.compaction?.auto !== true) return false
+  /*
+   * Compaction is ON unless it has been turned OFF.
+   *
+   * This read `auto !== true`, so an absent setting meant no compaction ever - and absent is what every
+   * workspace has until someone opens the settings page and toggles it. The desktop app's own settings
+   * screen read the same field as `auto !== false` and therefore DISPLAYED it as on, so the two halves
+   * disagreed about the default and the visible half was the wrong one. A conversation grew until the
+   * gateway refused it for size while the app said it was already handling that.
+   *
+   * A long conversation is the normal case in a desktop workspace, and summarising one is a better
+   * outcome than a request that fails outright. An explicit `false` is still honoured.
+   */
+  if (input.cfg.compaction?.auto === false) return false
   if (input.model.limit.context === 0) return false
 
   const count =
