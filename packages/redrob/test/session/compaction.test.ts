@@ -488,8 +488,18 @@ describe("session.compaction.isOverflow", () => {
         Effect.gen(function* () {
           const compact = yield* SessionCompaction.Service
           const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
-          const tokens = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+          /*
+            Sized against the 70% threshold, not against the old "everything but a 20,000-token reserve".
+            The point of this case is that the INPUT cap is what bounds the session - 272,000, not the
+            400,000 context - and that is unchanged. What changed is where in that cap compaction fires:
+            a 20,000-token reserve left the trigger at 93% of it, which is late enough that the turn
+            crossing it is also the turn that fails.
+          */
+          const tokens = { input: 120_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
           expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+          // Past 70% of the same cap it does overflow, so "within caps" cannot decay into "never".
+          const past = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+          expect(yield* compact.isOverflow({ tokens: past, model })).toBe(true)
         }),
       autoOn,
     ),

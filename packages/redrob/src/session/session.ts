@@ -385,6 +385,24 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
       ? input.model.cost.experimentalOver200K
       : input.model.cost)
   const totalNanoAiu = input.metadata?.["copilot"]?.["totalNanoAiu"]
+  /*
+   * The gateway's own figure, when it sends one.
+   *
+   * Redrob's console returns `costUsd` on the response: the amount the account was actually debited. The
+   * arithmetic below cannot reproduce it and never could, for three reasons none of which are visible
+   * from here - `auto` is billed at the ROUTED model's rate rather than the router's published one, the
+   * long-context rate applies past the model's short-context boundary, and the priority tier is billed at
+   * 1.75x. A desktop app showing the local estimate beside each message was reporting a number that
+   * drifted from the credit the user watched fall.
+   *
+   * Same override shape as Copilot's above, and the same discipline: a value that is not a finite
+   * non-negative number is ignored rather than trusted, so a malformed or absent field falls through to
+   * the estimate instead of zeroing the cost.
+   */
+  const gatewayCostUsd = input.metadata?.["redrob"]?.["costUsd"]
+  if (typeof gatewayCostUsd === "number" && Number.isFinite(gatewayCostUsd) && gatewayCostUsd >= 0) {
+    return { cost: gatewayCostUsd, tokens }
+  }
   return {
     cost:
       typeof totalNanoAiu === "number" && Number.isFinite(totalNanoAiu) && totalNanoAiu >= 0
