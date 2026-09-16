@@ -27,6 +27,7 @@ export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outpu
    * a token budget meant that number and not a percentage of a window they may not know.
    */
   if (input.cfg.compaction?.reserved !== undefined) {
+    // Truthy, for the same reason as below: a published 0 means "no separate input cap", not a cap of zero.
     return input.model.limit.input
       ? Math.max(0, input.model.limit.input - input.cfg.compaction.reserved)
       : Math.max(0, context - input.cfg.compaction.reserved)
@@ -34,7 +35,13 @@ export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outpu
 
   const percent = input.cfg.compaction?.threshold ?? DEFAULT_COMPACTION_THRESHOLD_PERCENT
   const clamped = Math.min(100, Math.max(1, percent))
-  const budget = input.model.limit.input ?? context
+  /*
+   * A TRUTHY check, not `??`. `limit.input` is 0 for a model that does not publish a separate input cap,
+   * and `0 ?? context` is 0 - which made `usable()` return 0, made every session overflow on its first
+   * turn, and made a run summarise in a loop until the harness killed it at 30s. The original code used
+   * this same truthy form for exactly this reason.
+   */
+  const budget = input.model.limit.input || context
   /*
    * Still leave room for the reply. A threshold of 100 would mean "compact once the window is full",
    * which is the same failure the reserve was there to avoid, so the output allowance is subtracted

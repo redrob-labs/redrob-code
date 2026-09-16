@@ -482,6 +482,27 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
+    "does not overflow a short session on a model that publishes no separate input cap",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const compact = yield* SessionCompaction.Service
+          /*
+            `input: 0` is how a model says "no separate input cap - use the context window". Written as
+            `limit.input ?? context` that 0 survives, because `0 ?? x` is 0, so the usable budget collapsed
+            to zero and EVERY session overflowed on its first turn. A non-interactive run then summarised in
+            a loop until the harness killed it at 30 seconds, which read as a flaky Windows timeout rather
+            than as the logic error it was.
+          */
+          const model = createModel({ context: 400_000, input: 0, output: 128_000 })
+          const tokens = { input: 1_000, output: 100, reasoning: 0, cache: { read: 0, write: 0 } }
+          expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        }),
+      autoOn,
+    ),
+  )
+
+  it.live(
     "returns false when input/output are within input caps",
     provideTmpdirInstance(
       () =>

@@ -41,6 +41,20 @@ describe("compaction threshold", () => {
     expect(source).toContain("budget - Math.min(COMPACTION_BUFFER, output)")
   })
 
+  it("treats a published input cap of 0 as absent, not as a cap of zero", () => {
+    /*
+      This one shipped broken for one CI round and is the reason the guard exists.
+
+      `limit.input` is 0 for a model that publishes no separate input cap. Written as `limit.input ??
+      context` that 0 SURVIVES - `0 ?? x` is 0 - so `usable()` returned 0, every session overflowed on its
+      first turn, and a non-interactive run summarised in a loop until the harness killed it at 30s. Only
+      one Windows shard happened to cover a model shaped that way, so it read as a flaky platform timeout
+      rather than as the logic error it was. The original code used the truthy form for exactly this reason.
+    */
+    expect(source).toContain("input.model.limit.input || context")
+    expect(source).not.toContain("input.model.limit.input ?? context")
+  })
+
   it("is declared in the config schema, so it is settable and documented", () => {
     const schema = readFileSync(
       join(import.meta.dir, "..", "..", "..", "core", "src", "v1", "config", "config.ts"),
