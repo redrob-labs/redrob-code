@@ -1720,6 +1720,15 @@ function reasoningToggle(model: Provider.Model): NonNullable<Provider.Model["var
 }
 
 function reasoningEffort(model: Provider.Model, effort: string) {
+  // The console shares `@ai-sdk/openai-compatible` with xai, mistral, groq and the rest, but not
+  // their wire contract: it validates a top-level `thinking` level and rejects any field it does not
+  // whitelist with a 400, `reasoning_effort` included. So it is discriminated by providerID BEFORE
+  // the package switch, which would otherwise send exactly the field that fails.
+  //
+  // The SDK spreads unrecognised `providerOptions[<provider>]` keys into the request body as
+  // top-level fields, so `{ thinking }` arrives as the console's own control with no extraBody
+  // plumbing.
+  if (model.providerID === "redrob") return { thinking: effort }
   switch (model.api.npm) {
     case "@openrouter/ai-sdk-provider":
       return { reasoning: { effort } }
