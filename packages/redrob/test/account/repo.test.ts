@@ -15,7 +15,7 @@ const truncate = Layer.effectDiscard(
     yield* db.run(sql`DELETE FROM account`)
   }),
 )
-const truncateNode = LayerNode.make({ name: "truncate-account", layer: truncate, deps: [Database.node] })
+const truncateNode = LayerNode.make({ name: "truncate-account", layer: truncate, deps: () => [Database.node] })
 
 const it = testEffect(LayerNode.compile(LayerNode.group([AccountRepo.node, truncateNode])))
 

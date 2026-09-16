@@ -63,6 +63,41 @@ drift.
 This is not a bug the flag caused; it is a property of any test whose assertion is "this
 finished within N milliseconds". Parallelism is simply the first thing to expose it.
 
+## What was done instead
+
+**Sharded across CI jobs.** `test.yml` splits the engine suite into four `engine (linux N/4)`
+jobs, each running `scripts/test-shard.sh packages/redrob N 4`. A shard gets a runner to
+itself, so per-test wall clock stays what it was serially and only the total divides — which
+is precisely what worker parallelism could not do. `core` and the HttpApi gates became their
+own jobs rather than steps queued behind the tests.
+
+Measured locally, four shards: 41s, 57s, 58s, 69s against 214s serial, and 1268 + 634 + 820 +
+629 = 3351 tests, the full count with nothing dropped.
+
+`unit (linux)` is now an aggregator that does no work. It exists so the required status check
+keeps a stable name while the jobs beneath it change shape: renaming a required check in the
+same pull request that introduces the new one is a deadlock, because the check the protection
+rule demands never reports.
+
+The cost is runner minutes, not wall clock — job setup (checkout, bun, ripgrep) is now paid
+six times instead of twice. That is the trade being made deliberately.
+
+**Turbo is no longer used for the Linux test path.** It was never caching: five tasks, zero
+hits, every run. Sharding needs per-file control, which a package-level task graph cannot
+express. Now that `test.yml` also runs on `develop`, turbo's cache could in principle start
+warming, so this is worth revisiting if the shard split ever stops paying — but a predictable
+split beats a cache that has not hit yet.
+
+**The first cause above is fixed.** Node dependency lists are now thunks, so `deps` resolves
+when a graph is built rather than while the import cycle is still resolving. `core` passes
+under `--parallel` — 933 tests, 0 fail, where before 377 ran and 75 failed — and the four
+files that failed hardest pass standalone. The type-level dependency check survives the
+change: deleting a dep from a list still fails typecheck at that line.
+
+**The second cause is not.** `prompt.test.ts` still measures wall clock, so `--parallel`
+remains off. Sharding sidesteps it; making those tests wait on events rather than clocks would
+remove it, and is still the better fix.
+
 ## What would actually work
 
 **Shard across CI jobs rather than workers within one.** Each shard gets its own runner, so

@@ -20,7 +20,7 @@ describe("node build", () => {
     const result = Node.makeGlobalNode({
       service: Result,
       layer: Layer.succeed(Result, Result.of({ value: "plain" })),
-      deps: [],
+      deps: () => [],
     })
     const layer = AppNodeBuilder.build(result)
     const program = Effect.gen(function* () {
@@ -35,7 +35,7 @@ describe("node build", () => {
     const a = Node.makeGlobalNode({
       service: CycleA,
       layer: Layer.effect(CycleA, Effect.as(LocationServiceMap.Service, CycleA.of({}))),
-      deps: [LocationServiceMap.node],
+      deps: () => [LocationServiceMap.node],
     })
     const b = Node.makeGlobalNode({
       service: CycleB,
@@ -43,7 +43,7 @@ describe("node build", () => {
         CycleB,
         Effect.map(CycleA, () => CycleB.of({ directory: AbsolutePath.make(process.cwd()) })),
       ),
-      deps: [a],
+      deps: () => [a],
     })
     const mapLayer = Layer.effect(
       LocationServiceMap.Service,
@@ -63,7 +63,7 @@ describe("node build", () => {
         )
       }) as unknown as Effect.Effect<LayerMap.LayerMap<Location.Ref, LocationServices, LocationError>, never, CycleB>,
     )
-    const map = Node.makeGlobalNode({ service: LocationServiceMap.Service, layer: mapLayer, deps: [b] })
+    const map = Node.makeGlobalNode({ service: LocationServiceMap.Service, layer: mapLayer, deps: () => [b] })
     expect(() => AppNodeBuilder.build(LayerNode.group([a]), [[LocationServiceMap.node, map]])).toThrow(
       "Cycle detected in layer tree",
     )
@@ -102,7 +102,7 @@ describe("node build", () => {
     const value = Node.makeGlobalNode({
       service: Value,
       layer: Layer.succeed(Value, Value.of({ value: "value" })),
-      deps: [],
+      deps: () => [],
     })
     const result = Node.makeGlobalNode({
       service: Result,
@@ -112,7 +112,7 @@ describe("node build", () => {
           return Result.of({ value: (yield* Value).value })
         }),
       ),
-      deps: [value],
+      deps: () => [value],
     })
     const serviceLayer = AppNodeBuilder.build(result)
     const program = Effect.gen(function* () {

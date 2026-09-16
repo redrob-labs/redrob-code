@@ -71,7 +71,7 @@ function testLayer(
   const spawnerNode = makeGlobalNode({
     service: ChildProcessSpawner.ChildProcessSpawner,
     layer: mockSpawner(spawnHandler),
-    deps: [],
+    deps: () => [],
   })
   return LayerNode.compile(Installation.node, [
     [httpClient, mockHttpClient(httpHandler)],

@@ -19,13 +19,13 @@ const greetingLayer = Layer.effect(
   Greeting,
   Effect.map(Value, (value) => Greeting.of({ value: `hello ${value.value}` })),
 )
-const value = make({ service: Value, layer: valueLayer, deps: [] })
-const greeting = make({ service: Greeting, layer: greetingLayer, deps: [value] })
+const value = make({ service: Value, layer: valueLayer, deps: () => [] })
+const greeting = make({ service: Greeting, layer: greetingLayer, deps: () => [value] })
 
 describe("layer node", () => {
   test("builds an untagged graph", async () => {
-    const value = LayerNode.make({ service: Value, layer: valueLayer, deps: [] })
-    const greeting = LayerNode.make({ service: Greeting, layer: greetingLayer, deps: [value] })
+    const value = LayerNode.make({ service: Value, layer: valueLayer, deps: () => [] })
+    const greeting = LayerNode.make({ service: Greeting, layer: greetingLayer, deps: () => [value] })
     const program = Effect.map(Greeting, (item) => item.value).pipe(
       Effect.provide(LayerNode.compile(LayerNode.group([greeting]))),
     )
@@ -44,8 +44,8 @@ describe("layer node", () => {
   })
 
   test("preserves branch-specific implementations across roots", async () => {
-    const firstValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "first" })), deps: [] })
-    const secondValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "second" })), deps: [] })
+    const firstValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "first" })), deps: () => [] })
+    const secondValue = make({ service: Value, layer: Layer.succeed(Value, Value.of({ value: "second" })), deps: () => [] })
     const leftLayer = Layer.effect(
       Left,
       Effect.map(Value, (item) => Left.of({ value: item.value })),
@@ -54,8 +54,8 @@ describe("layer node", () => {
       Right,
       Effect.map(Value, (item) => Right.of({ value: item.value })),
     )
-    const left = make({ service: Left, layer: leftLayer, deps: [firstValue] })
-    const right = make({ service: Right, layer: rightLayer, deps: [secondValue] })
+    const left = make({ service: Left, layer: leftLayer, deps: () => [firstValue] })
+    const right = make({ service: Right, layer: rightLayer, deps: () => [secondValue] })
     const layer = build(LayerNode.group([left, right]))
     const program = Effect.gen(function* () {
       return [(yield* Left).value, (yield* Right).value]
@@ -65,7 +65,7 @@ describe("layer node", () => {
 
   test("requires unbound nodes to be replaced before compilation", async () => {
     const unbound = LayerNode.unbound(Value, tags.values.app)
-    const greeting = make({ service: Greeting, layer: greetingLayer, deps: [unbound] })
+    const greeting = make({ service: Greeting, layer: greetingLayer, deps: () => [unbound] })
     const tree = LayerNode.group([greeting])
     expect(() => LayerNode.compile(tree)).toThrow("Unbound layer node: test/LayerNodeValue")
     const layer = LayerNode.compile(tree, [[unbound, value]]) as Layer.Layer<Greeting>
@@ -90,8 +90,8 @@ describe("layer node", () => {
       Right,
       Effect.map(Value, (item) => Right.of({ value: item.value })),
     )
-    const left = make({ service: Left, layer: leftLayer, deps: [value] })
-    const right = make({ service: Right, layer: rightLayer, deps: [value] })
+    const left = make({ service: Left, layer: leftLayer, deps: () => [value] })
+    const right = make({ service: Right, layer: rightLayer, deps: () => [value] })
     const replacement = Layer.succeed(Value, Value.of({ value: "replaced" }))
     const layer = build(LayerNode.group([left, right]), [[value, replacement]])
     const program = Effect.gen(function* () {
@@ -102,7 +102,7 @@ describe("layer node", () => {
 
   test("does not acquire an unused replacement", async () => {
     let acquisitions = 0
-    const other = make({ service: Left, layer: Layer.succeed(Left, Left.of({ value: "other" })), deps: [] })
+    const other = make({ service: Left, layer: Layer.succeed(Left, Left.of({ value: "other" })), deps: () => [] })
     const replacement = Layer.effect(
       Left,
       Effect.sync(() => {
@@ -127,12 +127,12 @@ describe("layer node", () => {
         return Value.of({ value: "dependency" })
       }),
     )
-    const dependency = make({ service: Value, layer: dependencyLayer, deps: [] })
-    const original = make({ service: Greeting, layer: greetingLayer, deps: [dependency] })
+    const dependency = make({ service: Value, layer: dependencyLayer, deps: () => [] })
+    const original = make({ service: Greeting, layer: greetingLayer, deps: () => [dependency] })
     const replacement = make({
       service: Greeting,
       layer: Layer.succeed(Greeting, Greeting.of({ value: "replacement" })),
-      deps: [],
+      deps: () => [],
     })
 
     const program = Effect.map(Greeting, (item) => item.value).pipe(
@@ -144,8 +144,8 @@ describe("layer node", () => {
   })
 
   test("applies later replacements inside earlier replacement nodes", async () => {
-    const original = make({ service: Greeting, layer: greetingLayer, deps: [value] })
-    const replacement = make({ service: Greeting, layer: greetingLayer, deps: [value] })
+    const original = make({ service: Greeting, layer: greetingLayer, deps: () => [value] })
+    const replacement = make({ service: Greeting, layer: greetingLayer, deps: () => [value] })
     const program = Effect.map(Greeting, (item) => item.value).pipe(
       Effect.provide(
         build(LayerNode.group([original]), [
@@ -165,7 +165,7 @@ describe("layer node", () => {
     const database = global({
       service: Database,
       layer: Layer.succeed(Database, Database.of({ name: "Alice" })),
-      deps: [],
+      deps: () => [],
     })
     const users = location({
       service: Users,
@@ -176,7 +176,7 @@ describe("layer node", () => {
           return Users.of({ list: Effect.succeed([db.name]) })
         }),
       ),
-      deps: [database],
+      deps: () => [database],
     })
     const app = location({
       service: App,
@@ -187,7 +187,7 @@ describe("layer node", () => {
           return App.of({ run: service.list })
         }),
       ),
-      deps: [users],
+      deps: () => [users],
     })
 
     const result = LayerNode.hoist(LayerNode.group([app]), tags.values.global)
@@ -214,22 +214,22 @@ describe("layer node", () => {
     const first = global({
       service: Database,
       layer: Layer.succeed(Database, Database.of({ name: "first" })),
-      deps: [],
+      deps: () => [],
     })
     const second = global({
       service: Database,
       layer: Layer.succeed(Database, Database.of({ name: "second" })),
-      deps: [],
+      deps: () => [],
     })
     const left = location({
       service: Users,
       layer: Layer.effect(Users, Effect.as(Database, Users.of({ list: Effect.succeed([]) }))),
-      deps: [first],
+      deps: () => [first],
     })
     const right = location({
       service: App,
       layer: Layer.effect(App, Effect.as(Database, App.of({ run: Effect.succeed([]) }))),
-      deps: [second],
+      deps: () => [second],
     })
 
     expect(() => LayerNode.hoist(LayerNode.group([left, right]), tags.values.global)).toThrow(
@@ -244,12 +244,12 @@ describe("layer node", () => {
     const database = global({
       service: Database,
       layer: Layer.succeed(Database, Database.of({ name: "Alice" })),
-      deps: [],
+      deps: () => [],
     })
     const users = location({
       service: Users,
       layer: Layer.effect(Users, Effect.as(Database, Users.of({ list: Effect.succeed([]) }))),
-      deps: [LayerNode.group([database])],
+      deps: () => [LayerNode.group([database])],
     })
     const result = LayerNode.hoist(LayerNode.group([users]), tags.values.global)
 

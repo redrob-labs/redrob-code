@@ -58,4 +58,4 @@ export function path() {
 // imported. Reading it at import time pinned every host in the process to whatever
 // `Flag.REDROB_DB` said when core first loaded, so a second embedded host could not point
 // at its own database file.
-export const node = makeGlobalNode({ service: Service, layer: Layer.suspend(() => layerFromPath(path())), deps: [] })
+export const node = makeGlobalNode({ service: Service, layer: Layer.suspend(() => layerFromPath(path())), deps: () => [] })
