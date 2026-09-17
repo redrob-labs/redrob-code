@@ -12,10 +12,22 @@ import path from "path"
 import { makeRuntime } from "@redrob-code/core/effect/runtime"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@redrob-code/core/installation/version"
-import { NpmConfig } from "@redrob-code/core/npm-config"
 import { InstallationEvent } from "@redrob-code/schema/installation-event"
 
-export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
+/**
+ * How this binary got here.
+ *
+ * `curl` is an install.sh / install.ps1 install, which is the only way we publish. There
+ * used to be `npm`, `yarn`, `pnpm`, `bun`, `brew`, `scoop` and `choco` here, and not one of
+ * them was ever published: the npm package does not exist, the Homebrew formula does not
+ * exist, and the Chocolatey feed returns an empty result set that the old lookup indexed
+ * into unguarded. Detecting a channel we do not publish to means answering "your version is
+ * out of date" with a 404, or crashing, so they are gone.
+ *
+ * `unknown` is a binary we cannot place: a build from source, or a copy someone moved. It is
+ * not upgradable in place and the CLI says so rather than guessing.
+ */
+export type Method = "curl" | "unknown"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
@@ -61,39 +73,39 @@ export class UpgradeFailedError extends Schema.TaggedErrorClass<UpgradeFailedErr
 }
 
 /**
- * The installer Console serves, and the bucket it downloads from.
+ * The installer Console serves, and the releases it downloads from.
  *
  * `curl -fsSL https://console.redrob.ai/code/install.sh | sh` is the public install path, so it is
  * also the upgrade path: the script is fetched and re-run with the version to move to. It reads
  * `REDROB_CODE_VERSION`, `REDROB_CODE_INSTALL_DIR` and `REDROB_CODE_DOWNLOAD_BASE`, and it fetches
- * `$REDROB_CODE_DOWNLOAD_BASE/$VERSION/redrob-code-$OS-$ARCH.tar.gz`, which is what
- * `packages/redrob/script/cdn.ts` publishes. Nothing on this path reads GitHub Releases: this
- * repository is private, so `api.github.com` answers 404 for the people running these builds.
+ * `$REDROB_CODE_DOWNLOAD_BASE/download/v$VERSION/redrob-$OS-$ARCH.<ext>`.
+ *
+ * There is no CDN. Builds are published as GitHub Release assets on this repository, which is
+ * public, and that is the only place they exist. The bucket that used to hold them was written by
+ * a script somebody ran by hand, so it went stale the moment nobody remembered to: its version
+ * marker sat at `0.0.12` while the tenth release of a different version line was already out.
  */
 export const CONSOLE_INSTALL_SCRIPT_URL = "https://console.redrob.ai/code/install.sh"
-export const CDN_DOWNLOAD_BASE = "https://cdn.redrob.ai/code"
+
+/** Where the releases live. `REDROB_CODE_DOWNLOAD_BASE` overrides it so a test can point at loopback. */
+export const RELEASE_DOWNLOAD_BASE = "https://github.com/redrob-labs/redrob-code/releases"
 
 /**
- * The marker `script/cdn.ts` writes last under each prefix it publishes, holding the version those
- * archives are. It is written after the archives so a version it names is always downloadable.
+ * The asset naming the newest version, published by the release workflow after the checksums.
+ *
+ * `releases/latest/download/<name>` resolves to whichever release is newest, so nothing has to
+ * know a tag, and nothing here consults `api.github.com`, which is rate limited to 60 requests an
+ * hour for an anonymous caller. Everyone running these builds is an anonymous caller.
  */
-export const CDN_VERSION_FILE = "version"
+export const RELEASE_VERSION_FILE = "VERSION"
 
-// Response schemas for external version APIs
-const NpmPackage = Schema.Struct({ version: Schema.String })
-const BrewFormula = Schema.Struct({ versions: Schema.Struct({ stable: Schema.String }) })
-const BrewInfoV2 = Schema.Struct({
-  formulae: Schema.Array(Schema.Struct({ versions: Schema.Struct({ stable: Schema.String }) })),
-})
-const ChocoPackage = Schema.Struct({
-  d: Schema.Struct({ results: Schema.Array(Schema.Struct({ Version: Schema.String })) }),
-})
-const ScoopManifest = NpmPackage
+// No response schemas for external version APIs: the only thing consulted is our own release
+// marker, which is a bare version string rather than a document.
 
 export interface Interface {
   readonly info: () => Effect.Effect<Info>
   readonly method: () => Effect.Effect<Method>
-  readonly latest: (method?: Method) => Effect.Effect<string>
+  readonly latest: () => Effect.Effect<string>
   readonly upgrade: (method: Method, target: string) => Effect.Effect<void, UpgradeFailedError>
 }
 
@@ -112,10 +124,10 @@ export function isCurlInstall(execPath: string) {
   return dir.endsWith(path.join(".redrob", "bin")) || dir.endsWith(path.join(".local", "bin"))
 }
 
-/** Where `latest()` asks what the newest published build is, honoring a self-hosted bucket. */
-export function cdnVersionUrl(env: Record<string, string | undefined> = process.env) {
-  const base = env["REDROB_CODE_DOWNLOAD_BASE"]?.trim().replace(/\/+$/, "") || CDN_DOWNLOAD_BASE
-  return `${base}/latest/${CDN_VERSION_FILE}`
+/** Where `latest()` asks what the newest published build is, honoring an override for tests. */
+export function releaseVersionUrl(env: Record<string, string | undefined> = process.env) {
+  const base = env["REDROB_CODE_DOWNLOAD_BASE"]?.trim().replace(/\/+$/, "") || RELEASE_DOWNLOAD_BASE
+  return `${base}/latest/download/${RELEASE_VERSION_FILE}`
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/Installation") {}
@@ -143,34 +155,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       Effect.catch(() => Effect.succeed("")),
     )
 
-    const run = Effect.fnUntraced(
-      function* (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) {
-        const result = yield* appProcess.run(
-          ChildProcess.make(cmd[0], cmd.slice(1), {
-            cwd: opts?.cwd,
-            env: opts?.env,
-            extendEnv: true,
-          }),
-        )
-        return {
-          code: result.exitCode,
-          stdout: result.stdout.toString("utf8"),
-          stderr: result.stderr.toString("utf8"),
-        }
-      },
-      Effect.catch((err) => Effect.succeed({ code: 1, stdout: "", stderr: errorMessage(err) })),
-    )
-
-    const getBrewFormula = Effect.fnUntraced(function* () {
-      const tapFormula = yield* text(["brew", "list", "--formula", "redrob-labs/tap/redrob"])
-      if (tapFormula.includes("redrob")) return "redrob-labs/tap/redrob"
-      const coreFormula = yield* text(["brew", "list", "--formula", "redrob"])
-      if (coreFormula.includes("redrob")) return "redrob"
-      return "redrob"
-    })
-
     const upgradeFailure = (method: Method, result?: { code: number; stdout: string; stderr: string }) => {
-      if (method === "choco") return "not running from an elevated command shell"
       if (result) return `Upgrade failed for ${method} (exit code ${result.code}).`
       return `Upgrade failed for ${method}.`
     }
@@ -214,91 +199,22 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
       }),
       method: Effect.fn("Installation.method")(function* () {
+        // One question now: did install.sh / install.ps1 put this binary here. There used to be
+        // seven package-manager probes below this line, each shelling out to a tool that might not
+        // exist to look for a package we never published. They ran on every `redrob upgrade`.
         if (isCurlInstall(process.execPath)) return "curl" as Method
-        const exec = process.execPath.toLowerCase()
-
-        const checks: Array<{ name: Method; command: () => Effect.Effect<string> }> = [
-          { name: "npm", command: () => text(["npm", "list", "-g", "--depth=0"]) },
-          { name: "yarn", command: () => text(["yarn", "global", "list"]) },
-          { name: "pnpm", command: () => text(["pnpm", "list", "-g", "--depth=0"]) },
-          { name: "bun", command: () => text(["bun", "pm", "ls", "-g"]) },
-          { name: "brew", command: () => text(["brew", "list", "--formula", "redrob"]) },
-          { name: "scoop", command: () => text(["scoop", "list", "redrob"]) },
-          { name: "choco", command: () => text(["choco", "list", "--limit-output", "redrob"]) },
-        ]
-
-        checks.sort((a, b) => {
-          const aMatches = exec.includes(a.name)
-          const bMatches = exec.includes(b.name)
-          if (aMatches && !bMatches) return -1
-          if (!aMatches && bMatches) return 1
-          return 0
-        })
-
-        for (const check of checks) {
-          const output = yield* check.command()
-          const installedName =
-            check.name === "brew" || check.name === "choco" || check.name === "scoop" ? "redrob" : "redrob-code"
-          if (output.includes(installedName)) {
-            return check.name
-          }
-        }
-
         return "unknown" as Method
       }),
-      latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
-        const detectedMethod = installMethod || (yield* result.method())
-
-        if (detectedMethod === "brew") {
-          const formula = yield* getBrewFormula()
-          if (formula.includes("/")) {
-            const infoJson = yield* text(["brew", "info", "--json=v2", formula])
-            const info = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BrewInfoV2))(infoJson)
-            return info.formulae[0].versions.stable
-          }
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get("https://formulae.brew.sh/api/formula/redrob.json").pipe(
-              HttpClientRequest.acceptJson,
-            ),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(BrewFormula)(response)
-          return data.versions.stable
-        }
-
-        if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              `${yield* NpmConfig.registry(process.cwd())}/redrob-code/${InstallationChannel}`,
-            ).pipe(HttpClientRequest.acceptJson),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(NpmPackage)(response)
-          return data.version
-        }
-
-        if (detectedMethod === "choco") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              "https://community.chocolatey.org/api/v2/Packages?$filter=Id%20eq%20%27redrob%27%20and%20IsLatestVersion&$select=Version",
-            ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json;odata=verbose" })),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(ChocoPackage)(response)
-          return data.d.results[0].Version
-        }
-
-        if (detectedMethod === "scoop") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              "https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/redrob.json",
-            ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json" })),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(ScoopManifest)(response)
-          return data.version
-        }
-
-        // Everything else, `curl` and an install we could not place alike, reads the CDN marker. It
-        // is the version install.sh can actually fetch, which a GitHub release on a private repo is
-        // not, and an unreadable marker is a defect rather than a version nobody can install.
-        const url = cdnVersionUrl()
+      latest: Effect.fn("Installation.latest")(function* () {
+        // One source. `releases/latest/download/VERSION` is written by the release workflow after
+        // the checksums, so a version it names is always downloadable, and it resolves through
+        // GitHub's own redirect rather than the API, which has no anonymous rate budget worth
+        // spending here.
+        //
+        // An unreadable or unparseable marker is a defect and dies loudly. The alternative is
+        // reporting some fallback as "latest", which is how a client sits on a version for ten
+        // days believing it is current.
+        const url = releaseVersionUrl()
         const response = yield* httpOk.execute(HttpClientRequest.get(url))
         const published = (yield* response.text).trim().replace(/^v/, "")
         if (!semver.valid(published))
@@ -311,45 +227,13 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           case "curl":
             upgradeResult = yield* upgradeCurl(target)
             break
-          case "npm":
-            upgradeResult = yield* run(["npm", "install", "-g", `redrob-code@${target}`])
-            break
-          case "pnpm":
-            upgradeResult = yield* run(["pnpm", "install", "-g", `redrob-code@${target}`])
-            break
-          case "bun":
-            upgradeResult = yield* run(["bun", "install", "-g", `redrob-code@${target}`])
-            break
-          case "brew": {
-            const formula = yield* getBrewFormula()
-            const env = { HOMEBREW_NO_AUTO_UPDATE: "1" }
-            if (formula.includes("/")) {
-              const tap = yield* run(["brew", "tap", "redrob-labs/tap"], { env })
-              if (tap.code !== 0) {
-                upgradeResult = tap
-                break
-              }
-              const repo = yield* text(["brew", "--repo", "redrob-labs/tap"])
-              const dir = repo.trim()
-              if (dir) {
-                const pull = yield* run(["git", "pull", "--ff-only"], { cwd: dir, env })
-                if (pull.code !== 0) {
-                  upgradeResult = pull
-                  break
-                }
-              }
-            }
-            upgradeResult = yield* run(["brew", "upgrade", formula], { env })
-            break
-          }
-          case "choco":
-            upgradeResult = yield* run(["choco", "upgrade", "redrob", `--version=${target}`, "-y"])
-            break
-          case "scoop":
-            upgradeResult = yield* run(["scoop", "install", `redrob@${target}`])
-            break
           default:
-            return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })
+            // `unknown`. Re-running install.sh over a binary we did not place would write into
+            // whatever directory it happens to sit in, so this refuses and the CLI tells the
+            // reader to install with the published command instead.
+            return yield* new UpgradeFailedError({
+              stderr: `redrob at ${process.execPath} was not installed by install.sh, so it cannot be upgraded in place. Reinstall with: curl -fsSL ${CONSOLE_INSTALL_SCRIPT_URL} | sh`,
+            })
         }
         if (!upgradeResult || upgradeResult.code !== 0) {
           return yield* new UpgradeFailedError({ stderr: upgradeFailure(m, upgradeResult) })

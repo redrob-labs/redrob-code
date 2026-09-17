@@ -20,9 +20,9 @@ software came from.
 
 What the fork changes: a different provider model (a single Redrob workspace endpoint
 rather than per-vendor keys), Korean as a first-class locale, and a reduced package set
-aimed at the terminal client rather than the hosted console. Releases track upstream
-version numbers with a `-redrob.N` suffix, so `v1.18.31-redrob.1` is our first build
-against upstream's `v1.18.31`.
+aimed at the terminal client rather than the hosted console. Releases have their own
+version line starting at `0.1.0`; the upstream version a build is based on is recorded in
+`UPSTREAM_VERSION` and stated in the release notes. See `docs/VERSIONING.md`.
 
 ### Installation
 
