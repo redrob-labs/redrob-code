@@ -74,7 +74,8 @@ describe("cost", () => {
       the long-context rate applies past the short-context boundary, and the priority tier is 1.75x.
     */
     expect(source).toContain('input.metadata?.["redrob"]?.["costUsd"]')
-    expect(source).toContain("return { cost: gatewayCostUsd, tokens }")
+    // The routing fields ride along on the same return now; the cost preference itself is unchanged.
+    expect(source).toContain("return { cost: gatewayCostUsd, tokens, ...routing }")
   })
 
   it("ignores a malformed figure instead of zeroing the cost", () => {

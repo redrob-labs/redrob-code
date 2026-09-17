@@ -469,6 +469,20 @@ export const Assistant = Schema.Struct({
   }),
   summary: Schema.optional(Schema.Boolean),
   cost: Schema.Finite,
+  /*
+   * Who actually served this message, which `modelID` above does not answer.
+   *
+   * `modelID` is what was REQUESTED, and against Redrob's router that is `auto`, so a finished message
+   * could not name the model that produced it. The gateway sends both facts on its `redrob` block right
+   * beside the cost figure; the engine dropped them, because a schema that does not name a field drops
+   * it. That is the same defect the cost figure itself had, in the same block, one release earlier.
+   *
+   * `upstreamProvider` is the vendor that answered and is NOT always the model's own vendor: a pinned
+   * vendor that throws falls through to the fallback, so a fallback appearing on every message is the
+   * signal that the primary is broken rather than busy. Optional because only this gateway sends them.
+   */
+  routedModel: Schema.optional(Schema.String),
+  upstreamProvider: Schema.optional(Schema.String),
   tokens: Schema.Struct({
     total: Schema.optional(Schema.Finite),
     input: Schema.Finite,

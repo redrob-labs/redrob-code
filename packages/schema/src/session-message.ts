@@ -175,6 +175,17 @@ export const Assistant = Schema.Struct({
   }).pipe(optional),
   finish: Schema.String.pipe(optional),
   cost: Schema.Finite.pipe(optional),
+  /*
+   * Who actually served this message.
+   *
+   * `model` above is the REQUEST, and against Redrob's router that is `auto`, so a finished message
+   * could not say which model produced it. The gateway sends both facts on its `redrob` block beside the
+   * cost; they stopped here, because a schema that does not name a field drops it - the same way the
+   * gateway's own cost figure was dropped until it was named. Optional because only that gateway sends
+   * them, so absent is the normal case for every other provider.
+   */
+  routedModel: Schema.String.pipe(optional),
+  upstreamProvider: Schema.String.pipe(optional),
   tokens: Schema.Struct({
     input: Schema.Finite,
     output: Schema.Finite,
