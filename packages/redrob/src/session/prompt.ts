@@ -81,6 +81,37 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
+/**
+ * Offering the user a small set of answers as tappable options.
+ *
+ * The desktop app already turns a suggestion into a filled composer: task suggestions and the env-var
+ * request card both do it, and both were built for one specific moment. What was missing was any way for
+ * the MODEL to offer options at a moment it chose, so a question that has three sensible answers arrived
+ * as prose and the user typed one of them back by hand.
+ *
+ * A marker on the last line rather than a tool call or a structured field, for two reasons. It costs
+ * nothing when unused: a model that never emits it behaves exactly as before, and no schema changes. And
+ * a client that does not parse it degrades into something still readable, because the line reads as a
+ * plain list of choices - which is the same reason the app's own option lines are written that way.
+ *
+ * Appended for every provider from the one assembly point, not copied into the fourteen provider prompt
+ * files. A behaviour that is meant to be universal and lives in fourteen files is a behaviour that will
+ * be true of eleven of them within a year.
+ */
+const ANSWER_OPTIONS_PROMPT = [
+  `When your reply ends by asking the user to choose between a small number of concrete answers, you MAY end the message with a single line in exactly this form:`,
+  `[OPTIONS: first choice | second choice | third choice]`,
+  ``,
+  `Rules for that line:`,
+  `- It must be the LAST line of your message, and there must be at most one such line.`,
+  `- Two to five choices, separated by a pipe. Keep each choice short enough to read on a button.`,
+  `- Write each choice in the USER's voice, as an instruction to you: "Merge it now", not "I will merge it".`,
+  `- Every choice must stand alone. Never write a choice that only modifies another one.`,
+  `- The message must still make sense with the line removed, because not every client renders it.`,
+  `- Do NOT use it for a question that needs a real answer in the user's own words, and do NOT use it to`,
+  `  confirm a destructive action where the user should have to state what they want.`,
+].join("\n")
+
 function mcpResourceBase64Size(value: string) {
   const trimmed = value.replace(/\s/g, "")
   const padding = trimmed.endsWith("==") ? 2 : trimmed.endsWith("=") ? 1 : 0
@@ -1266,6 +1297,7 @@ const layer = Layer.effect(
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
+              ANSWER_OPTIONS_PROMPT,
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
