@@ -18,7 +18,54 @@ const COMPACTION_BUFFER = 20_000
  */
 const DEFAULT_COMPACTION_THRESHOLD_PERCENT = 70
 
-export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outputTokenMax?: number }) {
+/**
+ * The most one turn's INPUT may cost before compaction fires, in USD.
+ *
+ * The percentage above scales with the window. Money does not. Against a 1,000,000-token model at
+ * $3.15 per million input tokens, 70% is 686,000 tokens, so a conversation is allowed to reach about
+ * $2.16 of input on EVERY subsequent turn before anything is summarised, and the turns before that one
+ * are not cheap either: a measured session sat at 384,000 tokens and was billed $1.21 per turn, with the
+ * threshold still 300,000 tokens away.
+ *
+ * That is the failure the percentage was introduced to fix, seen from the other side. A fixed token
+ * reserve was too late on a large window; a fixed percentage of a large window is too expensive on it.
+ * The two limits answer different questions, so both apply and whichever comes first wins.
+ *
+ * $0.50 rather than a token count, because the number a user recognises is the one on their invoice, and
+ * the token count that produces it differs by a factor of ten across models they switch between freely.
+ * A model with no published input price is governed by the percentage alone.
+ */
+const DEFAULT_MAX_TURN_INPUT_COST_USD = 0.5
+
+/**
+ * The token count at which one turn's input reaches the cost ceiling, or undefined when it cannot be
+ * priced.
+ *
+ * Uses the long-context rate once the conversation is past the tier that publishes one, since that is the
+ * rate the next turn will actually be billed at. Pricing the ceiling at the cheap rate would place the
+ * trigger past the point where the expensive rate has already been paid.
+ */
+function costCeilingTokens(input: {
+  cfg: ConfigV1.Info
+  model: Provider.Model
+  tokens?: number
+}): number | undefined {
+  const budget = input.cfg.compaction?.maxTurnInputCostUsd ?? DEFAULT_MAX_TURN_INPUT_COST_USD
+  if (budget <= 0) return undefined
+  const over200K = input.model.cost?.experimentalOver200K
+  const perMillion =
+    over200K && (input.tokens ?? 0) > 200_000 ? over200K.input : input.model.cost?.input
+  if (!perMillion || perMillion <= 0) return undefined
+  return Math.floor((budget / perMillion) * 1_000_000)
+}
+
+export function usable(input: {
+  cfg: ConfigV1.Info
+  model: Provider.Model
+  outputTokenMax?: number
+  /** Tokens already in play, used only to pick the rate the NEXT turn will be billed at. */
+  tokens?: number
+}) {
   const context = input.model.limit.context
   if (context === 0) return 0
 
@@ -49,7 +96,14 @@ export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outpu
    */
   const output = ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax)
   const headroom = Math.max(0, budget - Math.min(COMPACTION_BUFFER, output))
-  return Math.floor((headroom * clamped) / 100)
+  const windowLimit = Math.floor((headroom * clamped) / 100)
+  /*
+   * The cheaper of the two limits wins. `reserved` above returns before this on purpose: a caller who set
+   * an explicit token budget said that number, and silently tightening it to a price they did not name
+   * would be the same overreach the percentage was careful to avoid.
+   */
+  const ceiling = costCeilingTokens({ cfg: input.cfg, model: input.model, tokens: input.tokens })
+  return ceiling === undefined ? windowLimit : Math.min(windowLimit, ceiling)
 }
 
 export function isOverflow(input: {
@@ -75,5 +129,5 @@ export function isOverflow(input: {
 
   const count =
     input.tokens.total || input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
-  return count >= usable(input)
+  return count >= usable({ ...input, tokens: count })
 }
