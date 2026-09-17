@@ -1,13 +1,6 @@
-<p align="center">
-  <a href="https://github.com/redrob-labs/redrob-code">
-    <picture>
-      <source srcset="packages/identity/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/identity/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/identity/logo-ornate-light.svg" alt="레드롭 코드 로고">
-    </picture>
-  </a>
-</p>
-<p align="center">레드롭 코드: 터미널에서 쓰는 AI 코딩 에이전트.</p>
+# 레드롭 코드
+
+레드롭 코드: 터미널에서 쓰는 AI 코딩 에이전트.
 
 <p align="center">
   <a href="README.md">English</a> |

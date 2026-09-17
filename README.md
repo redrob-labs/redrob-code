@@ -1,13 +1,6 @@
-<p align="center">
-  <a href="https://github.com/redrob-labs/redrob-code">
-    <picture>
-      <source srcset="packages/identity/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/identity/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/identity/logo-ornate-light.svg" alt="Redrob Code logo">
-    </picture>
-  </a>
-</p>
-<p align="center">Redrob Code, the AI coding agent for your terminal.</p>
+# Redrob Code
+
+Redrob Code, the AI coding agent for your terminal.
 
 <p align="center">
   <a href="README.md">English</a> |
