@@ -598,13 +598,57 @@ jobs:
           # else happens to be in this checkout's tag namespace, which is how a tag nobody
           # decided to publish ends up published.
           git push origin "refs/tags/$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
+
+          # The release is created EMPTY and the assets are uploaded one at a time, each
+          # retried. `gh release create "$TAG" assets/*` uploads all twenty in one command and
+          # rolls the whole release back when any single one fails, so a transient 5xx on the
+          # nineteenth asset discards a run that has already spent forty minutes building,
+          # signing and notarizing. That is not hypothetical: v0.1.0 lost two consecutive
+          # attempts that way, to `504 Gateway Timeout` and `500 Error creating asset temp dir`
+          # on different assets.
+          #
+          # Splitting it also collapses the create and re-run paths into one: an existing
+          # release has its notes replaced and its assets clobbered, which is what a retry
+          # needs anyway.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::notice::release $TAG exists; replacing its notes and assets"
             gh release edit "$TAG" --notes-file notes.md
-            gh release upload "$TAG" assets/* --clobber
           else
-            gh release create "$TAG" --title "$TAG" --notes-file notes.md assets/*
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
           fi
+
+          failed=()
+          for asset in assets/*; do
+            [ -f "$asset" ] || continue
+            uploaded=false
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$asset" --clobber; then
+                uploaded=true
+                break
+              fi
+              echo "::warning::upload of $(basename "$asset") failed on attempt $attempt"
+              sleep $((attempt * 10))
+            done
+            if [ "$uploaded" = false ]; then
+              failed+=("$(basename "$asset")")
+            fi
+          done
+
+          if [ ${#failed[@]} -ne 0 ]; then
+            echo "::error::these assets did not upload after three attempts: ${failed[*]}"
+            echo "The release and tag exist, so re-running this job resumes rather than restarts."
+            exit 1
+          fi
+
+          # A release missing an archive installs nothing on that platform while looking
+          # published, so the asset list is checked rather than assumed.
+          published="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+          expected="$(find assets -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          if [ "$published" != "$expected" ]; then
+            echo "::error::release $TAG has $published assets, expected $expected"
+            exit 1
+          fi
+          echo "::notice::release $TAG published with $published assets"
 
       - name: Point at the promotion to main
         if: ${{ !inputs.dry_run }}
