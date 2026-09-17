@@ -14,6 +14,15 @@ before editing a package** — `packages/redrob/`, `packages/redrob/test/`, `pac
 
 Gitflow. **`develop` is the default branch and the base of every pull request.**
 
+Branch names come from `docs/BRANCHING.md` and nothing else: `feature/<slug>`,
+`sync/upstream-<tag>`, `hotfix/<slug>`, `release/<version>`. Do not invent a prefix, and in
+particular do not name a branch after the tool or agent that made it: a branch name says what the
+change is, not who typed it.
+
+The table has no name for the back-merge that closes a hotfix, which is part of why that step gets
+skipped. Until it does, use `hotfix/<slug>-backmerge` and say in the pull request that it carries
+`main` into `develop`.
+
 - **`develop`** integrates. Release from it: the `release` workflow builds, signs, tags, and then
   prints a link to open the promotion pull request from `develop` into `main`.
 - **`main`** is released state. It moves through a reviewed pull request, not an automated push.
