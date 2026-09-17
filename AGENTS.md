@@ -29,12 +29,18 @@ skipped. Until it does, use `hotfix/<slug>-backmerge` and say in the pull reques
 - **Hotfix**: branch from `main`, merge into `main`, release, **then merge `main` back into
   `develop`**. This is the step that gets skipped. #13 fixed the lockfile on `main`, the back-merge
   never happened, and for a month `bun install --frozen-lockfile` failed on the default branch.
-  A `branch-sync.yml` that fails on push to `main` while `main` holds a commit `develop` does not is
-  **proposed in #26 and not merged**, so nothing checks this today. As of writing, `main` is four
-  commits ahead and the lockfile fix is still missing from `develop`.
+  `branch-sync.yml` now fails on push to `main` while `main` holds a commit `develop` does not, so
+  this is checked rather than remembered.
 - Both branches are protected: pull requests only, force pushes and deletions blocked, zero required
   reviews, admin enforcement off. Required checks: `typecheck`, `unit (linux)`, `core (linux)`,
   `httpapi (linux)`.
+
+Both rules above are enforced by CI, not by memory. `gitflow.yml` runs on every pull request and
+fails when the head branch prefix is not one of the four types, because a prefix nobody defined
+(`kiro/`) reached this repository while the rule sat in prose. `branch-sync.yml` runs on every push
+to `main` and owns the back-merge rule; the two are separate workflows because a branch name can
+only be judged once a pull request exists, while a missing back-merge can only be judged after
+`main` has moved.
 
 The invariant, readable by hand:
 
