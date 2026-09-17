@@ -489,7 +489,10 @@ jobs:
             # archive it just downloaded is the failure this avoids. macOS ships `unzip` and
             # the Windows installer uses `Expand-Archive`, so those stay zip-only rather
             # than doubling every release's asset count for nothing.
-            tar -czf "../../assets/${directory}.tar.gz" -C "$directory/bin" .
+            #
+            # One `..`, not two: this runs from `unsigned/` while the zip above runs from
+            # `$directory/bin`, so the same destination is a different number of levels up.
+            tar -czf "../assets/${directory}.tar.gz" -C "$directory/bin" .
           done
 
       - name: Checksums
