@@ -63,8 +63,11 @@ Full detail in `docs/BRANCHING.md`.
   instead.
 - Judge by the exit code, not by a pass count. A suite can print `0 fail` and still exit non-zero
   when a file fails to load: its tests are never counted and a `(fail)` grep finds nothing.
-- A version suffix is load-bearing. `v1.18.31-redrob.9` is our ninth build against upstream's
-  `v1.18.31`; the suffix guarantees no tag we publish is a string upstream also publishes.
+- The version line is ours and starts at `0.1.0`. It does not encode the upstream version, which
+  lives in `UPSTREAM_VERSION` at the repository root and is what the release notes read. Do not
+  reintroduce a `-redrob.N` suffix: it made every release a semver prerelease, which sorts below
+  the release it precedes and made `getReleaseType()` call everything a patch. See
+  `docs/VERSIONING.md`.
 
 ## Where a change surfaces in the app
 

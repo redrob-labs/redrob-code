@@ -9,7 +9,7 @@ export async function upgrade() {
   const config = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal()))
   if (config.autoupdate === false || Flag.REDROB_DISABLE_AUTOUPDATE) return
   const method = await Installation.method()
-  const latest = await Installation.latest(method).catch(() => {})
+  const latest = await Installation.latest().catch(() => {})
   if (!latest) return
 
   if (Flag.REDROB_ALWAYS_NOTIFY_UPDATE) {

@@ -2,8 +2,10 @@ name: release
 
 # Build, sign, and publish a Redrob Code release.
 #
-# Versions track upstream with a `-redrob.N` suffix, so no tag this publishes is a string
-# upstream also publishes and nobody can mistake our artifact for theirs.
+# Versions are ours and start at 0.1.0. They are NOT derived from the upstream version
+# this tree is built on: that provenance lives in `UPSTREAM_VERSION` at the repository
+# root, which the release notes read. See docs/VERSIONING.md for why the old
+# `1.18.31-redrob.N` shape was retired.
 #
 # `workflow_dispatch` ONLY. This job reaches real signing credentials, so it must never be
 # reachable from a pull request, a comment, or a schedule. Dispatch requires write access
@@ -17,15 +19,15 @@ name: release
 on:
   workflow_dispatch:
     inputs:
-      upstream_version:
-        description: "Upstream version this builds against, without the v, e.g. 1.18.32"
+      bump:
+        description: "Which part of the version to advance."
         required: true
-        type: string
-      iteration:
-        description: "Our build number against that upstream version. 1 unless re-releasing."
-        required: true
-        default: "1"
-        type: string
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
       dry_run:
         description: "Build and sign, but publish nothing."
         required: false
@@ -41,7 +43,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: release-${{ inputs.upstream_version }}-${{ inputs.iteration }}
+  group: release-${{ inputs.bump }}
   cancel-in-progress: false
 
 jobs:
@@ -54,25 +56,61 @@ jobs:
     outputs:
       version: ${{ steps.compute.outputs.version }}
       tag: ${{ steps.compute.outputs.tag }}
+      upstream: ${{ steps.compute.outputs.upstream }}
     steps:
+      # Tags are the version state, so this job needs them. `fetch-tags` alone is not
+      # enough with a shallow checkout: the tag objects arrive without the commits they
+      # point at and `--sort=-v:refname` then has nothing to order.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
       - id: compute
         env:
-          UPSTREAM: ${{ inputs.upstream_version }}
-          ITERATION: ${{ inputs.iteration }}
+          BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          if ! printf '%s' "$UPSTREAM" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::upstream_version must look like 1.18.32, got '$UPSTREAM'"
+          # Only plain `vMAJOR.MINOR.PATCH` counts. Anything carrying a `-` is a prerelease
+          # or a legacy upstream-derived tag, and letting one of those win here would make
+          # the next version a continuation of a line we deliberately left behind.
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+            | grep -v -- '-' | head -n1 || true)"
+          if [ -z "$latest" ]; then
+            # No release yet. A `minor` bump from here is 0.1.0, which is the first release.
+            current="0.0.0"
+            echo "::notice::no existing release tag; bumping from $current"
+          else
+            current="${latest#v}"
+            echo "::notice::newest release tag is $latest"
+          fi
+          major="${current%%.*}"
+          rest="${current#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "::error::unknown bump '$BUMP'"; exit 1 ;;
+          esac
+          version="${major}.${minor}.${patch}"
+          if git rev-parse --verify --quiet "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version already exists; a release cannot be recomputed onto an existing tag"
             exit 1
           fi
-          if ! printf '%s' "$ITERATION" | grep -qE '^[0-9]+$'; then
-            echo "::error::iteration must be a number, got '$ITERATION'"
+          # The upstream version the tag no longer carries. Absent is a defect rather than
+          # a blank field: the release notes state what this is built on, and a release
+          # that cannot say so should not be published.
+          if [ ! -s UPSTREAM_VERSION ]; then
+            echo "::error::UPSTREAM_VERSION is missing or empty; see docs/VERSIONING.md"
             exit 1
           fi
-          version="${UPSTREAM}-redrob.${ITERATION}"
+          upstream="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "::notice::releasing v$version (tracks opencode v$UPSTREAM)"
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "::notice::releasing v$version (built on opencode v$upstream)"
 
   build:
     needs: version
@@ -446,14 +484,34 @@ jobs:
           for directory in redrob-linux-*; do
             [ -d "$directory" ] || continue
             (cd "$directory/bin" && zip -qr "../../../assets/${directory}.zip" .)
+            # Both formats for Linux, and only for Linux. A minimal container routinely has
+            # `tar` and no `unzip`, and install.sh running on a machine that cannot open the
+            # archive it just downloaded is the failure this avoids. macOS ships `unzip` and
+            # the Windows installer uses `Expand-Archive`, so those stay zip-only rather
+            # than doubling every release's asset count for nothing.
+            tar -czf "../../assets/${directory}.tar.gz" -C "$directory/bin" .
           done
 
       - name: Checksums
         working-directory: assets
         run: |
           set -euo pipefail
-          sha256sum redrob-*.zip > SHA256SUMS
+          sha256sum redrob-*.zip redrob-*.tar.gz > SHA256SUMS
           cat SHA256SUMS
+
+      # The marker install.sh and `redrob upgrade` read to answer "what is the newest
+      # version". Written AFTER the checksums so it is deliberately not one of the files
+      # SHA256SUMS covers: it names a version rather than carrying a payload, and the
+      # archive it points at is checksum-verified once fetched.
+      #
+      # `releases/latest/download/VERSION` resolves to whichever release is newest, so no
+      # client has to hardcode a tag and nothing here consults the GitHub API, which is
+      # rate limited to 60 requests an hour for an anonymous caller.
+      - name: Write the latest-version marker
+        working-directory: assets
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: printf '%s\n' "$VERSION" > VERSION
 
       # Lets anyone verify an artifact was produced by this repository and this workflow,
       # which a code signature alone does not establish -- a signature says the key was
@@ -461,14 +519,16 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: assets/redrob-*.zip
+          subject-path: |
+            assets/redrob-*.zip
+            assets/redrob-*.tar.gz
 
       - name: Create the release
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-          UPSTREAM: ${{ inputs.upstream_version }}
+          UPSTREAM: ${{ needs.version.outputs.upstream }}
           WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
         run: |
           set -euo pipefail
@@ -480,10 +540,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           {
-            echo "Tracks [opencode v$UPSTREAM](https://github.com/anomalyco/opencode/releases/tag/v$UPSTREAM)."
+            echo "Built on [opencode v$UPSTREAM](https://github.com/anomalyco/opencode/releases/tag/v$UPSTREAM)."
             echo
-            echo "The \`-redrob.N\` suffix means this is our build against that upstream"
-            echo "version, not a mirror of upstream's own release."
+            echo "Redrob Code has its own version line. This number is not upstream's and does"
+            echo "not track it: what this build is based on is recorded in \`UPSTREAM_VERSION\`"
+            echo "and stated above. See \`docs/VERSIONING.md\`."
+            echo
+            echo "## Installing"
+            echo
+            echo "macOS and Linux:"
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://console.redrob.ai/code/install.sh | sh"
+            echo '```'
+            echo
+            echo "Windows, in PowerShell:"
+            echo
+            echo '```powershell'
+            echo "irm https://console.redrob.ai/code/install.ps1 | iex"
+            echo '```'
+            echo
+            echo "These releases are the only place builds are published. There is no CDN"
+            echo "mirror, and an install from before 0.1.0 does not upgrade into this line:"
+            echo "run the command above again to move onto it."
             echo
             echo "## Verifying"
             echo
@@ -506,12 +585,16 @@ jobs:
             echo
             echo "Checksums are in \`SHA256SUMS\`."
           } > notes.md
-          git tag -a "$TAG" -m "Redrob Code $TAG — tracks opencode v$UPSTREAM" 2>/dev/null || \
+          git tag -a "$TAG" -m "Redrob Code $TAG (built on opencode v$UPSTREAM)" 2>/dev/null || \
             echo "tag $TAG already exists locally"
           # A release that fails after tagging must be retryable. Without this a single
           # transient failure in the steps below leaves the version permanently unusable:
           # the tag exists, so every retry dies on push before reaching the release.
-          git push origin "$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
+          #
+          # The tag is named explicitly. `--tags` and `--follow-tags` would push whatever
+          # else happens to be in this checkout's tag namespace, which is how a tag nobody
+          # decided to publish ends up published.
+          git push origin "refs/tags/$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::notice::release $TAG exists; replacing its notes and assets"
             gh release edit "$TAG" --notes-file notes.md

@@ -126,19 +126,6 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
   if (targets.shellConfig) {
     prompts.log.info(`  ✓ Shell PATH in ${shortenPath(targets.shellConfig)}`)
   }
-
-  if (method !== "curl" && method !== "unknown") {
-    const cmds: Record<string, string> = {
-      npm: "npm uninstall -g redrob-code",
-      pnpm: "pnpm uninstall -g redrob-code",
-      bun: "bun remove -g redrob-code",
-      yarn: "yarn global remove redrob-code",
-      brew: "brew uninstall redrob",
-      choco: "choco uninstall redrob",
-      scoop: "scoop uninstall redrob",
-    }
-    prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
-  }
 }
 
 async function executeUninstall(method: Installation.Method, targets: RemovalTargets) {
@@ -178,36 +165,10 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     }
   }
 
-  if (method !== "curl" && method !== "unknown") {
-    const cmds: Record<string, string[]> = {
-      npm: ["npm", "uninstall", "-g", "redrob-code"],
-      pnpm: ["pnpm", "uninstall", "-g", "redrob-code"],
-      bun: ["bun", "remove", "-g", "redrob-code"],
-      yarn: ["yarn", "global", "remove", "redrob-code"],
-      brew: ["brew", "uninstall", "redrob"],
-      choco: ["choco", "uninstall", "redrob"],
-      scoop: ["scoop", "uninstall", "redrob"],
-    }
-
-    const cmd = cmds[method]
-    if (cmd) {
-      spinner.start(`Running ${cmd.join(" ")}...`)
-      const result = await Process.run(method === "choco" ? ["choco", "uninstall", "redrob", "-y", "-r"] : cmd, {
-        nothrow: true,
-      })
-      if (result.code !== 0) {
-        spinner.stop(`Package manager uninstall failed: exit code ${result.code}`, 1)
-        const text = `${result.stdout.toString("utf8")}\n${result.stderr.toString("utf8")}`
-        if (method === "choco" && text.includes("not running from an elevated command shell")) {
-          prompts.log.warn(`You may need to run '${cmd.join(" ")}' from an elevated command shell`)
-        } else {
-          prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
-        }
-      } else {
-        spinner.stop("Package removed")
-      }
-    }
-  }
+  // There is no package-manager uninstall branch. This used to shell out to npm, pnpm, bun,
+  // yarn, brew, choco or scoop depending on how the binary was detected, and none of those
+  // packages was ever published, so the branch was reachable only by passing a method that
+  // detection could no longer return. An install is install.sh's or it is one we did not place.
 
   if (method === "curl" && targets.binary) {
     UI.empty()

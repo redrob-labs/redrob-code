@@ -79,12 +79,14 @@ into `main`.
 
 ## Releasing
 
-Versions track upstream with a `-redrob.N` suffix: `v1.18.31-redrob.1` is our first build
-against upstream's `v1.18.31`, and `-redrob.2` is a second build against the same
-upstream version. The suffix is not decoration — it guarantees no tag we publish is a
-string upstream also publishes, so nobody can mistake our artifact for theirs.
+Versions are ours and start at `0.1.0`. They are not derived from the upstream version the
+tree is built on: that is recorded in `UPSTREAM_VERSION` at the repository root, and the
+release notes read it so every release still states what it is based on. The old
+`-redrob.N` suffix was retired because it made every release a semver prerelease, which
+sorts below the release it precedes. See `docs/VERSIONING.md`.
 
-Run the `release` workflow from the Actions tab against `develop`. It builds every
+Run the `release` workflow from the Actions tab against `develop` with a `bump` of `patch`,
+`minor` or `major`. It computes the next version from the newest `v*` tag, builds every
 platform, signs and notarizes the macOS binaries, signs the Windows binary when Azure
 Trusted Signing is configured, attaches build provenance, and creates the tagged release.
 It then prints a link to open the promotion pull request from `develop` into `main`.

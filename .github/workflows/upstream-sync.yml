@@ -57,7 +57,17 @@ jobs:
         run: |
           set -euo pipefail
           git remote add upstream https://github.com/anomalyco/opencode.git
-          git fetch --quiet --tags upstream
+          # Upstream tags land in `refs/upstream-tags/*`, NOT `refs/tags/*`.
+          #
+          # Upstream publishes over a thousand tags and this fork inherited every one of them,
+          # which is what made our own ten releases impossible to find and made a `v*` glob
+          # deletion unusable. They were deleted, and this refspec is what keeps them deleted:
+          # a plain `--tags` fetch pulls the whole set back into the tag namespace, where the
+          # next `git push --tags` would republish them.
+          #
+          # `--no-tags` is also passed because the refspec alone does not stop git's automatic
+          # tag following from filling `refs/tags/*` with anything reachable.
+          git fetch --quiet --no-tags upstream "+refs/tags/*:refs/upstream-tags/*"
 
           if [ -n "${REQUESTED:-}" ]; then
             tag="$REQUESTED"
@@ -66,14 +76,14 @@ jobs:
             echo "upstream's latest release is $tag"
           fi
 
-          if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+          if ! git rev-parse --verify --quiet "refs/upstream-tags/$tag" >/dev/null; then
             echo "::error::upstream has no tag $tag"
             exit 1
           fi
 
           # Nothing to do when the tag is already an ancestor. Reported rather than
           # failed: a scheduled run finding no new release is the normal case.
-          if git merge-base --is-ancestor "refs/tags/$tag" HEAD; then
+          if git merge-base --is-ancestor "refs/upstream-tags/$tag" HEAD; then
             echo "already-merged=true" >> "$GITHUB_OUTPUT"
             echo "::notice::$tag is already an ancestor of develop; nothing to sync"
           else
@@ -94,11 +104,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
 
-          base="$(git merge-base HEAD "refs/tags/$TAG")"
+          base="$(git merge-base HEAD "refs/upstream-tags/$TAG")"
           echo "merge base: $(git rev-parse --short "$base")"
-          echo "upstream commits to absorb: $(git rev-list --count "$base..refs/tags/$TAG")"
+          echo "upstream commits to absorb: $(git rev-list --count "$base..refs/upstream-tags/$TAG")"
 
-          if git merge --no-edit "refs/tags/$TAG"; then
+          if git merge --no-edit "refs/upstream-tags/$TAG"; then
             echo "conflicted=false" >> "$GITHUB_OUTPUT"
           else
             # Record what disagreed BEFORE aborting, then abort so the pushed branch is a
@@ -162,10 +172,12 @@ jobs:
             echo
             echo '```sh'
             echo "git remote add upstream https://github.com/anomalyco/opencode.git  # once"
-            echo "git fetch upstream --tags"
+            echo "# Upstream's tags stay out of refs/tags: it publishes over a thousand of them"
+            echo "# and this repository's own releases have to remain findable."
+            echo "git fetch --no-tags upstream '+refs/tags/*:refs/upstream-tags/*'"
             echo "git switch develop && git pull"
             echo "git switch -c sync/upstream-$TAG"
-            echo "git merge $TAG"
+            echo "git merge refs/upstream-tags/$TAG"
             echo '```'
             echo
             echo "Conflicts here are usually rebranding: upstream edited a line we renamed."
