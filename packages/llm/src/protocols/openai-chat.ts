@@ -153,9 +153,27 @@ const OpenAIChatChoice = Schema.Struct({
   finish_reason: optionalNull(Schema.String),
 })
 
+/**
+ * A gateway-supplied block that sits beside `choices` and `usage` rather than inside them.
+ *
+ * Declared because a schema that does not name a field DROPS it, which is where the cost figure was being
+ * lost. Redrob's console returns `redrob.costUsd`: the amount the account was actually debited, which local
+ * arithmetic cannot reproduce because `auto` is billed at the ROUTED model's rate, a long-context rate
+ * applies past each model's own boundary, and the priority tier is billed at 1.75x.
+ *
+ * Every field optional and the block itself optional, so an ordinary OpenAI-compatible endpoint that sends
+ * nothing of the kind parses exactly as before.
+ */
+const RedrobGatewayBlock = Schema.Struct({
+  costUsd: Schema.optional(Schema.Number),
+  routedModel: Schema.optional(Schema.String),
+  upstreamProvider: Schema.optional(Schema.String),
+})
+
 const OpenAIChatEvent = Schema.Struct({
   choices: Schema.Array(OpenAIChatChoice),
   usage: optionalNull(OpenAIChatUsage),
+  redrob: optionalNull(RedrobGatewayBlock),
 })
 type OpenAIChatEvent = Schema.Schema.Type<typeof OpenAIChatEvent>
 type OpenAIChatRequestMessage = LLMRequest["messages"][number]
@@ -388,7 +406,10 @@ const mapFinishReason = (reason: string | null | undefined): FinishReason => {
 // a `reasoning_tokens` subset. We pass the inclusive totals through and
 // derive the non-cached breakdown so the `LLM.Usage` contract is
 // satisfied on both sides.
-const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
+const mapUsage = (
+  usage: OpenAIChatEvent["usage"],
+  redrob?: OpenAIChatEvent["redrob"],
+): Usage | undefined => {
   if (!usage) return undefined
   const cached = usage.prompt_tokens_details?.cached_tokens
   const reasoning = usage.completion_tokens_details?.reasoning_tokens
@@ -400,14 +421,22 @@ const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
     cacheReadInputTokens: cached,
     reasoningTokens: reasoning,
     totalTokens: ProviderShared.totalTokens(usage.prompt_tokens, usage.completion_tokens, usage.total_tokens),
-    providerMetadata: { openai: usage },
+    /*
+     * `redrob` is carried under its own key beside `openai`, which is the convention this field already
+     * follows: keyed by whoever reported it. It is a SIBLING of `usage` on the wire, not part of it, so it
+     * has to be threaded in from the event rather than read off the usage object.
+     *
+     * Included only when present, so the metadata shape for a plain OpenAI-compatible endpoint is
+     * unchanged and nothing downstream has to distinguish "absent" from "empty".
+     */
+    providerMetadata: redrob ? { openai: usage, redrob } : { openai: usage },
   })
 }
 
 const step = (state: ParserState, event: OpenAIChatEvent) =>
   Effect.gen(function* () {
     const events: LLMEvent[] = []
-    const usage = mapUsage(event.usage) ?? state.usage
+    const usage = mapUsage(event.usage, event.redrob ?? undefined) ?? state.usage
     const choice = event.choices[0]
     const finishReason = choice?.finish_reason ? mapFinishReason(choice.finish_reason) : state.finishReason
     const delta = choice?.delta
@@ -465,7 +494,26 @@ const finishEvents = (state: ParserState): ReadonlyArray<LLMEvent> => {
   const reason = state.finishReason === "stop" && hasToolCalls ? "tool-calls" : state.finishReason
   const lifecycle = state.toolCallEvents.length ? Lifecycle.stepStart(state.lifecycle, events) : state.lifecycle
   events.push(...state.toolCallEvents)
-  if (reason) Lifecycle.finish(lifecycle, events, { reason, usage: state.usage })
+  /*
+   * The gateway block, and ONLY it, is forwarded onto the event.
+   *
+   * `getUsage` in the engine reads the EVENT's `providerMetadata`, not the usage object's, so a block
+   * parsed into `Usage.providerMetadata` never reached it: the console sent `redrob.costUsd`, this protocol
+   * carried it one level too deep, and the cost fell back to a local estimate that cannot match what the
+   * account was debited.
+   *
+   * Forwarding the WHOLE usage metadata was the first attempt and it was too wide: it put `{ openai: ... }`
+   * on the event for every OpenAI-compatible provider, which a test correctly caught as a behaviour change
+   * nobody asked for. Narrowing it to the gateway block leaves every other provider's events exactly as
+   * they were, and leaves `providerMetadata` undefined when there is no block to carry.
+   */
+  const gateway = state.usage?.providerMetadata?.["redrob"]
+  if (reason)
+    Lifecycle.finish(lifecycle, events, {
+      reason,
+      usage: state.usage,
+      ...(gateway ? { providerMetadata: { redrob: gateway } } : {}),
+    })
   return events
 }
 
