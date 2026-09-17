@@ -34,6 +34,42 @@ describe("gateway cost", () => {
     expect(protocol).toContain("redrob: optionalNull(RedrobGatewayBlock)")
   })
 
+  /*
+   * The routing half of the same block.
+   *
+   * `costUsd` was not the only field on it. `routedModel` and `upstreamProvider` answer "which model
+   * actually produced this message", which `modelID` cannot: that field is what was REQUESTED, and
+   * against this router the request is the literal `auto`. The protocol declared them from the start, so
+   * they arrived and were then dropped one layer higher up - `getUsage` read only the cost, and the
+   * message schemas did not name them, which drops a field just as silently as the protocol would.
+   *
+   * Pinned as a chain for the same reason the cost is: three separate links, each one sufficient on its
+   * own to lose the value, and the failure is invisible at every one of them.
+   */
+  it("keeps the routing fields on the parsed block", () => {
+    expect(protocol).toContain("routedModel: Schema.optional(Schema.String)")
+    expect(protocol).toContain("upstreamProvider: Schema.optional(Schema.String)")
+  })
+
+  it("reads the routing fields where the cost is read, off the same block", () => {
+    expect(session).toContain('input.metadata?.["redrob"]?.["routedModel"]')
+    expect(session).toContain('input.metadata?.["redrob"]?.["upstreamProvider"]')
+    // Strings only, so a malformed field cannot reach the message schema and fail an otherwise fine message.
+    expect(session).toContain('typeof routedModelRaw === "string"')
+  })
+
+  it("names them on the message the app actually receives", () => {
+    // The v1 Assistant is what the served API returns; naming it in one schema and not the other loses it.
+    const v1 = readFileSync(
+      join(import.meta.dir, "..", "..", "..", "schema", "src", "v1", "session.ts"),
+      "utf8",
+    )
+    expect(v1).toContain("routedModel: Schema.optional(Schema.String)")
+    expect(v1).toContain("upstreamProvider: Schema.optional(Schema.String)")
+    const processor = readFileSync(join(import.meta.dir, "..", "..", "src", "session", "processor.ts"), "utf8")
+    expect(processor).toContain("if (usage.routedModel) ctx.assistantMessage.routedModel = usage.routedModel")
+  })
+
   it("threads the block in from the event, not off the usage object", () => {
     // It is a SIBLING of `usage` on the wire, so `mapUsage` cannot find it on its own argument.
     expect(protocol).toContain("mapUsage(event.usage, event.redrob ?? undefined)")
@@ -59,6 +95,7 @@ describe("gateway cost", () => {
     expect(session).toContain(
       'typeof gatewayCostUsd === "number" && Number.isFinite(gatewayCostUsd) && gatewayCostUsd >= 0',
     )
-    expect(session).toContain("return { cost: gatewayCostUsd, tokens }")
+    // The routing fields ride along on the same return; the cost preference itself is unchanged.
+    expect(session).toContain("return { cost: gatewayCostUsd, tokens, ...routing }")
   })
 })

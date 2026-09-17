@@ -443,6 +443,14 @@ const layer = Layer.effect(
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            /*
+             * Kept only when the step actually reported them, so a later step that routes through a
+             * provider with no `redrob` block does not erase what an earlier one established. The cost
+             * above accumulates for the same reason; these do not accumulate, they are the last known
+             * answer to "who served this".
+             */
+            if (usage.routedModel) ctx.assistantMessage.routedModel = usage.routedModel
+            if (usage.upstreamProvider) ctx.assistantMessage.upstreamProvider = usage.upstreamProvider
             yield* session.updatePart({
               id: PartID.ascending(),
               reason: value.reason,

@@ -400,10 +400,30 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
    * the estimate instead of zeroing the cost.
    */
   const gatewayCostUsd = input.metadata?.["redrob"]?.["costUsd"]
+  /*
+   * The routing facts travel with that same block.
+   *
+   * `routedModel` is the catalogue id the router picked and `upstreamProvider` is the vendor that
+   * answered, which is not always the model's own vendor - a pinned vendor that throws falls through to
+   * the fallback, so a fallback showing up every time means the primary is broken rather than busy.
+   * Read here rather than at a second site because the block is one object: a reader who has to look in
+   * two places for two halves of it is how the cost half came to be dropped for streaming callers.
+   *
+   * Strings only. Anything else is ignored rather than passed through, so a malformed field cannot reach
+   * the message schema and fail validation on a message that is otherwise fine.
+   */
+  const routedModelRaw = input.metadata?.["redrob"]?.["routedModel"]
+  const upstreamProviderRaw = input.metadata?.["redrob"]?.["upstreamProvider"]
+  const routing = {
+    routedModel: typeof routedModelRaw === "string" && routedModelRaw.length > 0 ? routedModelRaw : undefined,
+    upstreamProvider:
+      typeof upstreamProviderRaw === "string" && upstreamProviderRaw.length > 0 ? upstreamProviderRaw : undefined,
+  }
   if (typeof gatewayCostUsd === "number" && Number.isFinite(gatewayCostUsd) && gatewayCostUsd >= 0) {
-    return { cost: gatewayCostUsd, tokens }
+    return { cost: gatewayCostUsd, tokens, ...routing }
   }
   return {
+    ...routing,
     cost:
       typeof totalNanoAiu === "number" && Number.isFinite(totalNanoAiu) && totalNanoAiu >= 0
         ? new Decimal(totalNanoAiu).div(100_000_000_000).toNumber()

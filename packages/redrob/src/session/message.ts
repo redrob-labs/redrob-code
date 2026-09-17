@@ -128,6 +128,20 @@ export const Info = Schema.Struct({
           root: Schema.String,
         }),
         cost: Schema.Finite,
+        /*
+         * What actually served this message, as opposed to what was asked for.
+         *
+         * `modelID` above echoes the REQUEST, and for Redrob's router that is the literal `auto`, so a
+         * reader of a finished message could not tell which model answered it. The gateway has always
+         * said so on its `redrob` block; the engine dropped it here, because a schema that does not
+         * name a field drops it. That is the same defect the gateway cost figure had: the value was
+         * present on the wire and absent from the type, and the app could only show what it received.
+         *
+         * Both optional: a provider that is not the Redrob gateway sends neither, and an older gateway
+         * sends neither, so their absence is normal rather than an error.
+         */
+        routedModel: Schema.optional(Schema.String),
+        upstreamProvider: Schema.optional(Schema.String),
         summary: Schema.optional(Schema.Boolean),
         tokens: Schema.Struct({
           input: Schema.Finite,
