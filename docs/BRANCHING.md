@@ -104,3 +104,19 @@ the release.
 Branch from `main`, not `develop`, so the fix does not drag unreleased work with it.
 Open the pull request into `main`, release from there, then merge `main` back into
 `develop` so the fix is not lost on the next release.
+
+That last step is checked, because it is the one that gets skipped. `branch-sync.yml` runs
+on every push to `main` and fails while `main` holds a commit `develop` does not, listing
+them. A promotion pull request from `develop` leaves the two identical and the check says
+nothing; a hotfix reports until it is brought back.
+
+The invariant it enforces, which you can read yourself at any time:
+
+```bash
+git rev-list --count origin/develop..origin/main   # 0, outside a release window
+```
+
+It was not 0 for a month. #13 fixed `bun install --frozen-lockfile` on `main`, the
+back-merge never happened, and the default branch could not install with the bun version
+`packageManager` pins. The rule above was already written; nothing checked it, and a rule
+nothing checks is a preference.
