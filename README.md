@@ -7,7 +7,7 @@
     </picture>
   </a>
 </p>
-<p align="center">Redrob Code — the AI coding agent for your terminal.</p>
+<p align="center">Redrob Code, the AI coding agent for your terminal.</p>
 
 <p align="center">
   <a href="README.md">English</a> |
@@ -18,9 +18,11 @@
 
 ---
 
+Redrob Code is the AI coding agent for your terminal, a fork of opencode with Korean as a first-class locale.
+
 Redrob Code is a fork of [opencode](https://github.com/anomalyco/opencode), released
 under the MIT License. It is not affiliated with, endorsed by, or supported by the
-opencode project or its maintainers — the name is used here only to say where this
+opencode project or its maintainers: the name is used here only to say where this
 software came from.
 
 What the fork changes: a different provider model (a single Redrob workspace endpoint
@@ -38,10 +40,10 @@ curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/instal
 That serves [`install`](./install) from this repository, so the script you run is the one you
 can read here. It picks the first writable location from this list:
 
-1. `$REDROB_INSTALL_DIR` — explicit override
-2. `$XDG_BIN_DIR` — XDG Base Directory path
-3. `$HOME/bin` — used if it exists or can be created
-4. `$HOME/.redrob/bin` — fallback
+1. `$REDROB_INSTALL_DIR`: explicit override
+2. `$XDG_BIN_DIR`: XDG Base Directory path
+3. `$HOME/bin`: used if it exists or can be created
+4. `$HOME/.redrob/bin`: fallback
 
 ```bash
 REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
@@ -117,13 +119,13 @@ them with `redrob/auto` in any config, agent, or command that still names them.
 
 Two primary agents ship built in. Cycle between them with `Tab` (`Shift+Tab` to go back).
 
-- **build** — the default agent; runs tools according to the configured permissions
-- **plan** — denies all edit tools, for analysis and exploring unfamiliar code
+- **build**: the default agent; runs tools according to the configured permissions
+- **plan**: denies all edit tools, for analysis and exploring unfamiliar code
 
 Two subagents are also available and can be invoked from a message:
 
-- **`@general`** — multi-step research and parallel units of work
-- **`@explore`** — fast codebase search and orientation
+- **`@general`**: multi-step research and parallel units of work
+- **`@explore`**: fast codebase search and orientation
 
 ### Configuration
 
@@ -161,5 +163,5 @@ cd packages/core && bun test # tests run per package, never from the repo root
 `bun@1.3.14` is required; the pre-push hook enforces it.
 
 See [docs/BRANCHING.md](./docs/BRANCHING.md) for the branch model, how to open a pull
-request, and how upstream releases are absorbed — the last of which is the operation
+request, and how upstream releases are absorbed, the last of which is the operation
 that matters most in a fork and the one most easily got wrong.
