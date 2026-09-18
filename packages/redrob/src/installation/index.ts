@@ -27,7 +27,7 @@ import { InstallationEvent } from "@redrob-code/schema/installation-event"
  * `unknown` is a binary we cannot place: a build from source, or a copy someone moved. It is
  * not upgradable in place and the CLI says so rather than guessing.
  */
-export type Method = "curl" | "unknown"
+export type Method = "curl" | "installer" | "unknown"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
@@ -124,6 +124,26 @@ export function isCurlInstall(execPath: string) {
   return dir.endsWith(path.join(".redrob", "bin")) || dir.endsWith(path.join(".local", "bin"))
 }
 
+/**
+ * Whether this binary was put here by the Windows installer.
+ *
+ * `installer/windows/redrob-code.iss` installs to `%LOCALAPPDATA%\Redrob\bin` and fixes that
+ * directory deliberately, so recognising it is a location check like `isCurlInstall`'s rather than
+ * a guess. It is a separate method because the two are not interchangeable at upgrade time: a
+ * curl install is replaced by re-running `install.sh`, while this one is replaced by running the
+ * next `redrob-code-x64-setup.exe`, and an in-place overwrite of a running `.exe` is not something
+ * Windows permits anyway.
+ *
+ * Without this the installer's own binary answers `unknown`, which refuses to upgrade at all -- so
+ * the click-to-install path would have produced the one install that could never update itself.
+ */
+export function isWindowsInstallerInstall(execPath: string) {
+  if (process.platform !== "win32") return false
+  const name = path.basename(execPath, path.extname(execPath))
+  if (name !== "redrob" && name !== "redrob-code") return false
+  return path.dirname(execPath).toLowerCase().endsWith(path.join("redrob", "bin").toLowerCase())
+}
+
 /** Where `latest()` asks what the newest published build is, honoring an override for tests. */
 export function releaseVersionUrl(env: Record<string, string | undefined> = process.env) {
   const base = env["REDROB_CODE_DOWNLOAD_BASE"]?.trim().replace(/\/+$/, "") || RELEASE_DOWNLOAD_BASE
@@ -199,10 +219,12 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
       }),
       method: Effect.fn("Installation.method")(function* () {
-        // One question now: did install.sh / install.ps1 put this binary here. There used to be
-        // seven package-manager probes below this line, each shelling out to a tool that might not
-        // exist to look for a package we never published. They ran on every `redrob upgrade`.
+        // Two questions now: did install.sh / install.ps1 put this binary here, or did the Windows
+        // installer. There used to be seven package-manager probes below this line, each shelling
+        // out to a tool that might not exist to look for a package we never published. They ran on
+        // every `redrob upgrade`.
         if (isCurlInstall(process.execPath)) return "curl" as Method
+        if (isWindowsInstallerInstall(process.execPath)) return "installer" as Method
         return "unknown" as Method
       }),
       latest: Effect.fn("Installation.latest")(function* () {
@@ -227,6 +249,15 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           case "curl":
             upgradeResult = yield* upgradeCurl(target)
             break
+          case "installer":
+            // Deliberately not an in-place upgrade. Windows will not let a running .exe be
+            // overwritten, and the installed copy is two files plus a PATH entry plus an uninstall
+            // registration -- state that belongs to the installer, not to a download-and-replace.
+            // So this is a refusal WITH a next step, which is different from `unknown`: we know
+            // exactly how this install got here and exactly what replaces it.
+            return yield* new UpgradeFailedError({
+              stderr: `redrob at ${process.execPath} was installed by the Windows installer, so it is upgraded by running the new installer rather than in place. Download redrob-code-x64-setup.exe for ${target} from ${RELEASE_DOWNLOAD_BASE}/tag/v${target}`,
+            })
           default:
             // `unknown`. Re-running install.sh over a binary we did not place would write into
             // whatever directory it happens to sit in, so this refuses and the CLI tells the
