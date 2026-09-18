@@ -110,24 +110,37 @@ describe("tool.assertExternalDirectory", () => {
       "normalizes Windows path variants to one glob",
       () =>
         Effect.gen(function* () {
-          const { requests, ctx } = makeCtx()
-
           const outerTmp = yield* tmpdirScoped()
           yield* Effect.promise(() => Bun.write(path.join(outerTmp, "outside.txt"), "x"))
 
           const target = path.join(outerTmp, "outside.txt")
-          const alt = target
-            .replace(/^[A-Za-z]:/, "")
-            .replaceAll("\\", "/")
-            .toLowerCase()
+          const drive = target.slice(0, 1).toLowerCase()
+          const tail = target.slice(2).replaceAll("\\", "/").toLowerCase()
 
-          yield* assertExternalDirectoryEffect(ctx, alt)
+          // Every variant keeps the DRIVE, because a drive-less rooted path is genuinely
+          // ambiguous on Windows and no normalizer can recover it: `path.resolve("/users/x")`
+          // resolves against the current working directory's drive, which is the right
+          // behaviour and the wrong answer when the target lives on another drive. The
+          // earlier version of this test stripped the drive and expected the original back,
+          // which only worked on a single-drive machine -- on a CI runner with the workspace
+          // on D: and TEMP on C: it produced `D:\users\...`, a path that does not exist.
+          const variants = [
+            `/${drive}:${tail}`,
+            `/${drive}${tail}`,
+            `/cygdrive/${drive}${tail}`,
+            `/mnt/${drive}${tail}`,
+            `${drive}:${tail}`,
+          ]
 
-          const req = requests.find((r) => r.permission === "external_directory")
           const expected = glob(path.join(outerTmp, "*"))
-          expect(req).toBeDefined()
-          expect(req!.patterns).toEqual([expected])
-          expect(req!.always).toEqual([expected])
+          for (const variant of variants) {
+            const { requests, ctx } = makeCtx()
+            yield* assertExternalDirectoryEffect(ctx, variant)
+            const req = requests.find((r) => r.permission === "external_directory")
+            expect(req, `no request for ${variant}`).toBeDefined()
+            expect(req!.patterns, `patterns for ${variant}`).toEqual([expected])
+            expect(req!.always, `always for ${variant}`).toEqual([expected])
+          }
         }),
       { git: true },
     )

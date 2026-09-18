@@ -1,0 +1,127 @@
+name: gitflow
+
+# The back-merge half of the shared gitflow workflow is NOT here: `branch-sync.yml` owns that rule.
+#
+# One rule this repository already had in prose, now checked.
+#
+# A rule nothing checks is a preference. It was written down and broken anyway: branches appeared
+# under a `kiro/` prefix that no document defines.
+#
+# A branch name can only be judged when a pull request exists, which is why this runs on
+# `pull_request` and not on push.
+
+on:
+  pull_request:
+    # No branch filter. A filter that omits the default branch silently stops running, which is exactly
+    # what happened in a sibling repository when the default moved to `develop` and three workflows
+    # kept filtering on `[main, master]`.
+    types: [opened, reopened, edited, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tag-hygiene:
+    name: no workflow pushes tags in bulk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 1
+
+      - name: Refuse bulk tag pushes and unnamespaced upstream fetches
+        run: |
+          set -euo pipefail
+
+          # This fork inherited over a thousand upstream tags, which buried its own releases and
+          # made a `v*` glob deletion unusable. They were deleted. Two command shapes would undo
+          # that in one run, so neither may appear in a workflow:
+          #
+          #   a tag push with no tag named   republishes whatever is in refs/tags
+          #   a tag fetch from `upstream`    refills refs/tags from upstream
+          #
+          # The release workflow pushes exactly one tag, named in full as `refs/tags/$TAG`, and
+          # that is the only allowed shape. Fetching OUR OWN tags from `origin` is fine and is not
+          # matched: the release-tagging actions depend on it. See docs/VERSIONING.md.
+          #
+          # Comment lines are stripped before matching. Without that this gate fails on the very
+          # comment above, which names both banned shapes in order to explain them.
+          bad=0
+          while IFS= read -r file; do
+            body="$(sed 's/[[:space:]]*#.*$//' "$file")"
+
+            if printf '%s\n' "$body" | grep -nE 'git[[:space:]]+push[^|&;]*--(tags|follow-tags)'; then
+              echo "::error file=$file::pushes tags in bulk; push one tag by its full refs/tags/<name>"
+              bad=1
+            fi
+
+            # Only upstream's tags are the problem, and only when no refspec redirects them out
+            # of refs/tags.
+            if printf '%s\n' "$body" \
+              | grep -E 'git[[:space:]]+fetch[^|&;]*--tags[^|&;]*upstream|git[[:space:]]+fetch[^|&;]*upstream[^|&;]*--tags' \
+              | grep -qv 'refs/upstream-tags/'; then
+              echo "::error file=$file::fetches upstream tags into refs/tags; use '+refs/tags/*:refs/upstream-tags/*'"
+              bad=1
+            fi
+          done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \))
+
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "no bulk tag pushes and no unnamespaced upstream tag fetches"
+
+  branch-name:
+    name: branch name follows the convention
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the head branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # ALLOWED_TYPES is this repository's own list. Keep it in step with the branch table in the
+          # contributing or branching document; the document is the explanation, this is the gate.
+          ALLOWED_TYPES='feature sync hotfix release'
+
+          # `develop` and `main` reach here through a promotion or a back-merge pull request, which are
+          # branches in their own right and are not named after a type.
+          case "$HEAD_REF" in
+            develop|main) echo "$HEAD_REF is a long-lived branch, not a working branch"; exit 0 ;;
+          esac
+
+          type="${HEAD_REF%%/*}"
+          slug="${HEAD_REF#*/}"
+
+          if [ "$type" = "$HEAD_REF" ]; then
+            echo "::error::branch '$HEAD_REF' has no type prefix. Use <type>/<slug>, type one of: $ALLOWED_TYPES"
+            exit 1
+          fi
+
+          ok=false
+          for t in $ALLOWED_TYPES; do
+            [ "$type" = "$t" ] && ok=true && break
+          done
+
+          if [ "$ok" != true ]; then
+            {
+              echo "### Branch name is not one of this repository's types"
+              echo
+              echo "\`$HEAD_REF\` uses the prefix \`$type\`. Allowed: $ALLOWED_TYPES"
+              echo
+              echo "A branch name says what the change is, not who or what made it. An agent or tool name"
+              echo "is not a type: rename the branch and reopen the pull request."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            echo "::error::branch prefix '$type' is not allowed. Use one of: $ALLOWED_TYPES"
+            exit 1
+          fi
+
+          if [ -z "$slug" ] || [ "$slug" = "$type" ]; then
+            echo "::error::branch '$HEAD_REF' has an empty slug. Use <type>/<short-slug>."
+            exit 1
+          fi
+
+          echo "$HEAD_REF is a valid $type branch targeting $BASE_REF"

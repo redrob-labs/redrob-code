@@ -149,7 +149,7 @@ export const Info = Schema.Struct({
   compaction: Schema.optional(
     Schema.Struct({
       auto: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable automatic compaction when context is full (default: false)",
+        description: "Compact automatically when the context fills. Default TRUE - set false to turn it off. It was false, which meant an untouched workspace never compacted while the desktop app displayed the setting as on.",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
         description: "Enable pruning of old tool outputs (default: false)",
@@ -161,8 +161,15 @@ export const Info = Schema.Struct({
       preserve_recent_tokens: Schema.optional(NonNegativeInt).annotate({
         description: "Maximum number of tokens from recent turns to preserve verbatim after compaction",
       }),
-      reserved: Schema.optional(NonNegativeInt).annotate({
-        description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
+      reserved: Schema.optional(NonNegativeInt).annotate({        description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
+      }),
+      threshold: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "How full the context may get before compacting, as a percentage of the window (1-100, default 70). Scales with the model, where `reserved` does not: a 20,000-token reserve is most of a small window and 2% of a 1,000,000-token one, which put the trigger at 98% and made the turn that crossed it the turn that failed. An explicit `reserved` still wins over this.",
+      }),
+      maxTurnInputCostUsd: Schema.optional(Schema.Finite).annotate({
+        description:
+          "The most one turn's input may cost, in USD, before compacting (default 0.50). Applies alongside `threshold`, whichever comes first, because a percentage scales with the window and money does not: 70% of a 1,000,000-token window at $3.15 per million is about $2.16 of input on every later turn. Set 0 to disable and be governed by the percentage alone. Ignored for a model with no published input price, and `reserved` still wins over both.",
       }),
     }),
   ),

@@ -34,7 +34,11 @@ export const CONSOLE_OUTPUT_TOKENS = 32_000
 // strings so the V1 side can build its own branded ids and object keys without cross-package
 // branded-type friction.
 export const CONSOLE_MODELS = [
-  { id: "auto", name: "Redrob Auto", thinking: false },
+  // `auto` publishes the full thinking range (low | medium | high | xhigh | max) in the live
+  // listing's `capabilities.thinkingLevels`, so claiming otherwise offline would hide the router's
+  // own reasoning control. Verified against GET ${CONSOLE_URL}/models and the console's public
+  // pricing catalogue.
+  { id: "auto", name: "Redrob Auto", thinking: true },
   { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", thinking: false },
   { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", thinking: false },
   { id: "claude-opus-5", name: "Claude Opus 5", thinking: true },

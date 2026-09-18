@@ -384,13 +384,23 @@ describe("session.compaction.isOverflow", () => {
   const autoOn = { config: { compaction: { auto: true } } }
 
   it.live(
-    "returns false by default when compaction.auto is unset",
+    /*
+      This asserted the opposite - that an unset `compaction.auto` means no compaction - and that default
+      was the defect. Absent is what every workspace has until someone opens the settings page, and the
+      desktop app's settings screen read the same field as `auto !== false`, so it DISPLAYED the setting
+      as on while the engine had it off. A conversation grew until the gateway refused it for size while
+      the app claimed to be handling exactly that.
+    */
+    "compacts by default when compaction.auto is unset",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 100_000, output: 32_000 })
-        const tokens = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        const overflowing = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens: overflowing, model })).toBe(true)
+        // Still a threshold, not "always": a short session with the same unset config is not overflowing.
+        const small = { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens: small, model })).toBe(false)
       }),
     ),
   )
@@ -472,14 +482,45 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
+    "does not overflow a short session on a model that publishes no separate input cap",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const compact = yield* SessionCompaction.Service
+          /*
+            `input: 0` is how a model says "no separate input cap - use the context window". Written as
+            `limit.input ?? context` that 0 survives, because `0 ?? x` is 0, so the usable budget collapsed
+            to zero and EVERY session overflowed on its first turn. A non-interactive run then summarised in
+            a loop until the harness killed it at 30 seconds, which read as a flaky Windows timeout rather
+            than as the logic error it was.
+          */
+          const model = createModel({ context: 400_000, input: 0, output: 128_000 })
+          const tokens = { input: 1_000, output: 100, reasoning: 0, cache: { read: 0, write: 0 } }
+          expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+        }),
+      autoOn,
+    ),
+  )
+
+  it.live(
     "returns false when input/output are within input caps",
     provideTmpdirInstance(
       () =>
         Effect.gen(function* () {
           const compact = yield* SessionCompaction.Service
           const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
-          const tokens = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+          /*
+            Sized against the 70% threshold, not against the old "everything but a 20,000-token reserve".
+            The point of this case is that the INPUT cap is what bounds the session - 272,000, not the
+            400,000 context - and that is unchanged. What changed is where in that cap compaction fires:
+            a 20,000-token reserve left the trigger at 93% of it, which is late enough that the turn
+            crossing it is also the turn that fails.
+          */
+          const tokens = { input: 120_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
           expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+          // Past 70% of the same cap it does overflow, so "within caps" cannot decay into "never".
+          const past = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
+          expect(yield* compact.isOverflow({ tokens: past, model })).toBe(true)
         }),
       autoOn,
     ),

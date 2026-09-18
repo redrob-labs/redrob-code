@@ -1,0 +1,61 @@
+name: branch-sync
+
+# Fails when `main` carries a commit `develop` does not, which is the back-merge step being skipped.
+#
+# `docs/BRANCHING.md` has told hotfixes to merge `main` back into `develop` since it was written.
+# The rule was not the problem: #13 fixed `bun install --frozen-lockfile` on `main` and the back-merge
+# never happened, so the DEFAULT branch could not install with the bun version `packageManager` pins
+# for a month. Nothing anywhere said so. Documentation that nothing checks is a preference.
+#
+# On `push` to `main` rather than on a schedule, because that is the moment the divergence is
+# created and the person who created it is still looking. A promotion pull request from `develop`
+# leaves the two identical and says nothing; a hotfix merged straight into `main` reports until it
+# is brought back.
+#
+# It FAILS rather than posting a notice. A notice on a branch nobody watches is how this went
+# unnoticed the first time, and a red mark on `main` is the point: the repository is in a state
+# where a branch cut from the default branch inherits a known-broken tree.
+
+on:
+  push:
+    branches: [main]
+  # Lets the check be re-run once the back-merge has landed, without pushing a commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  back-merged:
+    name: main is back-merged into develop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: `rev-list` between two branches needs the commits, and a shallow clone
+          # answers with whatever it happens to have, which is worse than no answer.
+          fetch-depth: 0
+
+      - name: Compare main against develop
+        run: |
+          set -euo pipefail
+          if ! git rev-parse -q --verify origin/develop >/dev/null; then
+            echo "::notice::no develop branch; nothing to back-merge into"
+            exit 0
+          fi
+          missing="$(git rev-list --count origin/develop..origin/main)"
+          if [ "$missing" -eq 0 ]; then
+            echo "main is contained in develop"
+            exit 0
+          fi
+          {
+            echo "### \`main\` has $missing commit(s) \`develop\` does not"
+            echo
+            echo "Merge \`main\` back into \`develop\`, per docs/BRANCHING.md. Until that lands, a"
+            echo "branch cut from the default branch is missing whatever these changed."
+            echo
+            git log --format='- `%h` %s' origin/develop..origin/main
+          } >> "$GITHUB_STEP_SUMMARY"
+          git log --oneline origin/develop..origin/main
+          echo "::error::main is $missing commit(s) ahead of develop; back-merge it"
+          exit 1

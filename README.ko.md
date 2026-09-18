@@ -1,20 +1,13 @@
-<p align="center">
-  <a href="https://code.redrob.ai">
-    <picture>
-      <source srcset="packages/identity/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/identity/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/identity/logo-ornate-light.svg" alt="레드롭 코드 로고">
-    </picture>
-  </a>
-</p>
-<p align="center">레드롭 코드: 터미널에서 쓰는 AI 코딩 에이전트.</p>
+# 레드롭 코드
+
+레드롭 코드: 터미널에서 쓰는 AI 코딩 에이전트.
 
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.ko.md">한국어</a>
 </p>
 
-[![레드롭 코드 터미널 UI](packages/identity/screenshot.png)](https://code.redrob.ai)
+[![레드롭 코드 터미널 UI](packages/identity/screenshot.png)](https://github.com/redrob-labs/redrob-code)
 
 ---
 
@@ -24,16 +17,18 @@
 
 포크가 바꾼 것은 세 가지입니다. 공급자 모델을 벤더별 키가 아닌 하나의 레드롭 워크스페이스
 엔드포인트로 바꿨고, 한국어를 일급 로케일로 다루며, 호스팅 콘솔이 아닌 터미널 클라이언트에
-맞게 패키지를 줄였습니다. 릴리스는 상류 버전에 `-redrob.N` 접미사를 붙여 따라갑니다 —
-`v1.18.31-redrob.1` 은 상류 `v1.18.31` 에 대한 우리의 첫 빌드입니다.
+맞게 패키지를 줄였습니다. 릴리스는 `0.1.0` 부터 시작하는 자체 버전 체계를 사용합니다.
+빌드가 기반한 상류 버전은 `UPSTREAM_VERSION` 에 기록되고 릴리스 노트에 표시됩니다.
+자세한 내용은 `docs/VERSIONING.md` 를 참고하세요.
 
 ### 설치
 
 ```bash
-curl -fsSL https://code.redrob.ai/install | bash
+curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
-설치 스크립트는 아래 순서에서 처음으로 쓸 수 있는 경로를 선택합니다.
+이 저장소의 [`install`](./install) 을 그대로 내려받으므로, 실행하는 스크립트를 여기서 읽어볼 수
+있습니다. 아래 순서에서 처음으로 쓸 수 있는 경로를 선택합니다.
 
 1. `$REDROB_INSTALL_DIR`: 직접 지정한 경로
 2. `$XDG_BIN_DIR`: XDG Base Directory 경로
@@ -41,8 +36,8 @@ curl -fsSL https://code.redrob.ai/install | bash
 4. `$HOME/.redrob/bin`: 기본 폴백
 
 ```bash
-REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://code.redrob.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://code.redrob.ai/install | bash
+REDROB_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
+XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
 ```
 
 설치 후 아무 프로젝트에서 실행합니다.

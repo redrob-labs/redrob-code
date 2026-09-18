@@ -6,7 +6,8 @@ import { LayerNodePlatform } from "@redrob-code/core/effect/app-node-platform"
 import { Flag } from "@redrob-code/core/flag/flag"
 import { Credential } from "@redrob-code/core/credential"
 import { Integration } from "@redrob-code/core/integration"
-import { ModelsDev } from "@redrob-code/core/models-dev"
+import { ConsoleBotChallenge, isBotChallengeBody, ModelsDev } from "@redrob-code/core/models-dev"
+import { CONSOLE_OUTPUT_TOKENS } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { it } from "./lib/effect"
 
 // The reworked ModelsDev.Service fetches the OpenAI-standard listing from
@@ -30,6 +31,23 @@ const CONSOLE_MODELS_URL = "https://console.redrob.ai/api/backend/v1/models"
 // internal schema does not model. Pinned verbatim so a decoding regression against the real shape —
 // including the `owned_by` field and those extra blocks — fails here. `redrob-ai` and
 // `redrob-translate` are deliberately absent: they are retired ids the console does not serve.
+// A minimal valid listing entry, so a test can vary exactly the one field it is about.
+const consoleEntry = (id: string, capabilities: Record<string, unknown>) => ({
+  id,
+  object: "model",
+  created: 1767225600,
+  owned_by: "redrob",
+  redrob: { inputPricePerMillionUsd: 1, outputPricePerMillionUsd: 2, inputMultiplier: 1, outputMultiplier: 1 },
+  capabilities: {
+    shortContextTokens: 200000,
+    maxContextTokens: 200000,
+    thinkingLevels: [],
+    fastMode: false,
+    requiresProviderDataShare: false,
+    ...capabilities,
+  },
+})
+
 const modelList = {
   object: "list",
   data: [
@@ -45,6 +63,12 @@ const modelList = {
         thinkingLevels: [],
         fastMode: false,
         requiresProviderDataShare: false,
+        // The live console publishes these per model; `auto` advertises the widest set.
+        imageInput: true,
+        audioInput: true,
+        fileInput: true,
+        imageOutput: true,
+        maxOutputTokens: 64000,
       },
     },
     {
@@ -106,6 +130,8 @@ const modelList = {
         thinkingLevels: ["low", "medium", "high", "max"],
         fastMode: true,
         requiresProviderDataShare: false,
+        // Image in and nothing else: the shape most of the console's vision models publish.
+        imageInput: true,
       },
     },
     {
@@ -466,7 +492,8 @@ describe("ModelsDev console model metadata", () => {
       const models = yield* fetched()
       for (const id of CONSOLE_MODEL_IDS) {
         expect(models[id].limit.context).toBe(1_000_000)
-        expect(models[id].limit.output).toBe(32_000)
+        // This CLI's own ceiling, except where the console publishes a cap of its own (auto does).
+        expect(models[id].limit.output).toBe(id === "auto" ? 64_000 : 32_000)
         // shortContextTokens is a pricing threshold, not an input cap. Setting limit.input from it
         // would make `usable()` stop reserving room for the reply.
         expect(models[id].limit.input).toBeUndefined()
@@ -474,34 +501,153 @@ describe("ModelsDev console model metadata", () => {
     }),
   )
 
-  it.live("projects thinkingLevels into the reasoning flag without publishing effort variants", () =>
+  it.live("publishes the effort variants each console model actually offers", () =>
     Effect.gen(function* () {
       const models = yield* fetched()
-      // The three Claude ids publish low/medium/high/max; auto, Sol and Terra publish none.
+      // The three Claude ids publish low/medium/high/max; auto, Sol and Terra publish none in this
+      // fixture.
       expect(models["claude-opus-5"].reasoning).toBe(true)
       expect(models["claude-sonnet-5"].reasoning).toBe(true)
       expect(models["claude-fable-5"].reasoning).toBe(true)
       expect(models["auto"].reasoning).toBe(false)
       expect(models["gpt-5.6-sol"].reasoning).toBe(false)
       expect(models["gpt-5.6-terra"].reasoning).toBe(false)
-      // The console's control is a top-level `thinking` level and its chat endpoint rejects fields it
-      // does not whitelist, so no `reasoning_effort` variants may be synthesised from these levels.
-      for (const id of CONSOLE_MODEL_IDS) expect(models[id].reasoning_options).toEqual([])
+      // Levels are published VERBATIM, not mapped onto OpenAI's three-value effort scale: the
+      // console validates `thinking` against its own enum, so mapping would drop xhigh and max.
+      // ProviderTransform turns these into `thinking` for this provider, never `reasoning_effort`.
+      expect(models["claude-opus-5"].reasoning_options).toEqual([
+        { type: "effort", values: ["low", "medium", "high", "max"] },
+      ])
+      // A model that publishes no levels still publishes an EMPTY list rather than undefined, which
+      // is what tells reasoningVariants to synthesise nothing at all.
+      for (const id of ["auto", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+        expect(models[id].reasoning_options).toEqual([])
+      }
     }),
   )
 
-  it.live("keeps every console model text-only with no attachment support", () =>
+  it.live("advertises the modalities each console model publishes, and no others", () =>
     Effect.gen(function* () {
       const models = yield* fetched()
-      // The console's chat endpoint accepts a string or an array of text parts and nothing else, so
-      // there is no attachment to send and no modality beyond text to advertise. Pinned so the
-      // reason is recorded rather than inherited from the old all-zeros default.
-      for (const id of CONSOLE_MODEL_IDS) {
-        expect(models[id].attachment).toBe(false)
+      // The console's chat endpoint accepts `image_url` and `input_audio` parts and publishes per
+      // model which of them that model can read. This is load-bearing rather than cosmetic:
+      // ProviderTransform consults capabilities.input[modality] and replaces an image with the text
+      // "ERROR: Cannot read image (this model does not support image input)" when it is false, so a
+      // model whose modalities are understated can never receive an attachment at all.
+      expect(models["auto"].modalities).toEqual({
+        input: ["text", "image", "audio"],
+        output: ["text", "image"],
+      })
+      expect(models["auto"].attachment).toBe(true)
+      // fileInput has no modality of its own here -- a PDF arrives as a file part and is gated by
+      // the mime mapping -- but it does mean there is an attachment to offer.
+      expect(models["claude-opus-5"].modalities).toEqual({ input: ["text", "image"], output: ["text"] })
+      expect(models["claude-opus-5"].attachment).toBe(true)
+      // A model that publishes no modality flags stays text-only. Understating is the safe
+      // direction: the button is missing rather than the request failing.
+      for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "claude-sonnet-5", "claude-fable-5"]) {
         expect(models[id].modalities).toEqual({ input: ["text"], output: ["text"] })
+        expect(models[id].attachment).toBe(false)
+      }
+      for (const id of CONSOLE_MODEL_IDS) {
         expect(models[id].tool_call).toBe(true)
         expect(models[id].temperature).toBe(true)
       }
+    }),
+  )
+
+  it.live("takes the published reply cap when there is one, and this CLI's ceiling otherwise", () =>
+    Effect.gen(function* () {
+      const models = yield* fetched()
+      expect(models["auto"].limit.output).toBe(64000)
+      // No published cap on this one, so it keeps this CLI's ceiling.
+      expect(models["claude-opus-5"].limit.output).toBe(32_000)
+    }),
+  )
+
+  it.live("keeps the catalogue when the console publishes a null maxOutputTokens", () =>
+    Effect.gen(function* () {
+      // Measured against the live listing: 7 of the console's 323 models publish
+      // `capabilities.maxOutputTokens: null` rather than omitting it. Declared `number | undefined`,
+      // that single null rejected the whole-array decode and took all 323 down, leaving the six-id
+      // fallback -- the entire "only 6 models" symptom, one null wide.
+      const body = JSON.stringify({
+        object: "list",
+        data: [
+          consoleEntry("keeps-cap", { maxOutputTokens: 64000 }),
+          consoleEntry("null-cap", { maxOutputTokens: null }),
+        ],
+      })
+      const state = yield* Ref.make<MockState>({ body, status: 200, calls: [] })
+      const catalog = yield* provided(
+        state,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          return yield* svc.get()
+        }),
+      )
+      const models = catalog["redrob"]!.models
+      // Both survive: the null is absence, not a parse failure.
+      expect(Object.keys(models)).toContain("keeps-cap")
+      expect(Object.keys(models)).toContain("null-cap")
+      expect(models["keeps-cap"]!.limit.output).toBe(64000)
+      // A null cap falls back to this CLI's own request ceiling rather than becoming null downstream.
+      expect(models["null-cap"]!.limit.output).toBe(CONSOLE_OUTPUT_TOKENS)
+    }),
+  )
+
+  it.live("drops only the entry it cannot describe, not the catalogue", () =>
+    Effect.gen(function* () {
+      // The deeper defect behind the null: the array decoded all-or-nothing, so ONE unexpected value
+      // anywhere in the listing cost every model. An external contract that keeps growing will
+      // eventually publish something this build has no schema for, and that must cost one model.
+      const body = JSON.stringify({
+        object: "list",
+        data: [
+          consoleEntry("good-one", {}),
+          { id: 42, capabilities: "not an object" },
+          consoleEntry("good-two", {}),
+        ],
+      })
+      const state = yield* Ref.make<MockState>({ body, status: 200, calls: [] })
+      const catalog = yield* provided(
+        state,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          return yield* svc.get()
+        }),
+      )
+      const models = catalog["redrob"]!.models
+      expect(Object.keys(models)).toContain("good-one")
+      expect(Object.keys(models)).toContain("good-two")
+      // And it is the live listing that was kept, not the static fallback standing in for it.
+      expect(Object.keys(models)).not.toContain("claude-opus-5")
+    }),
+  )
+
+  it.live("names a bot-protection challenge instead of reporting an empty catalogue", () =>
+    Effect.gen(function* () {
+      // Measured against the live console: Bun's fetch is challenged by the bot protection in front
+      // of it, so the same key that answers 200 to curl answers 403 here with an HTML interstitial.
+      // Reported as "fetch failed", that was indistinguishable from an expired key -- the catalogue
+      // fell back to six built-in ids and the only trace was one warning line, which is exactly how
+      // a blocked CLI came to look like a short model list.
+      const challengeBody =
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+        "<title>Vercel Security Checkpoint</title></head><body></body></html>"
+      expect(isBotChallengeBody(challengeBody)).toBe(true)
+      // An API error is JSON with a message, so the two are not confusable and a real 403 -- a key
+      // without access to something -- is left alone.
+      expect(isBotChallengeBody('{"error":{"message":"Forbidden","type":"invalid_request_error"}}')).toBe(false)
+      expect(isBotChallengeBody("")).toBe(false)
+
+      const message = new ConsoleBotChallenge(403).message
+      // The message has to say the key was fine and name the fix, because the failure looks like an
+      // auth problem and is not one.
+      expect(message).toContain("bot-protection layer")
+      expect(message).toContain("The API key was accepted")
+      expect(message).toContain("/api/backend")
+      expect(new ConsoleBotChallenge(403).status).toBe(403)
     }),
   )
 
@@ -544,9 +690,14 @@ describe("ModelsDev console model metadata", () => {
         expect(model.cost).toEqual({ input: 0, output: 0 })
       }
       // Reasoning support does not depend on the network, so the offline catalog agrees with the
-      // live one on which ids think.
+      // live one on which ids think. `auto` is one of them: the router publishes the full
+      // low..max range, and claiming otherwise offline would hide its thinking control.
       expect(result["redrob"].models["claude-opus-5"].reasoning).toBe(true)
-      expect(result["redrob"].models["auto"].reasoning).toBe(false)
+      expect(result["redrob"].models["auto"].reasoning).toBe(true)
+      // Offline there is no listing, so no LEVELS are known and no variant may be synthesised --
+      // an effort the console might reject is worse than none offered.
+      expect(result["redrob"].models["auto"].reasoning_options).toEqual([])
+      expect(result["redrob"].models["claude-opus-5"].reasoning_options).toEqual([])
       expect(yield* Ref.get(state).pipe(Effect.map((s) => s.calls))).toEqual([])
     }),
   )

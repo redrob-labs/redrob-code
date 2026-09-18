@@ -192,10 +192,11 @@ describe("tool.read external_directory permission", () => {
 
         const { items, next } = asks()
         const target = path.join(dir, "test.txt")
-        const alt = target
-          .replace(/^[A-Za-z]:/, "")
-          .replaceAll("\\", "/")
-          .toLowerCase()
+        // Keeps the drive. A drive-less rooted path is ambiguous on Windows —
+        // `path.resolve("/users/x")` uses the current working directory's drive, so on a
+        // runner with the workspace on D: and TEMP on C: this resolved to a file that does
+        // not exist. See test/tool/external-directory.test.ts for the same correction.
+        const alt = `/${target.slice(0, 1).toLowerCase()}${target.slice(2).replaceAll("\\", "/").toLowerCase()}`
 
         yield* exec(dir, { filePath: alt }, next)
         const read = items.find((item) => item.permission === "read")

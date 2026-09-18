@@ -385,7 +385,45 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
       ? input.model.cost.experimentalOver200K
       : input.model.cost)
   const totalNanoAiu = input.metadata?.["copilot"]?.["totalNanoAiu"]
+  /*
+   * The gateway's own figure, when it sends one.
+   *
+   * Redrob's console returns `costUsd` on the response: the amount the account was actually debited. The
+   * arithmetic below cannot reproduce it and never could, for three reasons none of which are visible
+   * from here - `auto` is billed at the ROUTED model's rate rather than the router's published one, the
+   * long-context rate applies past the model's short-context boundary, and the priority tier is billed at
+   * 1.75x. A desktop app showing the local estimate beside each message was reporting a number that
+   * drifted from the credit the user watched fall.
+   *
+   * Same override shape as Copilot's above, and the same discipline: a value that is not a finite
+   * non-negative number is ignored rather than trusted, so a malformed or absent field falls through to
+   * the estimate instead of zeroing the cost.
+   */
+  const gatewayCostUsd = input.metadata?.["redrob"]?.["costUsd"]
+  /*
+   * The routing facts travel with that same block.
+   *
+   * `routedModel` is the catalogue id the router picked and `upstreamProvider` is the vendor that
+   * answered, which is not always the model's own vendor - a pinned vendor that throws falls through to
+   * the fallback, so a fallback showing up every time means the primary is broken rather than busy.
+   * Read here rather than at a second site because the block is one object: a reader who has to look in
+   * two places for two halves of it is how the cost half came to be dropped for streaming callers.
+   *
+   * Strings only. Anything else is ignored rather than passed through, so a malformed field cannot reach
+   * the message schema and fail validation on a message that is otherwise fine.
+   */
+  const routedModelRaw = input.metadata?.["redrob"]?.["routedModel"]
+  const upstreamProviderRaw = input.metadata?.["redrob"]?.["upstreamProvider"]
+  const routing = {
+    routedModel: typeof routedModelRaw === "string" && routedModelRaw.length > 0 ? routedModelRaw : undefined,
+    upstreamProvider:
+      typeof upstreamProviderRaw === "string" && upstreamProviderRaw.length > 0 ? upstreamProviderRaw : undefined,
+  }
+  if (typeof gatewayCostUsd === "number" && Number.isFinite(gatewayCostUsd) && gatewayCostUsd >= 0) {
+    return { cost: gatewayCostUsd, tokens, ...routing }
+  }
   return {
+    ...routing,
     cost:
       typeof totalNanoAiu === "number" && Number.isFinite(totalNanoAiu) && totalNanoAiu >= 0
         ? new Decimal(totalNanoAiu).div(100_000_000_000).toNumber()

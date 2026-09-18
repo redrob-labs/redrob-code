@@ -6,10 +6,8 @@ import { Effect, Exit, Layer, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { Installation } from "../../src/installation"
-import { InstallationChannel } from "@redrob-code/core/installation/version"
 import { CrossSpawnSpawner } from "@redrob-code/core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
-import { CDN_VERSION_NAME } from "../../script/cdn"
 import path from "path"
 
 const encoder = new TextEncoder()
@@ -81,42 +79,32 @@ function testLayer(
 
 describe("installation", () => {
   describe("latest", () => {
-    const cdnCalls: string[] = []
+    const calls: string[] = []
     testEffect(
       testLayer((request) => {
-        cdnCalls.push(request.url)
+        calls.push(request.url)
         return textResponse("1.2.3\n")
       }),
-    ).effect("reads the version marker the CDN publishes for a curl install", () =>
+    ).effect("reads the version marker published beside the newest release", () =>
       Effect.gen(function* () {
-        const result = yield* Installation.use.latest("curl")
+        const result = yield* Installation.use.latest()
         expect(result).toBe("1.2.3")
-        // The bucket install.sh downloads from, and nothing else: GitHub Releases are unreadable on
-        // a private repository, so asking for one would be a 404 dressed up as an update check.
-        expect(cdnCalls).toEqual([`${Installation.CDN_DOWNLOAD_BASE}/latest/${Installation.CDN_VERSION_FILE}`])
-        expect(cdnCalls.some((url) => url.includes("api.github.com"))).toBe(false)
+        // One source, and it is a redirect rather than the API. `api.github.com` allows an
+        // anonymous caller 60 requests an hour, and every person running these builds is one.
+        expect(calls).toEqual([
+          `${Installation.RELEASE_DOWNLOAD_BASE}/latest/download/${Installation.RELEASE_VERSION_FILE}`,
+        ])
+        expect(calls.some((url) => url.includes("api.github.com"))).toBe(false)
+        // The bucket is gone. Its marker sat at 0.0.12 for ten days while a different version
+        // line shipped ten releases, because a person had to run the publish script by hand.
+        expect(calls.some((url) => url.includes("cdn.redrob.ai"))).toBe(false)
       }),
     )
 
-    const unknownCalls: string[] = []
-    testEffect(
-      testLayer((request) => {
-        unknownCalls.push(request.url)
-        return textResponse("1.4.0")
-      }),
-    ).effect("reads the same marker for an install it could not place", () =>
+    testEffect(testLayer(() => textResponse("v4.0.0\n"))).effect("strips a v prefix from the marker", () =>
       Effect.gen(function* () {
-        const result = yield* Installation.use.latest("unknown")
-        expect(result).toBe("1.4.0")
-        expect(unknownCalls).toEqual([`${Installation.CDN_DOWNLOAD_BASE}/latest/${Installation.CDN_VERSION_FILE}`])
-        expect(unknownCalls.some((url) => url.includes("api.github.com"))).toBe(false)
-      }),
-    )
-
-    testEffect(testLayer(() => textResponse("v4.0.0-beta.1\n"))).effect("strips a v prefix from the marker", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("curl")
-        expect(result).toBe("4.0.0-beta.1")
+        const result = yield* Installation.use.latest()
+        expect(result).toBe("4.0.0")
       }),
     )
 
@@ -124,113 +112,24 @@ describe("installation", () => {
       "refuses a marker that does not name a version",
       () =>
         Effect.gen(function* () {
-          const exit = yield* Effect.exit(Installation.use.latest("curl"))
+          const exit = yield* Effect.exit(Installation.use.latest())
           expect(Exit.isFailure(exit)).toBe(true)
         }),
     )
 
-    test("asks for the key the publish script actually writes", () => {
-      expect(Installation.CDN_VERSION_FILE).toBe(CDN_VERSION_NAME)
-      expect(Installation.cdnVersionUrl({})).toBe(`${Installation.CDN_DOWNLOAD_BASE}/latest/${CDN_VERSION_NAME}`)
-      // A self-hosted bucket is the one install.sh was pointed at, so it is the one asked for here.
-      expect(Installation.cdnVersionUrl({ REDROB_CODE_DOWNLOAD_BASE: "https://example.com/builds/" })).toBe(
-        `https://example.com/builds/latest/${CDN_VERSION_NAME}`,
+    test("asks the release for the marker, honoring an override", () => {
+      expect(Installation.RELEASE_VERSION_FILE).toBe("VERSION")
+      expect(Installation.releaseVersionUrl({})).toBe(
+        `${Installation.RELEASE_DOWNLOAD_BASE}/latest/download/VERSION`,
+      )
+      // `latest/download/<name>` resolves to whichever release is newest, so no client has to
+      // know a tag and a page never has to be edited on release day.
+      expect(Installation.RELEASE_DOWNLOAD_BASE).toBe("https://github.com/redrob-labs/redrob-code/releases")
+      // The override install.sh was pointed at is the one asked for here.
+      expect(Installation.releaseVersionUrl({ REDROB_CODE_DOWNLOAD_BASE: "http://127.0.0.1:8080/releases/" })).toBe(
+        "http://127.0.0.1:8080/releases/latest/download/VERSION",
       )
     })
-
-    const npmCalls: string[] = []
-    testEffect(
-      testLayer((request) => {
-        npmCalls.push(request.url)
-        return jsonResponse({ version: "1.5.0" })
-      }),
-    ).effect("reads npm versions via registry", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("npm")
-        expect(result).toBe("1.5.0")
-        expect(npmCalls).toContain(`https://registry.npmjs.org/redrob-code/${InstallationChannel}`)
-      }),
-    )
-
-    const bunCalls: string[] = []
-    testEffect(
-      testLayer((request) => {
-        bunCalls.push(request.url)
-        return jsonResponse({ version: "1.6.0" })
-      }),
-    ).effect("reads bun versions via registry", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("bun")
-        expect(result).toBe("1.6.0")
-        expect(bunCalls).toContain(`https://registry.npmjs.org/redrob-code/${InstallationChannel}`)
-      }),
-    )
-
-    const pnpmCalls: string[] = []
-    testEffect(
-      testLayer((request) => {
-        pnpmCalls.push(request.url)
-        return jsonResponse({ version: "1.7.0" })
-      }),
-    ).effect("reads pnpm versions via registry", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("pnpm")
-        expect(result).toBe("1.7.0")
-        expect(pnpmCalls).toContain(`https://registry.npmjs.org/redrob-code/${InstallationChannel}`)
-      }),
-    )
-
-    testEffect(testLayer(() => jsonResponse({ version: "2.3.4" }))).effect("reads scoop manifest versions", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("scoop")
-        expect(result).toBe("2.3.4")
-      }),
-    )
-
-    testEffect(testLayer(() => jsonResponse({ d: { results: [{ Version: "3.4.5" }] } }))).effect(
-      "reads chocolatey feed versions",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* Installation.use.latest("choco")
-          expect(result).toBe("3.4.5")
-        }),
-    )
-
-    testEffect(
-      testLayer(
-        () => jsonResponse({ versions: { stable: "2.0.0" } }),
-        (cmd, args) => {
-          // getBrewFormula: return core formula (no tap)
-          if (cmd === "brew" && args.includes("--formula") && args.includes("redrob-labs/tap/redrob")) return ""
-          if (cmd === "brew" && args.includes("--formula") && args.includes("redrob")) return "redrob"
-          return ""
-        },
-      ),
-    ).effect("reads brew formulae API versions", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("brew")
-        expect(result).toBe("2.0.0")
-      }),
-    )
-
-    const brewInfoJson = JSON.stringify({
-      formulae: [{ versions: { stable: "2.1.0" } }],
-    })
-    testEffect(
-      testLayer(
-        () => jsonResponse({}), // HTTP not used for tap formula
-        (cmd, args) => {
-          if (cmd === "brew" && args.includes("redrob-labs/tap/redrob") && args.includes("--formula")) return "redrob"
-          if (cmd === "brew" && args.includes("--json=v2")) return brewInfoJson
-          return ""
-        },
-      ),
-    ).effect("reads brew tap info JSON via CLI", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("brew")
-        expect(result).toBe("2.1.0")
-      }),
-    )
   })
 
   describe("upgrade", () => {
@@ -266,22 +165,15 @@ describe("installation", () => {
       }),
     )
 
-    testEffect(
-      testLayer(
-        () => jsonResponse({}),
-        (cmd) => {
-          if (cmd === "npm") return { code: 1, stderr: "token=secret command output" }
-          return ""
-        },
-      ),
-    ).effect("returns sanitized typed errors for failed package upgrades", () =>
+    testEffect(testLayer(() => jsonResponse({}))).effect("refuses to upgrade an install it did not place", () =>
       Effect.gen(function* () {
-        const error = yield* Effect.flip(Installation.use.upgrade("npm", "9.9.9"))
+        const error = yield* Effect.flip(Installation.use.upgrade("unknown", "9.9.9"))
         expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
-        expect(error.stderr).toBe("Upgrade failed for npm (exit code 1).")
+        // Re-running install.sh over a binary somebody else put here would write into whatever
+        // directory it happens to sit in, so this says what to run instead of guessing.
+        expect(error.stderr).toContain("was not installed by install.sh")
+        expect(error.stderr).toContain(Installation.CONSOLE_INSTALL_SCRIPT_URL)
         expect(error.message).toBe(error.stderr)
-        expect(error.stderr).not.toContain("secret")
-        expect(error.stderr).not.toContain("command output")
       }),
     )
 
@@ -332,7 +224,7 @@ describe("installation", () => {
       expect(Installation.isCurlInstall(path.join(home, ".local", "bin", "redrob-code"))).toBe(true)
     })
 
-    test("leaves binaries that are not ours, or not in those directories, to the package managers", () => {
+    test("leaves binaries that are not ours, or not in those directories, alone", () => {
       expect(Installation.isCurlInstall("/home/user/.local/bin/bun")).toBe(false)
       expect(Installation.isCurlInstall("/home/user/.redrob/bin/node")).toBe(false)
       expect(Installation.isCurlInstall("/opt/homebrew/bin/redrob")).toBe(false)

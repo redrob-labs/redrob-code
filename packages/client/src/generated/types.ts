@@ -656,6 +656,8 @@ export type SessionsContextOutput = {
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }
         readonly finish?: string
         readonly cost?: number
+        readonly routedModel?: string
+        readonly upstreamProvider?: string
         readonly tokens?: {
           readonly input: number
           readonly output: number
@@ -1734,6 +1736,8 @@ export type SessionsMessageOutput = {
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }
         readonly finish?: string
         readonly cost?: number
+        readonly routedModel?: string
+        readonly upstreamProvider?: string
         readonly tokens?: {
           readonly input: number
           readonly output: number
@@ -1906,6 +1910,8 @@ export type MessagesListOutput = {
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }
         readonly finish?: string
         readonly cost?: number
+        readonly routedModel?: string
+        readonly upstreamProvider?: string
         readonly tokens?: {
           readonly input: number
           readonly output: number

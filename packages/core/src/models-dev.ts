@@ -1,6 +1,8 @@
 import { Context, Duration, Effect, Layer, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelsDev } from "@redrob-code/schema/models-dev"
+import { join } from "path"
+import { Global } from "./global"
 import { Flag } from "./flag/flag"
 import { InstallationChannel, InstallationVersion } from "./installation/version"
 import { Credential } from "./credential"
@@ -155,13 +157,29 @@ const ConsoleModelCapabilities = Schema.Struct({
   // The token count above which the long-context rates apply, not an input cap.
   shortContextTokens: Schema.Finite,
   maxContextTokens: Schema.Finite,
-  // The console's own set is low/medium/high/max; decoded as plain strings so a new level does not
-  // fail the parse and drop the whole catalog.
+  // The console's own set is low/medium/high/xhigh/max; decoded as plain strings so a new level does
+  // not fail the parse and drop the whole catalog.
   thinkingLevels: Schema.Array(Schema.String),
   // `fastMode` and `requiresProviderDataShare` are request switches on the console's chat endpoint
   // with no counterpart in this schema, so they are decoded to pin the shape and left unprojected.
   fastMode: Schema.Boolean,
   requiresProviderDataShare: Schema.Boolean,
+  // What the model accepts and returns beyond text. The console publishes these per model -- 177 of
+  // its models take an image -- and its chat endpoint accepts an `image_url` content part, so these
+  // are the flags that decide whether an attachment can be sent at all. Optional because a listing
+  // written before they existed must still decode.
+  imageInput: Schema.optional(Schema.Boolean),
+  audioInput: Schema.optional(Schema.Boolean),
+  fileInput: Schema.optional(Schema.Boolean),
+  videoInput: Schema.optional(Schema.Boolean),
+  imageOutput: Schema.optional(Schema.Boolean),
+  audioOutput: Schema.optional(Schema.Boolean),
+  // The published reply cap, where CONSOLE_OUTPUT_TOKENS is only this CLI's own request ceiling.
+  // Nullable, not merely absent: the console publishes an explicit `null` for the models it has no
+  // cap for (7 of its 323 at the time of writing). Declared `number | undefined`, that one null
+  // failed the whole-array decode and took all 323 models down with it, which is what left the
+  // catalog showing six built-in ids.
+  maxOutputTokens: Schema.optional(Schema.NullOr(Schema.Finite)),
 })
 
 // Assumed OpenAI-standard /v1/models listing shape returned by the console endpoint:
@@ -179,20 +197,75 @@ const ConsoleModel = Schema.Struct({
 
 const ConsoleModelList = Schema.Struct({
   object: Schema.optional(Schema.String),
-  data: Schema.Array(ConsoleModel),
+  // Entries stay `unknown` here and are decoded one at a time below. Decoding the array as a whole
+  // is all-or-nothing: a single unexpected value anywhere in 323 entries rejects the entire listing
+  // and the catalog silently becomes the six-id fallback. One model this CLI cannot describe should
+  // cost that one model, not the catalog -- the same reason `thinkingLevels` is decoded as plain
+  // strings a few lines up.
+  data: Schema.Array(Schema.Unknown),
 })
 
-// The console gateway is text-in/text-out: its chat endpoint accepts a string or an array of text
-// parts and nothing else, so there is no attachment to send and no modality beyond text to
-// advertise. Shared by the fallback and the live projection so the two cannot disagree.
-const CONSOLE_MODALITIES = { input: ["text"], output: ["text"] } as const satisfies Model["modalities"]
+// The console's chat endpoint accepts `image_url` and `input_audio` content parts, and publishes per
+// model which of them that model can actually read. So modalities are read from the listing rather
+// than asserted here.
+//
+// This used to be hardcoded to text-in/text-out, on the belief that the gateway took nothing but
+// text. That belief was the reason an attachment never reached a model: ProviderTransform consults
+// `capabilities.input[modality]` and, finding image false, replaces the image with the text
+// `ERROR: Cannot read image (this model does not support image input)`. The flags below are what
+// stop that happening for the 177 models that do take one.
+//
+// Text is always in the input set: every console model reads text, and a listing that omitted the
+// flags entirely must still describe a usable model.
+const TEXT_ONLY_MODALITIES = { input: ["text"], output: ["text"] } as const satisfies Model["modalities"]
+
+const consoleAttachment = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): boolean =>
+  Boolean(
+    capabilities?.imageInput || capabilities?.audioInput || capabilities?.fileInput || capabilities?.videoInput,
+  )
+
+const consoleModalities = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): Model["modalities"] => {
+  if (!capabilities) return TEXT_ONLY_MODALITIES
+  const input: NonNullable<Model["modalities"]>["input"][number][] = ["text"]
+  if (capabilities.imageInput) input.push("image")
+  if (capabilities.audioInput) input.push("audio")
+  if (capabilities.videoInput) input.push("video")
+  // `fileInput` has no modality of its own in this schema: a PDF arrives as a file part and is
+  // gated by the mime-to-modality mapping, so there is nothing to advertise for it here.
+  const output: NonNullable<Model["modalities"]>["output"][number][] = ["text"]
+  if (capabilities.imageOutput) output.push("image")
+  if (capabilities.audioOutput) output.push("audio")
+  return { input, output }
+}
 
 // The console's thinking control is a top-level `thinking` level on its chat endpoint, not OpenAI's
-// `reasoning_effort`, and that endpoint rejects fields it does not whitelist. An empty option list
-// is how ProviderTransform is told to publish no effort variants: `reasoningVariants` returns `{}`
-// for it, which stops `variants()` from synthesising `reasoningEffort` variants the console would
-// refuse with a 400.
+// `reasoning_effort`, and that endpoint rejects fields it does not whitelist. So the effort values
+// come from the listing's own `capabilities.thinkingLevels` and ProviderTransform maps the chosen
+// one onto `thinking` for this provider — see the `redrob` case in `reasoningEffort`, which is what
+// keeps `reasoning_effort` off the wire.
+//
+// An empty list still means "publish no variants": `reasoningVariants` returns `{}` for it, which
+// stops `variants()` from synthesising efforts a model does not offer.
 const CONSOLE_REASONING_OPTIONS = [] as const satisfies Model["reasoning_options"]
+
+/**
+ * Effort variants for one console model, from the levels it publishes.
+ *
+ * Verbatim: the console validates `thinking` against its own enum
+ * (low | medium | high | xhigh | max), so a level is passed through as published rather than mapped
+ * onto OpenAI's three-value effort scale, which would lose `xhigh` and `max` entirely.
+ */
+const consoleReasoningOptions = (
+  capabilities: Schema.Schema.Type<typeof ConsoleModelCapabilities> | undefined,
+): Model["reasoning_options"] => {
+  const levels = capabilities?.thinkingLevels ?? []
+  if (levels.length === 0) return CONSOLE_REASONING_OPTIONS
+  return [{ type: "effort", values: [...levels] }]
+}
 
 // The static fallback catalog: mirrors the values RedrobPlugin registers into the V2 catalog so
 // `redrob models` always lists every served console model (CONSOLE_MODELS) even with no key or a
@@ -210,7 +283,10 @@ const redrobFallbackModel = (model: ConsoleModelInfo): Model => ({
   tool_call: true,
   cost: { input: 0, output: 0 },
   limit: { context: CONSOLE_CONTEXT_TOKENS, output: CONSOLE_OUTPUT_TOKENS },
-  modalities: CONSOLE_MODALITIES,
+  // Text only, deliberately: with no key there is no listing, and claiming an attachment the
+  // model may not read would produce a failed request instead of an unavailable button. The live
+  // listing is what turns image input on.
+  modalities: TEXT_ONLY_MODALITIES,
   // No status: the schema status set is alpha/beta/deprecated; ModelsDevPlugin defaults an
   // absent status to "active" when projecting into the V2 catalog.
   provider: { npm: CONSOLE_PACKAGE, api: CONSOLE_URL },
@@ -237,11 +313,13 @@ const consoleModel = (model: Schema.Schema.Type<typeof ConsoleModel>): Model => 
   id: model.id,
   name: model.id,
   release_date: model.created ? new Date(model.created * 1000).toISOString().slice(0, 10) : "",
-  attachment: false,
+  // `attachment` is what a client reads to decide whether to offer a file button at all, so it has
+  // to agree with the modalities below rather than stay false while they say an image is fine.
+  attachment: consoleAttachment(model.capabilities),
   // Published thinking levels are what makes a model a reasoning model here; an empty list means
   // the console serves it without any thinking control.
   reasoning: (model.capabilities?.thinkingLevels.length ?? 0) > 0,
-  reasoning_options: CONSOLE_REASONING_OPTIONS,
+  reasoning_options: consoleReasoningOptions(model.capabilities),
   temperature: true,
   tool_call: true,
   cost: consoleCost(model),
@@ -249,9 +327,10 @@ const consoleModel = (model: Schema.Schema.Type<typeof ConsoleModel>): Model => 
     // maxContextTokens is the whole window. There is no published input cap, so limit.input stays
     // absent and `usable()` reserves the reply out of the window instead.
     context: model.capabilities?.maxContextTokens ?? CONSOLE_CONTEXT_TOKENS,
-    output: CONSOLE_OUTPUT_TOKENS,
+    // The published reply cap when there is one; this CLI's own ceiling otherwise.
+    output: model.capabilities?.maxOutputTokens ?? CONSOLE_OUTPUT_TOKENS,
   },
-  modalities: CONSOLE_MODALITIES,
+  modalities: consoleModalities(model.capabilities),
   provider: { npm: CONSOLE_PACKAGE, api: CONSOLE_URL },
 })
 
@@ -283,6 +362,79 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/ModelsDev") {}
 
+/**
+ * A bot-protection challenge standing between this CLI and the console.
+ *
+ * The console is fronted by Vercel, whose bot protection answers a request it does not recognise as
+ * a browser with `403` and an HTML interstitial. This CLI is compiled with Bun, and Bun's fetch is
+ * one of the clients that gets challenged: the same key and the same URL answer `200` to curl and
+ * `403` here, whatever headers are sent. There is no header to add and no retry that helps -- the
+ * challenge wants a browser to solve it, and there is no browser.
+ *
+ * Named so it does not read as "no models available". Without this, the failure was indistinguishable
+ * from an expired key: the catalogue quietly fell back to six built-in ids and the only trace was one
+ * log line, so a user saw a short model list and no reason for it.
+ */
+export class ConsoleBotChallenge extends Error {
+  readonly _tag = "ConsoleBotChallenge"
+  constructor(readonly status: number) {
+    super(
+      `The console refused this request with ${status} at its bot-protection layer, not at authentication. ` +
+        `The API key was accepted; the request never reached the API. ` +
+        `Allow this CLI through: in the console project's Vercel dashboard, add a Firewall bypass rule for ` +
+        `the /api/backend/* path (Firewall > Configure > New Rule > path starts with /api/backend > Bypass), ` +
+        `or exclude that path from the Bot Protection managed ruleset. Until then the model list falls back ` +
+        `to the built-in ids and chat requests fail the same way.`,
+    )
+  }
+}
+
+/**
+ * Whether a 4xx body is a bot-protection interstitial rather than an API error.
+ *
+ * Matched on the challenge's own markers. An API error is JSON with a message; this is an HTML page
+ * whose title says what it is, so the two are not confusable and a real 403 from the API -- a key
+ * without access to a model, say -- is left alone.
+ */
+export function isBotChallengeBody(body: string): boolean {
+  const head = body.slice(0, 4000)
+  if (!/^\s*</.test(head)) return false
+  return (
+    /Vercel Security Checkpoint/i.test(head) ||
+    /security checkpoint/i.test(head) ||
+    /_vercel\/challenge/i.test(head) ||
+    /cf-challenge|__cf_chl/i.test(head)
+  )
+}
+
+/**
+ * The console key as `PUT /auth/redrob` leaves it, read straight from `auth.json`.
+ *
+ * The Auth service that owns this file lives in the `redrob` package, which depends on this one, so it
+ * cannot be imported here. Reading the file is the whole of that service's behaviour for this case, and
+ * the alternative - a callback the server has to remember to wire - fails silently in exactly the way
+ * this bug already failed once.
+ *
+ * Deliberately forgiving: a missing file, unreadable JSON, an entry of some other `type`, or a blank key
+ * all mean "no key here", not an error. The catalogue's keyless branch is a legitimate state, and the
+ * only thing this must never do is turn a readable key into a crash.
+ */
+function authStoreApiKey(): Effect.Effect<string | undefined> {
+  return Effect.tryPromise(() => Bun.file(join(Global.Path.data, "auth.json")).json()).pipe(
+    Effect.map((data) => {
+      if (typeof data !== "object" || data === null) return undefined
+      const entry = (data as Record<string, unknown>)["redrob"]
+      if (typeof entry !== "object" || entry === null) return undefined
+      const record = entry as Record<string, unknown>
+      // auth.json spells an api key `type: "api"`, where the Credential store spells it `type: "key"`.
+      if (record["type"] !== "api") return undefined
+      const key = record["key"]
+      return typeof key === "string" && key.trim() ? key : undefined
+    }),
+    Effect.orElseSucceed(() => undefined),
+  )
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -300,17 +452,45 @@ const layer = Layer.effect(
     // crashing the CLI. The endpoint returns 401 without a valid key, which is an expected and
     // acceptable outcome that must degrade gracefully.
     const fetchModels = Effect.fn("ModelsDev.fetchModels")(function* (apiKey: string) {
-      const response = yield* HttpClientRequest.get(`${CONSOLE_URL}/models`).pipe(
+      const request = HttpClientRequest.get(`${CONSOLE_URL}/models`).pipe(
         HttpClientRequest.setHeader("User-Agent", USER_AGENT),
         HttpClientRequest.bearerToken(apiKey),
-        http.execute,
-        Effect.flatMap((res) => res.text),
-        Effect.timeout("10 seconds"),
       )
+      // The body is read even on a non-2xx, because a bot-protection challenge and an API error
+      // arrive with the same status and are told apart only by what they contain. So the response is
+      // taken raw and the status checked here, rather than letting a 4xx fail the effect before the
+      // body exists.
+      const res = yield* http.execute(request).pipe(Effect.timeout("10 seconds"))
+      const body = yield* res.text
+      if (res.status === 403 || res.status === 401) {
+        if (isBotChallengeBody(body)) return yield* Effect.fail(new ConsoleBotChallenge(res.status))
+        return yield* Effect.fail(new Error(`console /models refused the request with ${res.status}`))
+      }
+      if (res.status < 200 || res.status >= 300) {
+        return yield* Effect.fail(new Error(`console /models returned ${res.status}`))
+      }
+      const response = body
       const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ConsoleModelList))(response)
       if (decoded._tag === "None") return yield* Effect.fail(new Error("Failed to parse console /models response"))
       const models: Record<string, Model> = {}
-      for (const model of decoded.value.data) models[model.id] = consoleModel(model)
+      let rejected = 0
+      for (const entry of decoded.value.data) {
+        const model = Schema.decodeUnknownOption(ConsoleModel)(entry)
+        if (model._tag === "None") {
+          rejected++
+          continue
+        }
+        models[model.value.id] = consoleModel(model.value)
+      }
+      // Silence here is what hid the previous failure, so a dropped entry is reported. It is a warning
+      // rather than an error: the catalog is usable, just short by however many entries this CLI could
+      // not describe.
+      if (rejected > 0)
+        yield* Effect.logWarning(
+          `ModelsDev: dropped ${rejected} of ${decoded.value.data.length} console models this build cannot describe`,
+        )
+      if (Object.keys(models).length === 0)
+        return yield* Effect.fail(new Error("console /models returned no model this build can describe"))
       // Always guarantee the primary `auto` model lists even if the endpoint omits it. Only the
       // primary is backfilled: with a key the listing is authoritative, so a model it stops
       // advertising must not be resurrected from the static list.
@@ -322,11 +502,32 @@ const layer = Layer.effect(
     // redrob integration by `redrob providers login`. Only reading the environment made the
     // dynamic catalog silently fall back to the static list for anyone who logged in through
     // the CLI, so check the credential store too.
+    /**
+     * The console key, from wherever the user actually put it.
+     *
+     * Three origins, and they are not interchangeable historically. `REDROB_API_KEY` is the one a
+     * terminal user exports. The Credential store is what `redrob providers login` writes. And
+     * `auth.json` is what `PUT /auth/redrob` writes, which is the route the DESKTOP APP uses for both
+     * of its connect paths, the pasted key and "Connect Redrob" - that flow ends by handing the key to
+     * this same route, so the app never populates the Credential store at all.
+     *
+     * Reading only the first two is why a user who connected through the app saw six models: the key
+     * was present, in auth.json, and the catalogue could not see it, so `populate` took the keyless
+     * branch and returned the built-in list. Nothing bridges the two stores - the Credential store is
+     * SQL, auth.json is a file, and no migration copies one into the other - so the catalogue has to
+     * read both.
+     *
+     * Note the shapes differ as well as the locations: the Credential store discriminates on
+     * `type: "key"`, auth.json on `type: "api"`. Matching only one of those spellings was the second
+     * half of the same bug.
+     */
     const resolveApiKey = Effect.fn("ModelsDev.resolveApiKey")(function* () {
       const fromEnv = process.env["REDROB_API_KEY"]
       if (fromEnv) return fromEnv
       const stored = yield* credential.list(Integration.ID.make("redrob"))
-      return stored.flatMap((item) => (item.value.type === "key" ? [item.value.key] : []))[0]
+      const fromCredential = stored.flatMap((item) => (item.value.type === "key" ? [item.value.key] : []))[0]
+      if (fromCredential) return fromCredential
+      return yield* authStoreApiKey()
     })
 
     const populate = Effect.gen(function* () {
@@ -346,7 +547,12 @@ const layer = Layer.effect(
       if (Flag.REDROB_DISABLE_MODELS_FETCH || !apiKey) return fallbackCatalog()
       return yield* fetchModels(apiKey).pipe(
         Effect.tapCause((cause) =>
-          Effect.logWarning("ModelsDev console /models fetch failed; using static fallback", { cause }),
+          // A bot challenge is not the same event as a bad key or a timeout, and reporting it as
+          // "fetch failed" is what made a blocked CLI look like an empty catalogue. The named error
+          // carries what to do about it, so it is logged at error level and its own message is used.
+          String(cause).includes("ConsoleBotChallenge")
+            ? Effect.logError(`ModelsDev: ${String(cause)}`)
+            : Effect.logWarning("ModelsDev console /models fetch failed; using static fallback", { cause }),
         ),
         Effect.orElseSucceed(fallbackCatalog),
       )

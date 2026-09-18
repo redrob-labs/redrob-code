@@ -79,12 +79,14 @@ into `main`.
 
 ## Releasing
 
-Versions track upstream with a `-redrob.N` suffix: `v1.18.31-redrob.1` is our first build
-against upstream's `v1.18.31`, and `-redrob.2` is a second build against the same
-upstream version. The suffix is not decoration — it guarantees no tag we publish is a
-string upstream also publishes, so nobody can mistake our artifact for theirs.
+Versions are ours and start at `0.1.0`. They are not derived from the upstream version the
+tree is built on: that is recorded in `UPSTREAM_VERSION` at the repository root, and the
+release notes read it so every release still states what it is based on. The old
+`-redrob.N` suffix was retired because it made every release a semver prerelease, which
+sorts below the release it precedes. See `docs/VERSIONING.md`.
 
-Run the `release` workflow from the Actions tab against `develop`. It builds every
+Run the `release` workflow from the Actions tab against `develop` with a `bump` of `patch`,
+`minor` or `major`. It computes the next version from the newest `v*` tag, builds every
 platform, signs and notarizes the macOS binaries, signs the Windows binary when Azure
 Trusted Signing is configured, attaches build provenance, and creates the tagged release.
 It then prints a link to open the promotion pull request from `develop` into `main`.
@@ -104,3 +106,19 @@ the release.
 Branch from `main`, not `develop`, so the fix does not drag unreleased work with it.
 Open the pull request into `main`, release from there, then merge `main` back into
 `develop` so the fix is not lost on the next release.
+
+That last step is checked, because it is the one that gets skipped. `branch-sync.yml` runs
+on every push to `main` and fails while `main` holds a commit `develop` does not, listing
+them. A promotion pull request from `develop` leaves the two identical and the check says
+nothing; a hotfix reports until it is brought back.
+
+The invariant it enforces, which you can read yourself at any time:
+
+```bash
+git rev-list --count origin/develop..origin/main   # 0, outside a release window
+```
+
+It was not 0 for a month. #13 fixed `bun install --frozen-lockfile` on `main`, the
+back-merge never happened, and the default branch could not install with the bun version
+`packageManager` pins. The rule above was already written; nothing checked it, and a rule
+nothing checks is a preference.
