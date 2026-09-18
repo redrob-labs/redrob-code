@@ -28,7 +28,15 @@ export const UpgradeCommand = {
     const detectedMethod = await Installation.method()
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {
-      prompts.log.error(`redrob is installed to ${process.execPath} and may be managed by a package manager`)
+      // Not "managed by a package manager": there are no package-manager channels, so the only
+      // thing this can mean is a binary install.sh did not place. Saying otherwise sends the
+      // reader off to run `brew upgrade` against a formula that does not exist.
+      prompts.log.error(
+        `redrob at ${process.execPath} was not installed by install.sh, so upgrading in place would write into whatever directory it is sitting in.`,
+      )
+      prompts.log.info(
+        "install.sh installs into $HOME/.redrob/bin. A build from source or a copy moved elsewhere is upgraded by reinstalling.",
+      )
       const install = await prompts.select({
         message: "Install anyways?",
         options: [
@@ -43,8 +51,8 @@ export const UpgradeCommand = {
       }
     }
     prompts.log.info("Using method: " + method)
-    // A version that cannot be read is a normal state, not a stack trace: the CDN marker only exists
-    // from the first release that publishes it, and a registry can be unreachable.
+    // A version that cannot be read is a normal state, not a stack trace: the release marker only
+    // exists from the first release that publishes it, and the network can be down.
     const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest().catch(() => undefined)
     if (!target) {
       prompts.log.error("Could not work out the latest published version. Name one, for ex 'redrob upgrade 0.1.48'")
