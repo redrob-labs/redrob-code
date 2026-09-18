@@ -224,7 +224,7 @@ describe("installation", () => {
       expect(Installation.isCurlInstall(path.join(home, ".local", "bin", "redrob-code"))).toBe(true)
     })
 
-    test("leaves binaries that are not ours, or not in those directories, to the package managers", () => {
+    test("leaves binaries that are not ours, or not in those directories, alone", () => {
       expect(Installation.isCurlInstall("/home/user/.local/bin/bun")).toBe(false)
       expect(Installation.isCurlInstall("/home/user/.redrob/bin/node")).toBe(false)
       expect(Installation.isCurlInstall("/opt/homebrew/bin/redrob")).toBe(false)
