@@ -254,6 +254,9 @@ jobs:
       # claim a signature the run did not produce are worse than no claim: a reader has no
       # way to tell, and the whole point of saying "signed" is that it can be relied on.
       signed: ${{ steps.result.outputs.signed }}
+      # Separate from `signed`: the binaries can be signed while the installer is not, and the
+      # notes must not round one up into the other.
+      installer: ${{ steps.installer-result.outputs.installer }}
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -438,6 +441,119 @@ jobs:
             echo "::warning::the Windows binaries in this release are NOT signed"
           fi
 
+      # ── The installer ─────────────────────────────────────────────────────────────────────
+      #
+      # Built HERE rather than in `build`, and specifically after the signing steps above, because
+      # the installer embeds the binary: building it earlier would wrap an unsigned redrob.exe in a
+      # signed installer, so Windows would accept the download and then ship an unsigned program.
+      # Signing is therefore two-stage -- payload first, wrapper second -- and both stages are read
+      # back before the release notes are allowed to claim either.
+      - name: Build the Windows installer
+        id: installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Inno Setup ships on the windows-latest image via Chocolatey. Pinned rather than latest:
+          # an installer definition is not something to have silently recompiled by a new major.
+          choco install innosetup --version=6.2.2 --no-progress -y
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc `
+            "/DAppVersion=${{ needs.version.outputs.version }}" `
+            "/DSourceBin=${{ github.workspace }}\dist\redrob-windows-x64\bin" `
+            "/O${{ github.workspace }}\dist" `
+            "${{ github.workspace }}\installer\windows\redrob-code.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
+          if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
+          Write-Host "built $((Get-Item $setup).Length) bytes"
+
+      - name: Sign the installer with Azure Trusted Signing
+        id: sign-installer-azure
+        continue-on-error: true
+        if: steps.config.outputs.method == 'azure'
+        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+        with:
+          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+          files: |
+            ${{ github.workspace }}\dist\redrob-code-x64-setup.exe
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Sign the installer with the organization Authenticode certificate
+        id: sign-installer-pfx
+        continue-on-error: true
+        if: steps.config.outputs.method == 'pfx'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pfx = Join-Path $env:RUNNER_TEMP "redrob-installer-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
+            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
+            $result = Set-AuthenticodeSignature `
+              -FilePath "${{ github.workspace }}\dist\redrob-code-x64-setup.exe" `
+              -Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
+            if (-not $result.SignerCertificate) {
+              throw "Authenticode signing failed for the installer: $($result.StatusMessage)"
+            }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      # Read back, on the same terms as the binaries: an unsigned installer is the one file a user
+      # actually double-clicks, so it is the last thing that should be trusted on an exit code.
+      - name: Verify the installer signature
+        id: verify-installer
+        continue-on-error: true
+        if: steps.config.outputs.method != 'none'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
+          $sig = Get-AuthenticodeSignature $setup
+          if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on the installer" }
+          $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
+          if ($accepted -notcontains $sig.Status.ToString()) {
+            throw "unexpected signature status on the installer: $($sig.Status) $($sig.StatusMessage)"
+          }
+          Write-Host "redrob-code-x64-setup.exe: $($sig.Status), signer $($sig.SignerCertificate.Subject)"
+
+      - name: Record the installer signing outcome
+        id: installer-result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          method="${{ steps.config.outputs.method }}"
+          case "$method" in
+            azure) signed="${{ steps.sign-installer-azure.outcome }}" ;;
+            pfx)   signed="${{ steps.sign-installer-pfx.outcome }}" ;;
+            *)     signed="skipped" ;;
+          esac
+          if [ "${{ steps.installer.outcome }}" != "success" ]; then
+            echo "installer=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::the Windows installer was not built"
+          elif [ "$signed" = "success" ] && [ "${{ steps.verify-installer.outcome }}" = "success" ]; then
+            echo "installer=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Windows installer signed via $method and verified"
+          else
+            echo "installer=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::the Windows installer in this release is NOT signed"
+          fi
+
       - name: Repack
         shell: bash
         working-directory: dist
@@ -451,7 +567,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cli-windows-signed
-          path: dist/redrob-windows-*.zip
+          path: |
+            dist/redrob-windows-*.zip
+            dist/redrob-code-x64-setup.exe
 
   publish:
     needs: [version, build, sign-macos, sign-windows]
@@ -499,7 +617,17 @@ jobs:
         working-directory: assets
         run: |
           set -euo pipefail
-          sha256sum redrob-*.zip redrob-*.tar.gz > SHA256SUMS
+          # The installer is included deliberately: it is the file a Windows user actually
+          # double-clicks, so it is the one that most needs a published digest. Guarded with a
+          # glob test rather than assumed, because the installer step is `continue-on-error`
+          # and a release without it must still produce checksums for everything else.
+          set -- redrob-code-x64-setup.exe
+          if [ -e "$1" ]; then
+            sha256sum redrob-*.zip redrob-*.tar.gz redrob-code-x64-setup.exe > SHA256SUMS
+          else
+            echo "::warning::no installer present; SHA256SUMS will not cover one"
+            sha256sum redrob-*.zip redrob-*.tar.gz > SHA256SUMS
+          fi
           cat SHA256SUMS
 
       # The marker install.sh and `redrob upgrade` read to answer "what is the newest
@@ -533,6 +661,7 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           UPSTREAM: ${{ needs.version.outputs.upstream }}
           WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
+          WINDOWS_INSTALLER: ${{ needs.sign-windows.outputs.installer }}
         run: |
           set -euo pipefail
           # An annotated tag records a tagger, and a bare runner has no git identity, so
@@ -570,6 +699,13 @@ jobs:
             echo "## Verifying"
             echo
             echo "macOS binaries are signed with a Developer ID certificate and notarized."
+            if [ "$WINDOWS_INSTALLER" = "true" ]; then
+              echo "Windows has a signed installer: download \`redrob-code-x64-setup.exe\` and run it."
+              echo "It installs to \`%LOCALAPPDATA%\\Redrob\\bin\`, adds that to your user PATH, and"
+              echo "needs no Administrator rights. Open a NEW terminal afterwards -- an already-open"
+              echo "one still holds the old PATH."
+              echo
+            fi
             if [ "$WINDOWS_SIGNED" = "true" ]; then
               echo "Windows binaries are signed through Azure Trusted Signing."
             else
