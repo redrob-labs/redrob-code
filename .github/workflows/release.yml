@@ -267,6 +267,15 @@ jobs:
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
+      # This job used to download the build and nothing else, because signing needs only the
+      # artifact. The installer definition lives in the repository, so it needs a checkout -- and
+      # without one `ISCC` was handed a path to a file that was never on the runner. Sparse, because
+      # cloning this whole repository to read one .iss file is a minute of clone for nothing.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          sparse-checkout: installer
+          sparse-checkout-cone-mode: true
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-unsigned
@@ -450,6 +459,11 @@ jobs:
       # back before the release notes are allowed to claim either.
       - name: Build the Windows installer
         id: installer
+        # continue-on-error, like every other step in this job. The installer is an ADDITION to the
+        # release; a failure here must not stop the binaries being repacked and uploaded. The first
+        # run proved the point -- the build failed and took Repack and the upload with it, so a
+        # missing installer would have meant no Windows assets at all.
+        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
