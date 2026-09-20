@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import { Config } from "../../config"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
+import { mayIntroduceLocalProvider } from "./local-provider"
 
 export const Plugin = define({
   id: "config-provider",
@@ -61,8 +62,17 @@ export const Plugin = define({
               if (item.api !== undefined) {
                 const itemApi = item.api
                 const introducesAisdk = itemApi.type === "aisdk" && provider.api.type !== "aisdk"
-                if (introducesAisdk) {
-                  // Config tries to turn the provider into an aisdk provider — refuse it.
+                if (introducesAisdk && mayIntroduceLocalProvider(itemApi)) {
+                  // A LOCAL model runtime, which needs no new package: Ollama, LM Studio, llama.cpp and
+                  // vLLM all speak the OpenAI-compatible protocol, so the package here is the same
+                  // trusted, pinned one the console provider uses. The restriction that matters --
+                  // config can never name a package to install and import -- is untouched, because
+                  // `mayIntroduceLocalProvider` accepts exactly that one package and nothing else, and
+                  // only at an address on this machine or this network. Widening it to a public URL
+                  // would let a config file route prompts to a host the user never chose.
+                  provider.api = { ...itemApi }
+                } else if (introducesAisdk) {
+                  // Config tries to turn the provider into an arbitrary aisdk provider — refuse it.
                 } else if (
                   itemApi.type === "aisdk" &&
                   provider.api.type === "aisdk" &&

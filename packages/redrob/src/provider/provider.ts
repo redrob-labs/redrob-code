@@ -11,6 +11,7 @@ import { Plugin } from "../plugin"
 import { serviceUse } from "@redrob-code/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@redrob-code/core/models-dev"
+import { isLocalEndpoint } from "@redrob-code/core/config/plugin/local-provider"
 import { Auth } from "../auth"
 import { Env } from "../env"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
@@ -1548,6 +1549,70 @@ const layer = Layer.effect(
           })
         }
 
+        /*
+          Ask a LOCAL model runtime what it is serving, before the merge below builds the models.
+
+          Done as a PRE-PASS feeding the existing construction rather than by assembling model objects
+          here: that code already applies every default a model needs, and a second construction site
+          would drift from it.
+
+          This matters more than it looks. The downstream apps read this list, and cowork's own filter
+          drops a `custom`-source provider unless it has at least one model -- so a config-declared local
+          runtime with no hand-written models is not merely sparse in the picker, it is INVISIBLE. A
+          hand-written list also goes stale the moment the user pulls a new model, which with Ollama is a
+          one-line command people run constantly.
+
+          Gated to local addresses, the same rule the V2 path uses, and applied HERE rather than assumed
+          from elsewhere: this is an outbound request assembled from a config file, and without the gate a
+          config file could make startup call any host it named. Two seconds, because the premise is a
+          server on this machine or this LAN. Best-effort throughout -- a local runtime that is not
+          running is the normal state of a laptop, not an error, and must not take the catalog with it.
+        */
+        const discoveredLocalModels = new Map<string, string[]>()
+        for (const [providerID, provider] of configProviders) {
+          if (provider.models && Object.keys(provider.models).length > 0) continue
+          const baseUrl = provider.options?.baseURL ?? provider.options?.endpoint
+          if (typeof baseUrl !== "string" || !isLocalEndpoint(baseUrl)) continue
+          /*
+            A local address is NOT enough on its own, which cost nine tests to learn: pointing an ordinary
+            provider at a local proxy is a normal thing to do, and so is pointing one at a mock in a test.
+            Probing either with a request it never asked for is a side effect during list construction,
+            and `GET /v1/models failed` is what those tests reported.
+            
+            So the other two things that are true of a real local runtime and false of a proxied provider
+            are required as well: it needs no API key (`env` empty, no `apiKey` option), and it speaks the
+            OpenAI-compatible protocol rather than naming a vendor package. A provider that carries a
+            credential is somebody's hosted account reached through a local hop, not a model server on
+            this machine.
+          */
+          if (provider.env && provider.env.length > 0) continue
+          if (provider.options?.apiKey !== undefined) continue
+          if (provider.npm !== undefined && provider.npm !== "@ai-sdk/openai-compatible") continue
+
+          const ids = yield* Effect.promise(async () => {
+            try {
+              const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
+                signal: AbortSignal.timeout(2_000),
+              })
+              if (!response.ok) return [] as string[]
+              const body: unknown = await response.json()
+              const data = (body as { data?: unknown }).data
+              if (!Array.isArray(data)) return [] as string[]
+              /*
+                Entries are read ONE AT A TIME. Rejecting a whole listing because a single entry is
+                unexpected is what made the console catalog silently collapse to its fallback.
+              */
+              return data.flatMap((entry) => {
+                const id = (entry as { id?: unknown }).id
+                return typeof id === "string" && id.length > 0 ? [id] : []
+              })
+            } catch {
+              return [] as string[]
+            }
+          })
+          if (ids.length > 0) discoveredLocalModels.set(providerID, ids)
+        }
+
         // extend database from config
         for (const [providerID, provider] of configProviders) {
           const existing = database[providerID]
@@ -1560,7 +1625,13 @@ const layer = Layer.effect(
             models: existing?.models ?? {},
           }
 
-          for (const [modelID, model] of Object.entries(provider.models ?? {})) {
+          /* Hand-written entries win: a model the user described themselves keeps that description. */
+          const declaredModels = provider.models ?? {}
+          const modelEntries = Object.entries({
+            ...Object.fromEntries((discoveredLocalModels.get(providerID) ?? []).map((id) => [id, {}])),
+            ...declaredModels,
+          }) as [string, (typeof declaredModels)[string]][]
+          for (const [modelID, model] of modelEntries) {
             const existingModel = parsed.models[model.id ?? modelID]
             const apiID = model.id ?? existingModel?.api.id ?? modelID
             const apiNpm =
@@ -1649,7 +1720,6 @@ const layer = Layer.effect(
           database[providerID] = parsed
         }
 
-        // load env
         const envs = yield* env.all()
         for (const [id, provider] of Object.entries(database)) {
           const providerID = ProviderV2.ID.make(id)
