@@ -1573,6 +1573,21 @@ const layer = Layer.effect(
           if (provider.models && Object.keys(provider.models).length > 0) continue
           const baseUrl = provider.options?.baseURL ?? provider.options?.endpoint
           if (typeof baseUrl !== "string" || !isLocalEndpoint(baseUrl)) continue
+          /*
+            A local address is NOT enough on its own, which cost nine tests to learn: pointing an ordinary
+            provider at a local proxy is a normal thing to do, and so is pointing one at a mock in a test.
+            Probing either with a request it never asked for is a side effect during list construction,
+            and `GET /v1/models failed` is what those tests reported.
+            
+            So the other two things that are true of a real local runtime and false of a proxied provider
+            are required as well: it needs no API key (`env` empty, no `apiKey` option), and it speaks the
+            OpenAI-compatible protocol rather than naming a vendor package. A provider that carries a
+            credential is somebody's hosted account reached through a local hop, not a model server on
+            this machine.
+          */
+          if (provider.env && provider.env.length > 0) continue
+          if (provider.options?.apiKey !== undefined) continue
+          if (provider.npm !== undefined && provider.npm !== "@ai-sdk/openai-compatible") continue
 
           const ids = yield* Effect.promise(async () => {
             try {
