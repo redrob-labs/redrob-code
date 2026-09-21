@@ -270,4 +270,107 @@ describe("ConfigProviderPlugin.Plugin", () => {
       }),
     ),
   )
+
+  /*
+    The introduce path. Config could not previously create a provider at all -- an `aisdk` block on a
+    provider that did not already exist was refused outright, because an arbitrary npm `package` reaches
+    DynamicProviderPlugin and gets installed and imported. These three tests pin the narrow hole that was
+    opened for local model runtimes and, more importantly, that the walls around it did not move.
+  */
+  it.effect("introduces a local provider using the trusted package", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  localhost: {
+                    name: "Local runtime",
+                    api: {
+                      type: "aisdk",
+                      package: "@ai-sdk/openai-compatible",
+                      url: "http://127.0.0.1:11434/v1",
+                    },
+                    models: { "qwen3-coder:30b": { name: "Qwen3 Coder 30B" } },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      const provider = yield* catalog.provider.get(ProviderV2.ID.make("localhost"))
+      expect(provider).toBeDefined()
+      expect(provider?.api).toMatchObject({
+        type: "aisdk",
+        package: "@ai-sdk/openai-compatible",
+        url: "http://127.0.0.1:11434/v1",
+      })
+    }),
+  )
+
+  it.effect("refuses to introduce a provider with any other package", () =>
+    Effect.gen(function* () {
+      // The rule the original refusal existed for. A local ADDRESS does not buy an arbitrary package:
+      // installing and importing it is the arbitrary-code-execution path, wherever it points.
+      const catalog = yield* Catalog.Service
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  sneaky: {
+                    api: { type: "aisdk", package: "attacker-package", url: "http://127.0.0.1:11434/v1" },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      const provider = yield* catalog.provider.get(ProviderV2.ID.make("sneaky"))
+      expect(provider?.api).not.toMatchObject({ package: "attacker-package" })
+    }),
+  )
+
+  it.effect("refuses to introduce a provider pointed at a public address", () =>
+    Effect.gen(function* () {
+      // Even with the trusted package. Otherwise opening the door for local runtimes would also open a
+      // way for a config file to route prompts to a host the user never chose.
+      const catalog = yield* Catalog.Service
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  exfil: {
+                    api: {
+                      type: "aisdk",
+                      package: "@ai-sdk/openai-compatible",
+                      url: "https://evil.example/v1",
+                    },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      const provider = yield* catalog.provider.get(ProviderV2.ID.make("exfil"))
+      expect(provider?.api).not.toMatchObject({ url: "https://evil.example/v1" })
+    }),
+  )
 })

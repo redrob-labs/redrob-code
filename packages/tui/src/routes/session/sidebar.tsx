@@ -1,3 +1,4 @@
+import { useLanguage } from "../../context/language"
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
 import { createMemo, Show } from "solid-js"
@@ -11,6 +12,7 @@ import { WorkspaceLabel } from "../../component/workspace-label"
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const pluginRuntime = usePluginRuntime()
+  const language = useLanguage()
   const project = useProject()
   const sync = useSync()
   const { theme } = useTheme()
@@ -87,11 +89,22 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
         </scrollbox>
 
         <box flexShrink={0} gap={1} paddingTop={1}>
+          {/*
+            The DEFAULT content of the footer slot, shown when no plugin has won it -- during startup,
+            or with the sidebar plugin disabled.
+
+            It said `Open Code`, hardcoded, which is the upstream name this fork rebranded from. Two
+            things were wrong with it rather than one. It was the wrong product name, in the shipped
+            binary, on the session screen; and it was hardcoded, so it stayed English in a Korean
+            session while `ko.ts` already had `레드롭` and `코드` sitting in `app.name.first` and
+            `app.name.second`. It read the same keys the plugin's own footer reads now, which is what
+            makes the fallback and the plugin agree instead of differing by whichever loads.
+          */}
           <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID}>
             <text fg={theme.textMuted}>
-              <span style={{ fg: theme.success }}>•</span> <b>Open</b>
+              <span style={{ fg: theme.success }}>•</span> <b>{language.t("app.name.first")}</b>{" "}
               <span style={{ fg: theme.text }}>
-                <b>Code</b>
+                <b>{language.t("app.name.second")}</b>
               </span>{" "}
               <span>{InstallationVersion}</span>
             </text>
