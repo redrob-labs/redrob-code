@@ -9,7 +9,22 @@ export type Err = ReturnType<NamedError["toObject"]>
 
 export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go"
 export const GO_UPSELL_URL = "https://code.redrob.ai/go"
-export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
+/**
+ * Where a console refusal sends the user. `/limits` shows the tier and its per-minute ceiling;
+ * `/api-keys` is where a key's monthly cap is raised; `/billing` is where the account is topped up.
+ * Each card links to the page that fixes ITS refusal, because a card that lands on the wrong page is
+ * barely better than no card.
+ */
+export const CONSOLE_LIMITS_URL = "https://console.redrob.ai/limits"
+export const CONSOLE_KEYS_URL = "https://console.redrob.ai/api-keys"
+export const CONSOLE_BILLING_URL = "https://console.redrob.ai/billing"
+export type RetryReason =
+  | "free_tier_limit"
+  | "account_rate_limit"
+  | "console_rate_limit"
+  | "console_key_budget"
+  | "console_out_of_credit"
+  | (string & {})
 
 export type Retryable = {
   message: string
@@ -82,6 +97,107 @@ function exponential(attempt: number, random: number) {
   return Math.ceil(base + base * RETRY_JITTER_FACTOR * random)
 }
 
+/**
+ * A console refusal the user can act on, as the card cowork already draws.
+ *
+ * Only for our own provider. `rate_limit_exceeded` and `insufficient_quota` are OpenAI's generic codes,
+ * so any vendor may send them -- offering a link to the Redrob console for somebody else's rate limit
+ * would send the user to a page that cannot fix their problem.
+ *
+ * Only the RATE refusal is here. A 402 is deliberately not retryable: the console chose that status over
+ * 429 precisely so clients would stop rather than turn one refusal into six, and a spinner reading
+ * "Retrying in 4s" over something that will never succeed is worse than a plain message. Those are
+ * handled by `blocking()` instead.
+ */
+function consoleRateLimit(error: SessionV1.APIError, provider: string): Retryable | undefined {
+  if (provider !== "redrob") return undefined
+  if (consoleErrorCode(error) !== "rate_limit_exceeded") return undefined
+
+  /*
+    The console's own message already names the tier's per-minute ceiling and how long to wait, so it is
+    used as-is rather than paraphrased into something less specific.
+  */
+  const message = error.data.message || "Rate limit reached"
+  return {
+    message,
+    action: {
+      reason: "console_rate_limit",
+      provider,
+      title: "Rate limit reached",
+      message:
+        "This is your workspace's requests-per-minute ceiling, which rises with your lifetime top-ups. It clears on its own; the console shows the current tier and limit.",
+      label: "open limits",
+      link: CONSOLE_LIMITS_URL,
+    },
+  }
+}
+
+/** The machine-readable code from the console's OpenAI-shaped error envelope, if there is one. */
+function consoleErrorCode(error: SessionV1.APIError): string | undefined {
+  const body = parseJSON(error.data.responseBody)
+  if (!isRecord(body)) return undefined
+  const envelope = body["error"]
+  if (!isRecord(envelope)) return undefined
+  const code = envelope["code"]
+  return typeof code === "string" && code.length > 0 ? code : undefined
+}
+
+export type Blocking = {
+  message: string
+  action?: Retryable["action"]
+}
+
+/**
+ * A console refusal that retrying cannot fix, but a person can.
+ *
+ * Both of the console's 402s land here. They are NOT routed through `retryable()` on purpose: the console
+ * answers 402 rather than 429 specifically so that clients stop, and a retry card would both retry and
+ * claim to be retrying something that will never succeed.
+ *
+ * The two are told apart by `code`, which is the only thing that distinguishes them on the
+ * OpenAI-compatible path -- the console's fuller refusal body, with `reason` and the figures, does not
+ * survive that envelope. They need different pages: a key over its cap is fixed by raising that key's
+ * cap, an empty balance by topping up, and sending the user to the wrong one wastes the card.
+ */
+export function blocking(error: Err, provider: string): Blocking | undefined {
+  if (provider !== "redrob") return undefined
+  if (!SessionV1.APIError.isInstance(error)) return undefined
+  const code = consoleErrorCode(error)
+  /* The console's own message carries the figures, so it is shown rather than paraphrased. */
+  const message = error.data.message || "The request was refused"
+
+  if (code === "api_key_budget_exhausted") {
+    return {
+      message,
+      action: {
+        reason: "console_key_budget",
+        provider,
+        title: "This key is over its monthly budget",
+        message:
+          "The cap is per API key and resets at the start of the month. Raise it on the key, or use a key without a cap.",
+        label: "open api keys",
+        link: CONSOLE_KEYS_URL,
+      },
+    }
+  }
+
+  if (code === "insufficient_quota") {
+    return {
+      message,
+      action: {
+        reason: "console_out_of_credit",
+        provider,
+        title: "The workspace is out of credit",
+        message: "Top up to continue. A balance covers every key on the workspace.",
+        label: "open billing",
+        link: CONSOLE_BILLING_URL,
+      },
+    }
+  }
+
+  return undefined
+}
+
 export function retryable(error: Err, provider: string) {
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
@@ -96,6 +212,12 @@ export function retryable(error: Err, provider: string) {
       !matchesRetryableMessage(error.data.responseBody)
     )
       return undefined
+    /*
+      Checked before the upstream markers below, because those match on a body substring while this
+      matches on the console's own error code -- the more specific signal should win.
+    */
+    const rate = consoleRateLimit(error, provider)
+    if (rate) return rate
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: GO_UPSELL_MESSAGE,

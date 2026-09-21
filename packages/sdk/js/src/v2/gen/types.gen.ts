@@ -693,6 +693,18 @@ export type SessionStatus =
   | {
       type: "busy"
     }
+  | {
+      type: "blocked"
+      message: string
+      action?: {
+        reason: string
+        provider: string
+        title: string
+        message: string
+        label: string
+        link?: string
+      }
+    }
 
 export type QuestionOption = {
   /**
