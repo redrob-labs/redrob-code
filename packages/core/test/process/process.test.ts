@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import { realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { AppProcess } from "@redrob-code/core/process"
@@ -152,6 +152,31 @@ describe("AppProcess", () => {
     )
 
     if (process.platform !== "win32") {
+      /*
+        The claim this pins: a command killed by its timeout reports what the child had ALREADY printed.
+
+        It used to report nothing on either stream, because the accumulators lived inside the fiber
+        `Effect.timeoutOrElse` interrupts. That turned every subprocess timeout into the same message
+        regardless of cause -- a child that hung before writing a byte and one that did most of its work
+        and then stalled were indistinguishable, which is exactly the distinction an intermittent
+        platform-specific hang turns on.
+      */
+      it.live(
+        "a timeout reports the output the child produced before it was killed",
+        Effect.gen(function* () {
+          const svc = yield* AppProcess.Service
+          /* Prints, flushes, then hangs -- so there IS partial output to lose. */
+          const script = `process.stdout.write('half-done\\n');process.stderr.write('warned\\n');setInterval(()=>{},60000)`
+          const exit = yield* Effect.exit(svc.run(cmd("-e", script), { timeout: "700 millis" }))
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (!Exit.isFailure(exit)) return
+          const error = Cause.squash(exit.cause) as { stdout?: string; stderr?: string }
+          expect(error.stdout).toContain("half-done")
+          expect(error.stderr).toContain("warned")
+        }),
+        8_000,
+      )
+
       it.live(
         "timeout cleans up the scoped child process",
         Effect.acquireUseRelease(
