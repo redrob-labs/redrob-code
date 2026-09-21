@@ -385,6 +385,12 @@ import type {
   V2SessionWaitResponses,
   V2SkillListErrors,
   V2SkillListResponses,
+  V2VariantCompareErrors,
+  V2VariantCompareResponses,
+  V2VariantParaphraseErrors,
+  V2VariantParaphraseResponses,
+  VariantCompareRequest,
+  VariantParaphraseRequest,
   VcsApplyErrors,
   VcsApplyResponses,
   VcsDiffErrors,
@@ -5954,6 +5960,58 @@ export class Provider2 extends HeyApiClient {
   }
 }
 
+export class Variant extends HeyApiClient {
+  /**
+   * Rewrite one text with several models
+   *
+   * Send the same text to two or more models and get each rewrite back, with the model that actually answered and what that slot cost.
+   */
+  public paraphrase<ThrowOnError extends boolean = false>(
+    parameters: {
+      variantParaphraseRequest: VariantParaphraseRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "variantParaphraseRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2VariantParaphraseResponses, V2VariantParaphraseErrors, ThrowOnError>(
+      {
+        url: "/api/variant/paraphrase",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Answer one conversation with several models
+   *
+   * Send the same messages to two or more models and get each answer back, so a caller can offer them as a choice.
+   */
+  public compare<ThrowOnError extends boolean = false>(
+    parameters: {
+      variantCompareRequest: VariantCompareRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "variantCompareRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2VariantCompareResponses, V2VariantCompareErrors, ThrowOnError>({
+      url: "/api/variant/compare",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Connect extends HeyApiClient {
   /**
    * Connect with key
@@ -7016,6 +7074,11 @@ export class V2 extends HeyApiClient {
   private _provider?: Provider2
   get provider(): Provider2 {
     return (this._provider ??= new Provider2({ client: this.client }))
+  }
+
+  private _variant?: Variant
+  get variant(): Variant {
+    return (this._variant ??= new Variant({ client: this.client }))
   }
 
   private _integration?: Integration

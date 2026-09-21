@@ -2,6 +2,7 @@ import { Layer } from "effect"
 import { MessageHandler } from "./handlers/message"
 import { ModelHandler } from "./handlers/model"
 import { ProviderHandler } from "./handlers/provider"
+import { VariantHandler } from "./handlers/variant"
 import { SessionHandler } from "./handlers/session"
 import { PermissionHandler } from "./handlers/permission"
 import { FileSystemHandler } from "./handlers/fs"
@@ -26,6 +27,7 @@ export const handlers = Layer.mergeAll(
   MessageHandler,
   ModelHandler,
   ProviderHandler,
+  VariantHandler,
   IntegrationHandler,
   CredentialHandler,
   PermissionHandler,

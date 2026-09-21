@@ -3,11 +3,28 @@
 // ModelsDev.Service (packages/core/src/models-dev.ts) can import them without creating
 // an import cycle through the heavier plugin/event modules.
 
+import { Flag } from "../../flag/flag"
+
 // The real console.redrob.ai API is an OpenAI-standard base URL. SDKs and the dynamic
 // catalog fetch append paths to it: /chat/completions for inference and /models for the
 // OpenAI-standard model listing. It is served by the trusted @ai-sdk/openai-compatible
 // package (pinned by ConfigProviderPlugin).
-export const CONSOLE_URL = "https://console.redrob.ai/api/backend/v1"
+//
+// Resolved HERE rather than at each call site, because a per-consumer `Flag.REDROB_CONSOLE_URL ??
+// CONSOLE_URL` is what made the override half-apply: the variants service honoured it while the
+// session's own inference path, the catalog fetch and the provider registration all still went to
+// production. Pointing the CLI at a local console then produced a console that answered
+// `/variants/paraphrase` locally and 401'd every chat turn against the real one -- a split that looks
+// like a credential bug and is not.
+//
+// The flag is a developer seam, never set in a shipped build, and it does not change where
+// credentials come from: a local console still wants a key it recognises. Importing Flag is safe from
+// this leaf module because `flag/flag.ts` imports only `effect` -- the cycle this file avoids is
+// through the plugin and event modules, which Flag does not touch.
+export const CONSOLE_URL = (Flag.REDROB_CONSOLE_URL ?? "https://console.redrob.ai/api/backend/v1").replace(
+  /\/+$/,
+  "",
+)
 export const CONSOLE_PACKAGE = "@ai-sdk/openai-compatible"
 // Every served console model publishes `capabilities.maxContextTokens: 1_000_000`. Held as one
 // constant because the value is uniform across the six ids, and used as the no-key fallback

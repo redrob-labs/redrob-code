@@ -2057,6 +2057,76 @@ export type ProvidersGetOutput = {
   }
 }
 
+export type ServerVariantParaphraseInput = {
+  readonly text: {
+    readonly text: string
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["text"]
+  readonly models: {
+    readonly text: string
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["models"]
+  readonly requestId?: {
+    readonly text: string
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["requestId"]
+}
+
+export type ServerVariantParaphraseOutput = {
+  readonly variants: ReadonlyArray<{
+    readonly slot: number
+    readonly model: string
+    readonly text?: string
+    readonly error?: string
+    readonly redrob?: {
+      readonly requestId?: string
+      readonly routedModel?: string
+      readonly upstreamProvider?: string
+      readonly latencyMs?: number
+      readonly costUsd?: number
+    }
+  }>
+  readonly totalCostUsd: number
+}
+
+export type ServerVariantCompareInput = {
+  readonly messages: {
+    readonly messages: ReadonlyArray<{ readonly role: "system" | "user" | "assistant"; readonly content: string }>
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["messages"]
+  readonly models: {
+    readonly messages: ReadonlyArray<{ readonly role: "system" | "user" | "assistant"; readonly content: string }>
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["models"]
+  readonly requestId?: {
+    readonly messages: ReadonlyArray<{ readonly role: "system" | "user" | "assistant"; readonly content: string }>
+    readonly models: ReadonlyArray<{ readonly model: string; readonly variant?: string }>
+    readonly requestId?: string
+  }["requestId"]
+}
+
+export type ServerVariantCompareOutput = {
+  readonly variants: ReadonlyArray<{
+    readonly slot: number
+    readonly model: string
+    readonly text?: string
+    readonly error?: string
+    readonly redrob?: {
+      readonly requestId?: string
+      readonly routedModel?: string
+      readonly upstreamProvider?: string
+      readonly latencyMs?: number
+      readonly costUsd?: number
+    }
+  }>
+  readonly totalCostUsd: number
+}
+
 export type IntegrationsListInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
