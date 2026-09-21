@@ -6,7 +6,7 @@ import type {
   ResumeSessionResponse,
 } from "@agentclientprotocol/sdk"
 import { Duration, Effect } from "effect"
-import { cliIt } from "../../lib/cli-process"
+import { cliIt, slowPlatform } from "../../lib/cli-process"
 import { expectOk, selectConfigOption } from "./acp-test-client"
 import { createAcpClient, initialize, newSession, verifierConfig } from "./helpers"
 
@@ -18,7 +18,10 @@ describe("redrob acp lifecycle subprocess", () => {
         const acp = yield* redrob.acp()
         acp.close()
 
-        const code = yield* Effect.promise(() => acp.exited).pipe(Effect.timeout(Duration.seconds(5)))
+        /* Scaled: Windows process teardown is slower, and five seconds was tight enough to flake. */
+        const code = yield* Effect.promise(() => acp.exited).pipe(
+          Effect.timeout(Duration.millis(slowPlatform(5_000))),
+        )
         expect(code).toBe(0)
       }),
     60_000,

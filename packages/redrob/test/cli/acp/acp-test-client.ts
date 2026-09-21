@@ -2,6 +2,7 @@ import { expect } from "bun:test"
 import type { SessionConfigOption, SessionConfigSelectOption } from "@agentclientprotocol/sdk"
 import { Duration, Effect } from "effect"
 import type { AcpHandle } from "../../lib/cli-process"
+import { slowPlatform } from "../../lib/cli-process"
 
 type JsonRpcRequest = {
   readonly jsonrpc: "2.0"
@@ -44,15 +45,19 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
       yield* acp.send(message)
 
       while (true) {
-        const received = yield* acp.receive.pipe(Effect.timeout(Duration.seconds(15)))
+        const received = yield* acp.receive.pipe(Effect.timeout(Duration.millis(slowPlatform(15_000))))
         if (isJsonRpcResponse<T>(received) && received.id === id) return received
       }
     })
 
+  /*
+    The default is scaled for the slow platform, as are the explicit values callers pass -- every wait in
+    this client is on a subprocess round trip, and Windows is where these bounds flake.
+  */
   const waitForNotification = <T>(method: string, predicate: (params: T) => boolean, timeoutMs = 15_000) =>
     Effect.gen(function* () {
       while (true) {
-        const received = yield* acp.receive.pipe(Effect.timeout(Duration.millis(timeoutMs)))
+        const received = yield* acp.receive.pipe(Effect.timeout(Duration.millis(slowPlatform(timeoutMs))))
         if (!isJsonRpcNotification<T>(received)) continue
         if (received.method === method && predicate(received.params as T)) return received
       }
