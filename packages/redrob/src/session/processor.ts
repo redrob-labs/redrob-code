@@ -640,7 +640,20 @@ const layer = Layer.effect(
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
         })
-        yield* status.set(ctx.sessionID, { type: "idle" })
+        /*
+          A refusal the user can act on ends as `blocked` rather than `idle`, so the client can offer the
+          page that fixes it instead of printing a sentence and leaving them to find it. `idle` otherwise,
+          which is every failure with nothing to click.
+
+          Published BEFORE the error event would be wrong: a client that renders the error first and then
+          sees `idle` has already drawn the plain box. The order here -- error, then the terminal status --
+          is the existing one, and `blocked` simply replaces `idle` in it.
+        */
+        const block = SessionRetry.blocking(error, input.model.providerID)
+        yield* status.set(
+          ctx.sessionID,
+          block ? { type: "blocked", message: block.message, action: block.action } : { type: "idle" },
+        )
       })
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {

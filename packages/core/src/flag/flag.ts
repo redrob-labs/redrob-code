@@ -18,6 +18,17 @@ export const Flag = {
 
   REDROB_AUTO_HEAP_SNAPSHOT: truthy("REDROB_AUTO_HEAP_SNAPSHOT"),
   REDROB_GIT_BASH_PATH: process.env["REDROB_GIT_BASH_PATH"],
+  /**
+   * Point the console calls at a different base URL.
+   *
+   * Exists for verifying against a console running locally. Without it the only way to exercise a change
+   * to those endpoints is to deploy it, which is how a broken `/variants/paraphrase` reached production and
+   * stayed there: nothing could call it except the real thing.
+   *
+   * Never set in a shipped build, and it does not change where credentials come from -- a local console
+   * still wants a key it recognises.
+   */
+  REDROB_CONSOLE_URL: process.env["REDROB_CONSOLE_URL"],
   REDROB_CONFIG: process.env["REDROB_CONFIG"],
   REDROB_CONFIG_CONTENT: process.env["REDROB_CONFIG_CONTENT"],
   REDROB_DISABLE_AUTOUPDATE: truthy("REDROB_DISABLE_AUTOUPDATE"),

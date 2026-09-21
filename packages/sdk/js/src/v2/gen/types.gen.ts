@@ -358,6 +358,8 @@ export type AssistantMessage = {
   }
   summary?: boolean
   cost: number
+  routedModel?: string
+  upstreamProvider?: string
   tokens: {
     total?: number
     input: number
@@ -690,6 +692,18 @@ export type SessionStatus =
     }
   | {
       type: "busy"
+    }
+  | {
+      type: "blocked"
+      message: string
+      action?: {
+        reason: string
+        provider: string
+        title: string
+        message: string
+        label: string
+        link?: string
+      }
     }
 
 export type QuestionOption = {
@@ -2017,6 +2031,8 @@ export type Config = {
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number
+    threshold?: number
+    maxTurnInputCostUsd?: number
   }
   experimental?: {
     disable_paste_summary?: boolean
@@ -4126,6 +4142,8 @@ export type SessionMessageAssistant = {
   }
   finish?: string
   cost?: number
+  routedModel?: string
+  upstreamProvider?: string
   tokens?: {
     input: number
     output: number
@@ -4873,6 +4891,49 @@ export type ProviderV2Info = {
   disabled?: boolean
   api: ProviderApi
   request: ProviderRequest
+}
+
+export type VariantModel = {
+  model: string
+  variant?: string
+}
+
+export type VariantParaphraseRequest = {
+  text: string
+  models: Array<VariantModel>
+  requestId?: string
+}
+
+export type VariantProvenance = {
+  requestId?: string
+  routedModel?: string
+  upstreamProvider?: string
+  latencyMs?: number
+  costUsd?: number
+}
+
+export type VariantSlot = {
+  slot: number
+  model: string
+  text?: string
+  error?: string
+  redrob?: VariantProvenance
+}
+
+export type VariantResult = {
+  variants: Array<VariantSlot>
+  totalCostUsd: number
+}
+
+export type VariantMessage = {
+  role: "system" | "user" | "assistant"
+  content: string
+}
+
+export type VariantCompareRequest = {
+  messages: Array<VariantMessage>
+  models: Array<VariantModel>
+  requestId?: string
 }
 
 export type IntegrationWhen = {
@@ -12159,6 +12220,80 @@ export type V2ProviderGetResponses = {
 }
 
 export type V2ProviderGetResponse = V2ProviderGetResponses[keyof V2ProviderGetResponses]
+
+export type V2VariantParaphraseData = {
+  body: VariantParaphraseRequest
+  path?: never
+  query?: never
+  url: "/api/variant/paraphrase"
+}
+
+export type V2VariantParaphraseErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ProviderNotFoundError
+   */
+  404: ProviderNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2VariantParaphraseError = V2VariantParaphraseErrors[keyof V2VariantParaphraseErrors]
+
+export type V2VariantParaphraseResponses = {
+  /**
+   * Variant.Result
+   */
+  200: VariantResult
+}
+
+export type V2VariantParaphraseResponse = V2VariantParaphraseResponses[keyof V2VariantParaphraseResponses]
+
+export type V2VariantCompareData = {
+  body: VariantCompareRequest
+  path?: never
+  query?: never
+  url: "/api/variant/compare"
+}
+
+export type V2VariantCompareErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ProviderNotFoundError
+   */
+  404: ProviderNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2VariantCompareError = V2VariantCompareErrors[keyof V2VariantCompareErrors]
+
+export type V2VariantCompareResponses = {
+  /**
+   * Variant.Result
+   */
+  200: VariantResult
+}
+
+export type V2VariantCompareResponse = V2VariantCompareResponses[keyof V2VariantCompareResponses]
 
 export type V2IntegrationListData = {
   body?: never
