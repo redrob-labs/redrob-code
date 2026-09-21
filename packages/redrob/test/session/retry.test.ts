@@ -519,3 +519,72 @@ describe("session.message-v2.fromError", () => {
     })
   })
 })
+
+/**
+ * The console's refusals, and the line between the two kinds.
+ *
+ * A 429 is retryable and gets the retry card. A 402 is NOT: the console answers 402 rather than 429
+ * specifically so clients stop, so it must never appear in `retryable()` -- a retry card would both retry
+ * and claim to be retrying something that will never succeed.
+ *
+ * Both are gated on the provider being ours. `rate_limit_exceeded` and `insufficient_quota` are OpenAI's
+ * generic codes, so another vendor sending one must not be handed a link to our console.
+ */
+describe("session.retry console refusals", () => {
+  function consoleError(status: number, code: string, message = "refused"): SessionV1.APIError {
+    return Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message,
+        isRetryable: status === 429,
+        statusCode: status,
+        responseBody: JSON.stringify({ error: { message, type: "x", param: null, code } }),
+      }).toObject(),
+    )
+  }
+
+  test("a rate refusal becomes a retry card pointing at the limits page", () => {
+    const result = SessionRetry.retryable(consoleError(429, "rate_limit_exceeded", "slow down"), "redrob")
+    expect(result?.message).toBe("slow down")
+    expect(result?.action?.reason).toBe("console_rate_limit")
+    expect(result?.action?.link).toBe(SessionRetry.CONSOLE_LIMITS_URL)
+  })
+
+  test("another vendor's rate limit gets no console link", () => {
+    const result = SessionRetry.retryable(consoleError(429, "rate_limit_exceeded"), "openai")
+    expect(result?.action).toBeUndefined()
+  })
+
+  test("a budget refusal is NOT retryable", () => {
+    expect(SessionRetry.retryable(consoleError(402, "api_key_budget_exhausted"), "redrob")).toBeUndefined()
+  })
+
+  test("a budget refusal blocks, pointing at the keys page where the cap lives", () => {
+    const result = SessionRetry.blocking(consoleError(402, "api_key_budget_exhausted", "over cap"), "redrob")
+    expect(result?.message).toBe("over cap")
+    expect(result?.action?.reason).toBe("console_key_budget")
+    expect(result?.action?.link).toBe(SessionRetry.CONSOLE_KEYS_URL)
+  })
+
+  test("an empty balance blocks, pointing at billing instead", () => {
+    const result = SessionRetry.blocking(consoleError(402, "insufficient_quota", "no credit"), "redrob")
+    expect(result?.action?.reason).toBe("console_out_of_credit")
+    expect(result?.action?.link).toBe(SessionRetry.CONSOLE_BILLING_URL)
+  })
+
+  test("the two 402s are told apart, which is the whole point of carrying the code", () => {
+    const budget = SessionRetry.blocking(consoleError(402, "api_key_budget_exhausted"), "redrob")
+    const balance = SessionRetry.blocking(consoleError(402, "insufficient_quota"), "redrob")
+    expect(budget?.action?.link).not.toBe(balance?.action?.link)
+  })
+
+  test("another vendor's 402 does not block with our pages", () => {
+    expect(SessionRetry.blocking(consoleError(402, "insufficient_quota"), "openai")).toBeUndefined()
+  })
+
+  test("a 402 with no code is left alone rather than guessed at", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({ message: "refused", isRetryable: false, statusCode: 402 }).toObject(),
+    )
+    expect(SessionRetry.blocking(error, "redrob")).toBeUndefined()
+  })
+})
