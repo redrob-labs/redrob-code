@@ -257,6 +257,12 @@ jobs:
       # Separate from `signed`: the binaries can be signed while the installer is not, and the
       # notes must not round one up into the other.
       installer: ${{ steps.installer-result.outputs.installer }}
+      # WHICH method signed, not just whether something did. The notes used to name Azure
+      # Trusted Signing unconditionally while this repository signs with the organization
+      # Authenticode certificate, so every published release claimed a method it had not
+      # used. `signed` cannot carry that -- it is a boolean about success -- and a reader has
+      # no way to check, which is exactly the failure the comment above warns about.
+      method: ${{ steps.config.outputs.method }}
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -676,6 +682,7 @@ jobs:
           UPSTREAM: ${{ needs.version.outputs.upstream }}
           WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
           WINDOWS_INSTALLER: ${{ needs.sign-windows.outputs.installer }}
+          WINDOWS_SIGNING_METHOD: ${{ needs.sign-windows.outputs.method }}
         run: |
           set -euo pipefail
           # An annotated tag records a tagger, and a bare runner has no git identity, so
@@ -721,7 +728,21 @@ jobs:
               echo
             fi
             if [ "$WINDOWS_SIGNED" = "true" ]; then
-              echo "Windows binaries are signed through Azure Trusted Signing."
+              # Named from what the run actually did. An unrecognised value is described
+              # without naming a method rather than guessed at: a wrong provenance claim is
+              # worse than a vaguer true one, because a reader cannot tell it is wrong.
+              case "${WINDOWS_SIGNING_METHOD:-}" in
+                azure)
+                  echo "Windows binaries are signed through Azure Trusted Signing."
+                  ;;
+                pfx)
+                  echo "Windows binaries are signed with the Redrob Authenticode certificate."
+                  ;;
+                *)
+                  echo "Windows binaries are signed. Verify the signature with \`signtool verify /pa\`"
+                  echo "or against the provenance attestation below."
+                  ;;
+              esac
             else
               echo "**Windows binaries in this release are NOT signed**, so Windows will show a"
               echo "SmartScreen warning on first run. Verify the archive against \`SHA256SUMS\`"
