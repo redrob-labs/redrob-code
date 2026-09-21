@@ -6,7 +6,7 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { reply } from "../../lib/llm-server"
-import { cliIt } from "../../lib/cli-process"
+import { cliIt, slowPlatform } from "../../lib/cli-process"
 
 describe("redrob run (non-interactive subprocess)", () => {
   // Happy path: prompt completes, output reaches stdout, process exits 0.
@@ -73,10 +73,12 @@ describe("redrob run (non-interactive subprocess)", () => {
       Effect.gen(function* () {
         const result = yield* redrob.run("say hi", {
           model: "test/nonexistent-model",
-          timeoutMs: 15_000,
+          timeoutMs: slowPlatform(15_000),
         })
         expect(result.exitCode).not.toBe(0)
-        expect(result.durationMs).toBeLessThan(15_000)
+        /* Scaled WITH the bound: the claim is that it exits promptly rather than being killed, and a
+           duration assertion pinned to a base figure while the bound moves tests the wrong thing. */
+        expect(result.durationMs).toBeLessThan(slowPlatform(15_000))
       }),
     60_000,
   )
@@ -96,7 +98,7 @@ describe("redrob run (non-interactive subprocess)", () => {
         )
         yield* llm.fail("upstream provider exploded mid-stream")
         yield* llm.text("recovered")
-        const result = yield* redrob.run("trigger midstream error", { timeoutMs: 30_000 })
+        const result = yield* redrob.run("trigger midstream error", { timeoutMs: slowPlatform(30_000) })
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toBe("partial response\nrecovered\n")
         expect(result.stderr).not.toContain("upstream provider exploded mid-stream")

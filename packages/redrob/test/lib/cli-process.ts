@@ -63,6 +63,16 @@ const CHILD_TIMEOUT_MS = 30_000 * SLOW_PLATFORM_FACTOR
 const READY_TIMEOUT_MS = 15_000 * SLOW_PLATFORM_FACTOR
 const TEST_TIMEOUT_MS = CHILD_TIMEOUT_MS * 2
 
+/**
+ * A test's own bound, scaled for the slow platform.
+ *
+ * For the call sites that pass an explicit `timeoutMs` rather than taking the default -- those bypass the
+ * allowance entirely, which is how the first version of this fix left the very test that was flaking still
+ * pinned to thirty seconds. Write `slowPlatform(30_000)` and the intent stays readable while the platform
+ * correction is applied for you.
+ */
+export const slowPlatform = (ms: number) => ms * SLOW_PLATFORM_FACTOR
+
 export const testModelID = "test/test-model"
 
 // Wrap a Bun subprocess pipe (or any ReadableStream<Uint8Array>) as a Stream.
@@ -572,9 +582,16 @@ export const cliIt = {
     (process.platform === "win32" ? test : test.concurrent)(
       name,
       () => Effect.runPromise(Effect.scoped(withCliFixture(body))),
-      // Bun's timeout includes spawn-gate wait, so it must stay above the child timeout or a queued
-      // concurrent CLI test expires while holding no permit. Derived from it rather than restated, which
-      // is what let the two drift apart.
-      opts ?? TEST_TIMEOUT_MS,
+      /*
+        A caller's own number is a FLOOR, not a ceiling.
+
+        Bun's timeout includes spawn-gate wait, so it must stay above the child timeout or a queued test
+        expires while holding no permit -- and that failure reads as a slow command rather than as a
+        mis-tuned harness. Dozens of call sites pass `60_000`, which was comfortably above the old fixed
+        30s child bound and is BELOW the Windows one, so honouring them literally would have reintroduced
+        exactly the drift these constants exist to prevent. Clamped here rather than edited at every call
+        site: the invariant then holds by construction instead of by everyone remembering it.
+      */
+      typeof opts === "number" ? Math.max(opts, TEST_TIMEOUT_MS) : (opts ?? TEST_TIMEOUT_MS),
     ),
 }
