@@ -1740,6 +1740,37 @@ const scenarios: Scenario[] = [
       },
       "status",
     ),
+  /*
+    The variants routes, exercised through their NOT-CONNECTED path.
+
+    The exerciser has no console credential, which is the honest state to assert here: a 404 saying the
+    Redrob provider is not connected. A scenario that needed a real key would either skip -- and this gate
+    fails on skip, correctly, because a skipped route is an unexercised route -- or send a paid request to
+    the live console on every CI run.
+
+    404 rather than 401 is the contract being pinned: nothing is configured to ask, so nothing refused us,
+    and a user on a local runtime should be told the feature is unavailable instead of being sent to check a
+    credential they never set.
+  */
+  http.protected
+    .post("/api/variant/paraphrase", "variant.paraphrase")
+    .at((ctx) => ({
+      path: "/api/variant/paraphrase",
+      headers: ctx.headers(),
+      body: { text: "exercise", models: [{ model: "auto" }] },
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/api/variant/compare", "variant.compare")
+    .at((ctx) => ({
+      path: "/api/variant/compare",
+      headers: ctx.headers(),
+      body: {
+        messages: [{ role: "user", content: "exercise" }],
+        models: [{ model: "auto" }, { model: "auto" }],
+      },
+    }))
+    .json(404, object, "status"),
   http.protected
     .post("/global/upgrade", "global.upgrade")
     .global()

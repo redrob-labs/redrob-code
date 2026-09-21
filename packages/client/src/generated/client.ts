@@ -45,6 +45,10 @@ import type {
   ProvidersListOutput,
   ProvidersGetInput,
   ProvidersGetOutput,
+  ServerVariantParaphraseInput,
+  ServerVariantParaphraseOutput,
+  ServerVariantCompareInput,
+  ServerVariantCompareOutput,
   IntegrationsListInput,
   IntegrationsListOutput,
   IntegrationsGetInput,
@@ -542,6 +546,32 @@ export function make(options: ClientOptions) {
             query: { location: input["location"] },
             successStatus: 200,
             declaredStatuses: [404, 503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    "server.variant": {
+      paraphrase: (input: ServerVariantParaphraseInput, requestOptions?: RequestOptions) =>
+        request<ServerVariantParaphraseOutput>(
+          {
+            method: "POST",
+            path: `/api/variant/paraphrase`,
+            body: { text: input["text"], models: input["models"], requestId: input["requestId"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404, 503],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      compare: (input: ServerVariantCompareInput, requestOptions?: RequestOptions) =>
+        request<ServerVariantCompareOutput>(
+          {
+            method: "POST",
+            path: `/api/variant/compare`,
+            body: { messages: input["messages"], models: input["models"], requestId: input["requestId"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404, 503],
             empty: false,
           },
           requestOptions,
