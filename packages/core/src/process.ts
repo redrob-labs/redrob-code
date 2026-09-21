@@ -9,6 +9,14 @@ export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()(
   command: Schema.String,
   exitCode: Schema.optional(Schema.Number),
   stderr: Schema.optional(Schema.String),
+  /**
+   * Whatever the child had written to stdout when this failed.
+   *
+   * Present so a TIMEOUT says something. Without it the only report was "Timed out", which cannot tell a
+   * child that hung before producing a byte from one that did most of its work and then stalled -- and on
+   * a flake that only reproduces on one platform in CI, that distinction is the whole investigation.
+   */
+  stdout: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message() {
@@ -118,10 +126,30 @@ const normalizeStdin = (
       ? Stream.make(input)
       : input
 
-export const collectStream = (stream: Stream.Stream<Uint8Array, PlatformError>, maxOutputBytes: number | undefined) =>
+/**
+ * What `collectStream` gathers. Exposed so a CALLER can own it.
+ *
+ * The fold mutates one object and hands the same one back on every chunk, which means a caller holding a
+ * reference sees whatever arrived even if the fold never completes. That is the whole point: a command
+ * killed by its timeout used to report nothing at all about the child, because the buffers lived inside
+ * the interrupted fiber and died with it. A subprocess that fails by producing NOTHING and one that fails
+ * after printing half its work are very different diagnoses, and both looked identical.
+ */
+export type StreamAccumulator = { chunks: Uint8Array[]; bytes: number; truncated: boolean }
+
+export const newAccumulator = (): StreamAccumulator => ({ chunks: [], bytes: 0, truncated: false })
+
+/** Whatever the accumulator holds right now, as a buffer. Safe to call mid-stream. */
+export const accumulated = (acc: StreamAccumulator) => Buffer.concat(acc.chunks)
+
+export const collectStream = (
+  stream: Stream.Stream<Uint8Array, PlatformError>,
+  maxOutputBytes: number | undefined,
+  into: StreamAccumulator = newAccumulator(),
+) =>
   Stream.runFold(
     stream,
-    () => ({ chunks: [] as Uint8Array[], bytes: 0, truncated: false }),
+    () => into,
     (acc, chunk) => {
       if (maxOutputBytes === undefined) {
         acc.chunks.push(chunk)
@@ -143,12 +171,19 @@ const layer = Layer.effect(
 
     const runCommand = (command: ChildProcess.Command, options?: RunOptions) => {
       const description = describeCommand(command)
+      /*
+        Owned HERE, outside `collect`, so a timeout can still read them. `Effect.timeoutOrElse` interrupts
+        `collect`, and anything scoped to that fiber goes with it -- which is why a timed-out command used
+        to report neither stream.
+      */
+      const outAcc = newAccumulator()
+      const errAcc = newAccumulator()
       const collect = Effect.scoped(
         Effect.gen(function* () {
           const handle = yield* spawner.spawn(command)
           if (options?.combineOutput) {
             const [output, exitCode] = yield* Effect.all(
-              [collectStream(handle.all, options.maxOutputBytes), handle.exitCode],
+              [collectStream(handle.all, options.maxOutputBytes, outAcc), handle.exitCode],
               { concurrency: "unbounded" },
             )
             return {
@@ -164,8 +199,8 @@ const layer = Layer.effect(
           }
           const [stdout, stderr, exitCode] = yield* Effect.all(
             [
-              collectStream(handle.stdout, options?.maxOutputBytes),
-              collectStream(handle.stderr, options?.maxErrorBytes),
+              collectStream(handle.stdout, options?.maxOutputBytes, outAcc),
+              collectStream(handle.stderr, options?.maxErrorBytes, errAcc),
               handle.exitCode,
             ],
             { concurrency: "unbounded" },
@@ -183,7 +218,19 @@ const layer = Layer.effect(
       const timed = options?.timeout
         ? Effect.timeoutOrElse(collect, {
             duration: options.timeout,
-            orElse: () => Effect.fail(new AppProcessError({ command: description, cause: new Error("Timed out") })),
+            orElse: () =>
+              Effect.fail(
+                new AppProcessError({
+                  command: description,
+                  /*
+                    Partial output, not nothing. An empty stdout here is now a real observation about the
+                    child rather than an artifact of how the failure was built.
+                  */
+                  stdout: accumulated(outAcc).toString(),
+                  stderr: accumulated(errAcc).toString(),
+                  cause: new Error("Timed out"),
+                }),
+              ),
           })
         : collect
       const aborted = options?.signal
