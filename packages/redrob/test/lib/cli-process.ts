@@ -42,6 +42,37 @@ const cliEntry = path.join(redrobRoot, "src/index.ts")
 // whole test and would hold permits while a nested `run` waits for one.
 const spawnGate = Semaphore.makeUnsafe(Math.max(2, availableParallelism() - 1))
 
+/**
+ * The harness's wait bounds, derived from one number instead of written three times.
+ *
+ * They are not independent: `cliIt.concurrent` carried a comment saying Bun's test timeout must stay
+ * ABOVE the child timeout, while the two numbers sat in different functions as unrelated literals with
+ * nothing keeping them in step. Raising one without the other silently breaks the invariant the comment
+ * promises, and the failure mode is a test that expires holding no spawn permit -- which reads as the
+ * command being slow rather than as the harness mis-tuned.
+ *
+ * Windows gets a multiple of the base. A `redrob.spawn` is `bun run` over the TypeScript entry, so every
+ * spawn pays a cold transpile plus that platform's process-creation cost, and the runners are slower
+ * again. This is a MITIGATION and not a diagnosis: the flake it responds to timed out at exactly the
+ * bound with no output preserved, which is now fixed separately -- the next occurrence will say where the
+ * child actually got to, and this number should be revisited against that evidence rather than raised
+ * again by feel.
+ */
+const SLOW_PLATFORM_FACTOR = process.platform === "win32" ? 3 : 1
+const CHILD_TIMEOUT_MS = 30_000 * SLOW_PLATFORM_FACTOR
+const READY_TIMEOUT_MS = 15_000 * SLOW_PLATFORM_FACTOR
+const TEST_TIMEOUT_MS = CHILD_TIMEOUT_MS * 2
+
+/**
+ * A test's own bound, scaled for the slow platform.
+ *
+ * For the call sites that pass an explicit `timeoutMs` rather than taking the default -- those bypass the
+ * allowance entirely, which is how the first version of this fix left the very test that was flaking still
+ * pinned to thirty seconds. Write `slowPlatform(30_000)` and the intent stays readable while the platform
+ * correction is applied for you.
+ */
+export const slowPlatform = (ms: number) => ms * SLOW_PLATFORM_FACTOR
+
 export const testModelID = "test/test-model"
 
 // Wrap a Bun subprocess pipe (or any ReadableStream<Uint8Array>) as a Stream.
@@ -219,7 +250,7 @@ export function withCliFixture<A, E>(
       return yield* spawnGate.withPermit(
         Effect.gen(function* () {
           const start = Date.now()
-          const timeoutMs = opts?.timeoutMs ?? 30_000
+          const timeoutMs = opts?.timeoutMs ?? CHILD_TIMEOUT_MS
           // stdin: "ignore" so the child doesn't see a piped stdin and block
           // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
           // consumed as the prompt). The old Process.run wrapper defaulted to
@@ -246,7 +277,13 @@ export function withCliFixture<A, E>(
               Effect.succeed({
                 command: err.command,
                 exitCode: err.exitCode ?? -1,
-                stdout: Buffer.alloc(0),
+                /*
+                  The child's own output, not an empty buffer. This used to be `Buffer.alloc(0)`
+                  unconditionally, so `expectExit`'s dump printed an empty stdout on every timeout and a
+                  reader could not tell whether the child had produced nothing or the harness had thrown it
+                  away. It was the latter, which cost a real investigation.
+                */
+                stdout: Buffer.from(err.stdout ?? ""),
                 stderr: Buffer.from((err.stderr ?? String(err.cause ?? err.message)) + "\n"),
                 stdoutTruncated: false,
                 stderrTruncated: false,
@@ -375,7 +412,7 @@ export function withCliFixture<A, E>(
         ),
       )
 
-      const readyTimeoutMs = opts?.readyTimeoutMs ?? 15_000
+      const readyTimeoutMs = opts?.readyTimeoutMs ?? READY_TIMEOUT_MS
       const match = yield* Deferred.await(readyDeferred).pipe(
         Effect.timeoutOrElse({
           duration: Duration.millis(readyTimeoutMs),
@@ -545,8 +582,16 @@ export const cliIt = {
     (process.platform === "win32" ? test : test.concurrent)(
       name,
       () => Effect.runPromise(Effect.scoped(withCliFixture(body))),
-      // Bun's timeout includes spawn-gate wait. Keep it above the child timeout so
-      // queued concurrent CLI tests do not expire while holding no permit.
-      opts ?? 60_000,
+      /*
+        A caller's own number is a FLOOR, not a ceiling.
+
+        Bun's timeout includes spawn-gate wait, so it must stay above the child timeout or a queued test
+        expires while holding no permit -- and that failure reads as a slow command rather than as a
+        mis-tuned harness. Dozens of call sites pass `60_000`, which was comfortably above the old fixed
+        30s child bound and is BELOW the Windows one, so honouring them literally would have reintroduced
+        exactly the drift these constants exist to prevent. Clamped here rather than edited at every call
+        site: the invariant then holds by construction instead of by everyone remembering it.
+      */
+      typeof opts === "number" ? Math.max(opts, TEST_TIMEOUT_MS) : (opts ?? TEST_TIMEOUT_MS),
     ),
 }
