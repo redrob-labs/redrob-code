@@ -116,6 +116,8 @@ import type {
   ProjectCopiesRemoveOutput,
   ProjectCopiesRefreshInput,
   ProjectCopiesRefreshOutput,
+  ServerChatCompletionsInput,
+  ServerChatCompletionsOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1013,6 +1015,36 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [400, 401],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    "server.chat": {
+      completions: (input: ServerChatCompletionsInput, requestOptions?: RequestOptions) =>
+        request<ServerChatCompletionsOutput>(
+          {
+            method: "POST",
+            path: `/v1/chat/completions`,
+            body: {
+              model: input["model"],
+              messages: input["messages"],
+              tools: input["tools"],
+              tool_choice: input["tool_choice"],
+              stream: input["stream"],
+              max_tokens: input["max_tokens"],
+              max_completion_tokens: input["max_completion_tokens"],
+              temperature: input["temperature"],
+              top_p: input["top_p"],
+              stop: input["stop"],
+              seed: input["seed"],
+              frequency_penalty: input["frequency_penalty"],
+              presence_penalty: input["presence_penalty"],
+              reasoning_effort: input["reasoning_effort"],
+              user: input["user"],
+            },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
           },
           requestOptions,
         ),

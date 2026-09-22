@@ -705,6 +705,47 @@ const adaptGroup18 = (raw: RawClient["server.projectCopy"]) => ({
   refresh: Endpoint18_2(raw),
 })
 
+type Endpoint19_0Request = Parameters<RawClient["server.chat"]["chat.completions"]>[0]
+type Endpoint19_0Input = {
+  readonly model: Endpoint19_0Request["payload"]["model"]
+  readonly messages: Endpoint19_0Request["payload"]["messages"]
+  readonly tools?: Endpoint19_0Request["payload"]["tools"]
+  readonly tool_choice?: Endpoint19_0Request["payload"]["tool_choice"]
+  readonly stream?: Endpoint19_0Request["payload"]["stream"]
+  readonly max_tokens?: Endpoint19_0Request["payload"]["max_tokens"]
+  readonly max_completion_tokens?: Endpoint19_0Request["payload"]["max_completion_tokens"]
+  readonly temperature?: Endpoint19_0Request["payload"]["temperature"]
+  readonly top_p?: Endpoint19_0Request["payload"]["top_p"]
+  readonly stop?: Endpoint19_0Request["payload"]["stop"]
+  readonly seed?: Endpoint19_0Request["payload"]["seed"]
+  readonly frequency_penalty?: Endpoint19_0Request["payload"]["frequency_penalty"]
+  readonly presence_penalty?: Endpoint19_0Request["payload"]["presence_penalty"]
+  readonly reasoning_effort?: Endpoint19_0Request["payload"]["reasoning_effort"]
+  readonly user?: Endpoint19_0Request["payload"]["user"]
+}
+const Endpoint19_0 = (raw: RawClient["server.chat"]) => (input: Endpoint19_0Input) =>
+  raw["chat.completions"]({
+    payload: {
+      model: input["model"],
+      messages: input["messages"],
+      tools: input["tools"],
+      tool_choice: input["tool_choice"],
+      stream: input["stream"],
+      max_tokens: input["max_tokens"],
+      max_completion_tokens: input["max_completion_tokens"],
+      temperature: input["temperature"],
+      top_p: input["top_p"],
+      stop: input["stop"],
+      seed: input["seed"],
+      frequency_penalty: input["frequency_penalty"],
+      presence_penalty: input["presence_penalty"],
+      reasoning_effort: input["reasoning_effort"],
+      user: input["user"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup19 = (raw: RawClient["server.chat"]) => ({ completions: Endpoint19_0(raw) })
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -725,6 +766,7 @@ const adaptClient = (raw: RawClient) => ({
   questions: adaptGroup16(raw["server.question"]),
   references: adaptGroup17(raw["server.reference"]),
   projectCopies: adaptGroup18(raw["server.projectCopy"]),
+  "server.chat": adaptGroup19(raw["server.chat"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

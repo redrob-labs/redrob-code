@@ -133,56 +133,47 @@ export const ChatCompletionResponse = Schema.Struct({
 export type ChatCompletionResponse = typeof ChatCompletionResponse.Type
 
 /**
- * The OpenAI error envelope, so a client's existing error handling works
- * unchanged.
+ * The OpenAI error envelope.
  *
- * `code` is the part clients must branch on. `engine_not_authenticated` means
- * the ENGINE has no Console credential, and it is the only condition under which
- * a client should offer a sign-in action — the message text is localized
- * downstream and is not a contract. Branching on text instead is how a network
- * timeout reached a user as "please log in".
+ * NOT declared on the endpoint, and that is deliberate rather than an omission.
+ * Two independent reasons:
  *
- * One class per status, because the status is what a client's transport sees
- * first and collapsing them would report a rejected key as a bad request. The
- * body shape is identical across all of them.
+ *   1. The handler cannot use declared error schemas. It is `handleRaw`, because
+ *      one request answers with JSON and another with `text/event-stream`, so it
+ *      writes every response itself — including failures, through `errorResponse`
+ *      in `chat-completion.ts`. Declared error classes were never on the path.
+ *   2. `httpapi-codegen` requires each declared endpoint error to carry a `_tag`
+ *      or `name` STRING LITERAL to discriminate on (`declaredErrorFields`), and
+ *      four statuses sharing one envelope have nothing to discriminate by.
+ *      Adding `_tag` to satisfy it would make the generated spec and SDK claim a
+ *      field the wire does not carry, since OpenAI's envelope has no such key —
+ *      a spec that lies is worse than a spec that is silent.
+ *
+ * So the statuses are documented in the endpoint description and specified in
+ * `docs/LOCAL-ENGINE-API.md`, and this type exists to keep the shape in one place
+ * for the handler to build against.
+ *
+ * `code` is the part clients must branch on. `engine_not_authenticated` means the
+ * ENGINE has no credential, and it is the only condition under which a client
+ * should offer a sign-in action — the message text is localized downstream and is
+ * not a contract. Branching on text instead is how a network timeout reached a
+ * user as "please log in".
  */
-const errorFields = {
+export const ChatCompletionError = Schema.Struct({
   error: Schema.Struct({
     message: Schema.String,
     type: Schema.String,
     code: Schema.NullOr(Schema.String),
     param: Schema.optional(Schema.NullOr(Schema.String)),
   }),
-}
-
-export class ChatBadRequestError extends Schema.ErrorClass<ChatBadRequestError>("ChatBadRequestError")(
-  errorFields,
-  { httpApiStatus: 400 },
-) {}
-
-/** Rejected or absent credentials. Carries code `engine_not_authenticated`. */
-export class ChatUnauthorizedError extends Schema.ErrorClass<ChatUnauthorizedError>("ChatUnauthorizedError")(
-  errorFields,
-  { httpApiStatus: 401 },
-) {}
-
-export class ChatRateLimitError extends Schema.ErrorClass<ChatRateLimitError>("ChatRateLimitError")(
-  errorFields,
-  { httpApiStatus: 429 },
-) {}
-
-/** Upstream failed, or no route could be resolved for the requested model. */
-export class ChatUpstreamError extends Schema.ErrorClass<ChatUpstreamError>("ChatUpstreamError")(
-  errorFields,
-  { httpApiStatus: 502 },
-) {}
+}).annotate({ identifier: "ChatCompletionError" })
+export type ChatCompletionError = typeof ChatCompletionError.Type
 
 export const ChatCompletionGroup = HttpApiGroup.make("server.chat")
   .add(
     HttpApiEndpoint.post("chat.completions", "/v1/chat/completions", {
       payload: ChatCompletionRequest,
       success: ChatCompletionResponse,
-      error: [ChatBadRequestError, ChatUnauthorizedError, ChatRateLimitError, ChatUpstreamError],
     }).annotateMerge(
       OpenApi.annotations({
         identifier: "v1.chat.completions",
@@ -191,7 +182,13 @@ export const ChatCompletionGroup = HttpApiGroup.make("server.chat")
           "OpenAI-compatible inference against the engine's own credential and provider registry. " +
           "Declaring `tools` makes the caller responsible for executing them: the turn ends with " +
           "finish_reason tool_calls and the results come back as role:tool messages. " +
-          "`stream: true` returns text/event-stream instead of this JSON body.",
+          "`stream: true` returns text/event-stream instead of this JSON body. " +
+          "Failures use OpenAI's error envelope -- {error:{message,type,code,param}} -- with " +
+          "400 invalid_request_error, 401 authentication_error (code engine_not_authenticated, the " +
+          "only status a client should offer a sign-in action for), 429 rate_limit_error or " +
+          "insufficient_quota, and 502 api_error. They are written by the handler rather than " +
+          "declared as endpoint errors, because this is a raw handler and the envelope carries no " +
+          "discriminator field for codegen to branch on.",
       }),
     ),
   )
