@@ -47,12 +47,25 @@ function transformExports(exports: Record<string, unknown>) {
 if (await published(pkg.name, version)) {
   console.log(`already published ${pkg.name}@${version}`)
 } else {
-  console.log(`publishing ${pkg.name}@${version} on tag ${Script.channel}`)
+  /*
+    A dry run walks THIS path, stopping only at the registry call.
+
+    The first version of the workflow rehearsed by invoking `bun pm pack` directly, which skipped this
+    script entirely -- so it packed the committed `0.0.0` and proved nothing about the version wiring,
+    which is the part most likely to be wrong. A rehearsal that bypasses the code it is rehearsing is not
+    one.
+  */
+  const dryRun = process.env["REDROB_PUBLISH_DRY_RUN"] === "true"
+  console.log(`${dryRun ? "dry run: would publish" : "publishing"} ${pkg.name}@${version} on tag ${Script.channel}`)
   pkg.exports = transformExports(pkg.exports)
   await Bun.write("package.json", JSON.stringify(pkg, null, 2))
   try {
     await $`bun pm pack`
-    await $`npm publish *.tgz --tag ${Script.channel} --access public`
+    if (dryRun) {
+      console.log("dry run: packed but published nothing")
+    } else {
+      await $`npm publish *.tgz --tag ${Script.channel} --access public`
+    }
   } finally {
     /* The committed 0.0.0 and the untransformed exports go back, so a release leaves no diff behind. */
     await Bun.write("package.json", originalText)
