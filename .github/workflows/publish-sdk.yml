@@ -88,28 +88,22 @@ jobs:
             exit 1
           fi
 
-      - name: Pack only
-        if: ${{ inputs.dry_run }}
-        working-directory: packages/sdk/js
-        env:
-          REDROB_VERSION: ${{ steps.resolve.outputs.version }}
-          REDROB_CHANNEL: latest
-        run: |
-          set -euo pipefail
-          bun pm pack
-          ls -la ./*.tgz
-          echo "dry run: packed but published nothing" >> "$GITHUB_STEP_SUMMARY"
-
+      # One step for both modes, so the rehearsal walks the same code as the real thing and stops only at
+      # the registry call. Packing directly here instead would skip `publish.ts` -- and therefore skip the
+      # version injection, which is the part most likely to be wrong.
       - name: Publish
-        if: ${{ !inputs.dry_run }}
         working-directory: packages/sdk/js
         env:
           REDROB_VERSION: ${{ steps.resolve.outputs.version }}
           REDROB_CHANNEL: latest
+          REDROB_PUBLISH_DRY_RUN: ${{ inputs.dry_run }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           # npm reads the token from the registry-scoped line, not from the environment name alone.
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          fi
           bun run ./script/publish.ts
+          ls -la ./*.tgz
