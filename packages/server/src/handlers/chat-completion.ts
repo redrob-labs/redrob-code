@@ -89,8 +89,37 @@ function toWireError(error: unknown): WireError {
         return { status: 502, message: reason.message, type: "api_error", code: null }
     }
   }
+  // A body that does not decode against ChatCompletionRequest is the CALLER's
+  // error, so it must not fall through to the 502 catch-all below.
+  // `schemaBodyJson` fails with `HttpServerError | Schema.SchemaError`, and both
+  // mean the request never reached a provider — reporting them as `api_error` told
+  // a caller the upstream had failed when in fact their own payload was malformed,
+  // which sends them debugging the wrong system.
+  if (isRequestDecodeError(error)) {
+    return {
+      status: 400,
+      message: error instanceof Error ? error.message : String(error),
+      type: "invalid_request_error",
+      code: null,
+    }
+  }
   const message = error instanceof Error ? error.message : String(error)
   return { status: 502, message, type: "api_error", code: null }
+}
+
+/**
+ * Whether this failure happened while reading the request, before any provider was
+ * involved.
+ *
+ * Matched structurally rather than with `instanceof`: `Schema.SchemaError` and the
+ * HTTP request errors are separate hierarchies, and an `instanceof` chain over both
+ * silently stops matching when either is re-exported through a different module
+ * instance. The `_tag` values are part of those errors' public shape.
+ */
+function isRequestDecodeError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false
+  const tag = (error as { _tag?: unknown })._tag
+  return tag === "SchemaError" || tag === "RequestError" || tag === "HttpServerError"
 }
 
 function errorResponse(error: unknown): Effect.Effect<HttpServerResponse.HttpServerResponse> {
@@ -120,9 +149,7 @@ const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   const catalog = yield* Catalog.Service
   const info = yield* catalog.model.get(providerID, modelID)
   if (info === undefined) {
-    return yield* Effect.fail(
-      new ConversionError(`model ${model} is not available on this engine`, "model"),
-    )
+    return yield* Effect.fail(new ConversionError(`model ${model} is not available on this engine`, "model"))
   }
 
   const integrations = yield* Integration.Service
@@ -132,9 +159,7 @@ const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   // 500 from here would.
   const connection = yield* integrations.connection.active(Integration.ID.make(providerID))
   if (connection !== undefined) {
-    credential = yield* integrations.connection
-      .resolve(connection)
-      .pipe(Effect.catch(() => Effect.succeed(undefined)))
+    credential = yield* integrations.connection.resolve(connection).pipe(Effect.catch(() => Effect.succeed(undefined)))
   }
   return yield* fromCatalogModel(info, credential)
 })

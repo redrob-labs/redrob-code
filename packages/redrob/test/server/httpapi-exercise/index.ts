@@ -97,9 +97,7 @@ const scenarios: Scenario[] = [
         Effect.gen(function* () {
           object(body)
           check(body.username === "httpapi-global", "global config update should return patched config")
-          const text = yield* Effect.promise(() =>
-            Bun.file(path.join(exerciseConfigDirectory, "redrob.jsonc")).text(),
-          )
+          const text = yield* Effect.promise(() => Bun.file(path.join(exerciseConfigDirectory, "redrob.jsonc")).text())
           check(text.includes('"username": "httpapi-global"'), "global config update should write isolated config file")
         }),
       "status",
@@ -581,7 +579,32 @@ const scenarios: Scenario[] = [
   http.protected.get("/experimental/capabilities", "experimental.capabilities.get").json(200, (body) => {
     check(typeof body === "object" && body !== null, "capabilities should be an object")
     check("backgroundSubagents" in body, "capabilities should report background subagents")
+    check("chatCompletions" in body, "capabilities should report the chat-completions contract")
   }),
+  // The OpenAI-compatible route. Exercised on its 400 path deliberately: a real
+  // completion needs a provider credential this harness has none of, so asserting
+  // 200 would make the gate depend on the machine it runs on. An unknown model id
+  // is refused before any provider is resolved, which is what makes this
+  // deterministic -- and it still covers the parts most likely to break, namely
+  // that the body decodes against ChatCompletionRequest and that the failure comes
+  // back in the OpenAI error envelope rather than Effect's default shape.
+  http.protected
+    .post("/v1/chat/completions", "chat.completions")
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: {
+        model: "redrob-httpapi-exercise/no-such-model",
+        messages: [{ role: "user", content: "ping" }],
+      },
+    }))
+    .json(400, (body) => {
+      check(typeof body === "object" && body !== null, "chat completions error should be an object")
+      const error = (body as { error?: { message?: unknown; type?: unknown } }).error
+      check(typeof error === "object" && error !== null, "error should be nested under `error`, as OpenAI does")
+      check(typeof error?.message === "string", "error should carry a message")
+      check(typeof error?.type === "string", "error should carry a type")
+    }),
   http.protected
     .post("/experimental/session/{sessionID}/background", "experimental.session.background")
     .mutating()
