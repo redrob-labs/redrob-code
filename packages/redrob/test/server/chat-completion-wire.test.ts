@@ -160,10 +160,13 @@ describe("tools", () => {
     expect(tools!.definitions[0]!.description).toBe("")
   })
 
-  it("carries tool_choice in both spellings", () => {
-    expect(toLLMTools(request({ tools: [{ type: "function", function: { name: "a" } }], tool_choice: "none" }))!.choice).toBe(
-      "none",
-    )
+  it("carries tool_choice as the engine's shape, never as a bare string", () => {
+    // A bare string is ambiguous: the engine's normalizer reads
+    // "auto"/"none"/"required" as modes and anything else as a tool name, so a
+    // tool actually named `auto` would silently become a mode.
+    expect(
+      toLLMTools(request({ tools: [{ type: "function", function: { name: "a" } }], tool_choice: "none" }))!.choice,
+    ).toEqual({ type: "none" })
     expect(
       toLLMTools(
         request({
@@ -171,7 +174,18 @@ describe("tools", () => {
           tool_choice: { type: "function", function: { name: "a" } },
         }),
       )!.choice,
-    ).toEqual({ name: "a" })
+    ).toEqual({ type: "tool", name: "a" })
+  })
+
+  it("names a tool called auto as a tool, not as the auto mode", () => {
+    expect(
+      toLLMTools(
+        request({
+          tools: [{ type: "function", function: { name: "auto" } }],
+          tool_choice: { type: "function", function: { name: "auto" } },
+        }),
+      )!.choice,
+    ).toEqual({ type: "tool", name: "auto" })
   })
 })
 

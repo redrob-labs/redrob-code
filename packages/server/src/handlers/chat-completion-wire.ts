@@ -14,7 +14,12 @@ import type { ChatCompletionRequest } from "@redrob-code/protocol/groups/chat-co
 /** What the caller declared, after validation. */
 export interface ToolsIn {
   readonly definitions: ReadonlyArray<ToolDefinition>
-  readonly choice: "auto" | "none" | "required" | { readonly name: string } | undefined
+  /**
+   * The engine's own shape, not the wire's. A bare string would be ambiguous:
+   * its normalizer reads "auto"/"none"/"required" as modes and anything else as
+   * a tool name, so a tool actually named `auto` would silently become a mode.
+   */
+  readonly choice: { readonly type: "auto" | "none" | "required" | "tool"; readonly name?: string } | undefined
 }
 
 export class ConversionError extends Error {
@@ -151,8 +156,8 @@ export function toLLMTools(request: ChatCompletionRequest): ToolsIn | undefined 
 
 function toToolChoice(choice: ChatCompletionRequest["tool_choice"]): ToolsIn["choice"] {
   if (choice === undefined) return undefined
-  if (typeof choice === "string") return choice
-  return { name: choice.function.name }
+  if (typeof choice === "string") return { type: choice }
+  return { type: "tool", name: choice.function.name }
 }
 
 /** OpenAI's finish_reason vocabulary. The engine's is close but not identical. */
@@ -191,17 +196,36 @@ export function toWireToolCalls(
 }
 
 /** `max_tokens` wins over `max_completion_tokens` when a caller sends both. */
-export function toGeneration(request: ChatCompletionRequest): Record<string, unknown> | undefined {
-  const generation: Record<string, unknown> = {}
+export function toGeneration(request: ChatCompletionRequest): GenerationInput | undefined {
+  const generation: {
+    maxTokens?: number
+    temperature?: number
+    topP?: number
+    seed?: number
+    frequencyPenalty?: number
+    presencePenalty?: number
+    stop?: ReadonlyArray<string>
+  } = {}
   const maxTokens = request.max_tokens ?? request.max_completion_tokens
-  if (maxTokens !== undefined) generation["maxTokens"] = maxTokens
-  if (request.temperature !== undefined) generation["temperature"] = request.temperature
-  if (request.top_p !== undefined) generation["topP"] = request.top_p
-  if (request.seed !== undefined) generation["seed"] = request.seed
-  if (request.frequency_penalty !== undefined) generation["frequencyPenalty"] = request.frequency_penalty
-  if (request.presence_penalty !== undefined) generation["presencePenalty"] = request.presence_penalty
+  if (maxTokens !== undefined) generation.maxTokens = maxTokens
+  if (request.temperature !== undefined) generation.temperature = request.temperature
+  if (request.top_p !== undefined) generation.topP = request.top_p
+  if (request.seed !== undefined) generation.seed = request.seed
+  if (request.frequency_penalty !== undefined) generation.frequencyPenalty = request.frequency_penalty
+  if (request.presence_penalty !== undefined) generation.presencePenalty = request.presence_penalty
   if (request.stop !== undefined) {
-    generation["stop"] = typeof request.stop === "string" ? [request.stop] : [...request.stop]
+    generation.stop = typeof request.stop === "string" ? [request.stop] : [...request.stop]
   }
   return Object.keys(generation).length > 0 ? generation : undefined
+}
+
+/** The subset of the engine's generation options this route can be asked for. */
+export interface GenerationInput {
+  readonly maxTokens?: number
+  readonly temperature?: number
+  readonly topP?: number
+  readonly seed?: number
+  readonly frequencyPenalty?: number
+  readonly presencePenalty?: number
+  readonly stop?: ReadonlyArray<string>
 }
