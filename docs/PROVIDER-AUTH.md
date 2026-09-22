@@ -123,22 +123,35 @@ key cannot leak one, log one, or sync one.
 
 `redrob providers login` already implements both shapes — a generic OAuth flow
 with `authorize()` plus `auto` and `code` callbacks, and an API-key path
-(`packages/redrob/src/cli/cmd/providers.ts`). What is missing is not the flow but
-its exposure: a product cannot drive it today.
+(`packages/redrob/src/cli/cmd/providers.ts`).
 
-Add, on the v2 surface beside the completions route:
+**An earlier draft of this section proposed four new `/v1/providers` routes to expose
+it. That was wrong: the routes already exist.** They are the `server.integration`
+group on the v2 surface, and they already carry everything a settings page needs.
+Building the `/v1/providers` set would have been a duplicate surface over the same
+credential store, with two code paths to keep in agreement.
 
-- `GET /v1/providers` — what this engine can use, each entry declaring which auth
-  methods it accepts (`oauth`, `api-key`) and whether a credential is present.
-  This is what lets an app render a settings page without hardcoding a vendor
-  list that goes stale.
-- `POST /v1/providers/:id/login` — starts a flow. For OAuth it returns the
-  authorization URL and an opaque attempt id; for an API key it accepts the key.
-- `POST /v1/providers/:id/login/:attempt` — completes an OAuth attempt with the
-  authorization code, or reports that the loopback callback already completed it.
-- `DELETE /v1/providers/:id/credential` — disconnect.
+What exists, and what it replaces from that proposal:
 
-Three rules on those routes:
+| proposed | already exists |
+| --- | --- |
+| `GET /v1/providers` | `GET /api/integration` — returns `Integration.Info`, whose `methods` array is a union of `OAuthMethod`, `KeyMethod` and `EnvMethod`, plus `connections` for what is already connected |
+| `POST /v1/providers/:id/login` (key) | `POST /api/integration/:integrationID/connect/key` |
+| `POST /v1/providers/:id/login` (oauth) | `POST /api/integration/:integrationID/connect/oauth` |
+| `POST /v1/providers/:id/login/:attempt` | `POST /api/integration/attempt/:attemptID/complete`, with `GET /api/integration/attempt/:attemptID` for status and `DELETE` to cancel |
+| `DELETE /v1/providers/:id/credential` | `DELETE /api/credential/:credentialID` |
+
+So the engine-side work for BYOK is **done**, and the real work is product-side:
+making an app use these routes instead of its own store. Office keeps keys in
+`userData/ai-settings.json`, Design in the macOS keychain, the extension in
+`chrome.storage.local`, Query and Recall in separate keyring services — five stores
+that never read each other, which is the whole reason a user logs in again in every
+app. Cowork already does it the right way: it stores no provider key and posts the
+key once to the engine (`apps/server/src/redrob-auth.ts`), treating the engine's
+`auth.json` as the single source of truth. That is the pattern to copy.
+
+Three rules still hold for those routes, and they are worth restating because they
+are what makes the single store safe:
 
 1. **The key never comes back out.** A response says a credential is present and
    names it; it never returns the secret. A product that cannot read the key
