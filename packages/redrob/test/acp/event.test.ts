@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { AgentSideConnection } from "@agentclientprotocol/sdk"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
-import type { Event, Message, RedrobClient, Part, SessionMessageResponse, ToolPart } from "@redrob-code/sdk/v2"
+import type { Event, Message, RedrobClient, Part, SessionMessageResponse, ToolPart } from "@redrob-labs/sdk/v2"
 import { Effect, ManagedRuntime } from "effect"
 import { ACPEvent } from "@/acp/event"
 import * as ACPService from "@/acp/service"

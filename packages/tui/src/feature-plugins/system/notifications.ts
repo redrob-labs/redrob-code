@@ -1,4 +1,4 @@
-import type { Event } from "@redrob-code/sdk/v2"
+import type { Event } from "@redrob-labs/sdk/v2"
 import type { TuiAttentionSoundName, TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { kvTranslator, type TuiTranslator } from "../../i18n"

@@ -8,7 +8,7 @@
         "@aws-sdk/client-s3": "3.933.0",
         "@redrob-code/plugin": "workspace:*",
         "@redrob-code/script": "workspace:*",
-        "@redrob-code/sdk": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "heap-snapshot-toolkit": "1.1.3",
         "typescript": "catalog:",
       },
@@ -39,9 +39,9 @@
         "@opentui/solid": "catalog:",
         "@parcel/watcher": "2.5.1",
         "@redrob-code/core": "workspace:*",
-        "@redrob-code/sdk": "workspace:*",
         "@redrob-code/server": "workspace:*",
         "@redrob-code/tui": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "effect": "catalog:",
         "solid-js": "catalog:",
       },
@@ -264,7 +264,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/provider": "3.0.8",
-        "@redrob-code/sdk": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "effect": "catalog:",
         "zod": "catalog:",
       },
@@ -356,9 +356,9 @@
         "@redrob-code/protocol": "workspace:*",
         "@redrob-code/schema": "workspace:*",
         "@redrob-code/script": "workspace:*",
-        "@redrob-code/sdk": "workspace:*",
         "@redrob-code/server": "workspace:*",
         "@redrob-code/tui": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "@solid-primitives/event-bus": "1.1.2",
         "@solid-primitives/scheduled": "1.5.2",
@@ -467,7 +467,7 @@
       },
     },
     "packages/sdk/js": {
-      "name": "@redrob-code/sdk",
+      "name": "@redrob-labs/sdk",
       "version": "0.0.0",
       "dependencies": {
         "cross-spawn": "catalog:",
@@ -500,7 +500,7 @@
       "name": "@redrob-code/slack",
       "version": "0.0.0",
       "dependencies": {
-        "@redrob-code/sdk": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "@slack/bolt": "^3.17.1",
       },
       "devDependencies": {
@@ -518,7 +518,7 @@
         "@opentui/solid": "catalog:",
         "@redrob-code/core": "workspace:*",
         "@redrob-code/plugin": "workspace:*",
-        "@redrob-code/sdk": "workspace:*",
+        "@redrob-labs/sdk": "workspace:*",
         "clipboardy": "4.0.0",
         "diff": "catalog:",
         "effect": "catalog:",
@@ -1294,8 +1294,6 @@
 
     "@redrob-code/script": ["@redrob-code/script@workspace:packages/script"],
 
-    "@redrob-code/sdk": ["@redrob-code/sdk@workspace:packages/sdk/js"],
-
     "@redrob-code/sdk-next": ["@redrob-code/sdk-next@workspace:packages/sdk-next"],
 
     "@redrob-code/server": ["@redrob-code/server@workspace:packages/server"],
@@ -1303,6 +1301,8 @@
     "@redrob-code/slack": ["@redrob-code/slack@workspace:packages/slack"],
 
     "@redrob-code/tui": ["@redrob-code/tui@workspace:packages/tui"],
+
+    "@redrob-labs/sdk": ["@redrob-labs/sdk@workspace:packages/sdk/js"],
 
     "@shikijs/core": ["@shikijs/core@3.20.0", "", { "dependencies": { "@shikijs/types": "3.20.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4", "hast-util-to-html": "^9.0.5" } }, "sha512-f2ED7HYV4JEk827mtMDwe/yQ25pRiXZmtHjWF8uzZKuKiEsJR7Ce1nuQ+HhV9FzDcbIo4ObBCD9GPTzNuy9S1g=="],
 

@@ -18,7 +18,7 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@redrob-code/core": "workspace:*",
-    "@redrob-code/sdk": "workspace:*",
+    "@redrob-labs/sdk": "workspace:*",
     "@redrob-code/server": "workspace:*",
     "@redrob-code/tui": "workspace:*",
     "@opentui/core": "catalog:",

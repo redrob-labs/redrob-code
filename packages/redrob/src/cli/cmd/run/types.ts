@@ -11,7 +11,7 @@
 //     → stream.ts bridges to footer API
 //       → footer.ts queues commits and patches the footer view
 //         → OpenTUI split-footer renderer writes to terminal
-import type { RedrobClient, PermissionRequest, QuestionRequest, ToolPart } from "@redrob-code/sdk/v2"
+import type { RedrobClient, PermissionRequest, QuestionRequest, ToolPart } from "@redrob-labs/sdk/v2"
 import type { TuiConfig } from "@redrob-code/tui/config"
 
 export type RunFilePart = {

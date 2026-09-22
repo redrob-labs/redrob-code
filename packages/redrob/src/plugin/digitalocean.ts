@@ -1,5 +1,5 @@
 import type { Hooks, PluginInput } from "@redrob-code/plugin"
-import type { Model } from "@redrob-code/sdk/v2"
+import type { Model } from "@redrob-labs/sdk/v2"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { OauthCallbackPage } from "@redrob-code/core/oauth/page"
 import { createServer } from "http"

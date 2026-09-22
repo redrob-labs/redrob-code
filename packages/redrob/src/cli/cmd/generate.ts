@@ -18,7 +18,7 @@ export const GenerateCommand = {
           {
             lang: "js",
             source: [
-              `import { createRedrobClient } from "@redrob-code/sdk`,
+              `import { createRedrobClient } from "@redrob-labs/sdk`,
               ``,
               `const client = createRedrobClient()`,
               `await client.${operation.operationId}({`,

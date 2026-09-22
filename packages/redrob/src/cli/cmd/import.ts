@@ -1,4 +1,4 @@
-import type { Session as SDKSession, Message, Part } from "@redrob-code/sdk/v2"
+import type { Session as SDKSession, Message, Part } from "@redrob-labs/sdk/v2"
 import { SessionV1 } from "@redrob-code/core/v1/session"
 import { Session } from "@/session/session"
 import { MessageV2 } from "../../session/message-v2"

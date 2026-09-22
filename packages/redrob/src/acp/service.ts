@@ -31,7 +31,7 @@ import {
 } from "@agentclientprotocol/sdk"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
-import type { AssistantMessage, Message, RedrobClient, SessionMessageResponse } from "@redrob-code/sdk/v2"
+import type { AssistantMessage, Message, RedrobClient, SessionMessageResponse } from "@redrob-labs/sdk/v2"
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import * as ACPError from "./error"
 import { buildConfigOptions, parseModelSelection } from "./config-option"

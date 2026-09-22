@@ -1,4 +1,4 @@
-import type { ReferenceGitSource, ReferenceLocalSource } from "@redrob-code/sdk/v2/types"
+import type { ReferenceGitSource, ReferenceLocalSource } from "@redrob-labs/sdk/v2/types"
 import type { Hooks } from "./registration.js"
 
 export interface ReferenceDraft {

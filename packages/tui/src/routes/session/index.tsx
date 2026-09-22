@@ -37,7 +37,7 @@ import type {
   TextPart,
   ReasoningPart,
   SessionStatus,
-} from "@redrob-code/sdk/v2"
+} from "@redrob-labs/sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"

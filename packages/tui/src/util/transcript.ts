@@ -1,4 +1,4 @@
-import type { AssistantMessage, Part, Provider, UserMessage } from "@redrob-code/sdk/v2"
+import type { AssistantMessage, Part, Provider, UserMessage } from "@redrob-labs/sdk/v2"
 import { Locale } from "./locale"
 import * as Model from "./model"
 

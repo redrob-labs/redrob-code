@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import Notifications from "../../../../src/feature-plugins/system/notifications"
-import type { Event, PermissionRequest, QuestionRequest, Session } from "@redrob-code/sdk/v2"
+import type { Event, PermissionRequest, QuestionRequest, Session } from "@redrob-labs/sdk/v2"
 import type { TuiAttentionNotifyInput } from "@redrob-code/plugin/tui"
 import { createTuiPluginApi } from "../../../fixture/tui-plugin"
 

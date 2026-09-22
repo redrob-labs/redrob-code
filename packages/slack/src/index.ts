@@ -1,5 +1,5 @@
 import { App } from "@slack/bolt"
-import { createRedrob, type ToolPart } from "@redrob-code/sdk"
+import { createRedrob, type ToolPart } from "@redrob-labs/sdk"
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,

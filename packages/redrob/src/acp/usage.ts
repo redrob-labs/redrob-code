@@ -1,5 +1,5 @@
 import type { AgentSideConnection, Usage } from "@agentclientprotocol/sdk"
-import type { AssistantMessage as SdkAssistantMessage, Message } from "@redrob-code/sdk/v2"
+import type { AssistantMessage as SdkAssistantMessage, Message } from "@redrob-labs/sdk/v2"
 import { InstanceRef } from "@/effect/instance-ref"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { InstanceStore } from "@/project/instance-store"

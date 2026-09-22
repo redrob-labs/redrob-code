@@ -10,7 +10,7 @@ import type {
   SessionConfigSelectOption,
   SetSessionConfigOptionResponse,
 } from "@agentclientprotocol/sdk"
-import type { AssistantMessage, Event, RedrobClient } from "@redrob-code/sdk/v2"
+import type { AssistantMessage, Event, RedrobClient } from "@redrob-labs/sdk/v2"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { ModelV2 } from "@redrob-code/core/model"
 import { Effect } from "effect"

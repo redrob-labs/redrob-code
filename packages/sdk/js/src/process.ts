@@ -1,7 +1,7 @@
 import { type ChildProcess, spawnSync } from "node:child_process"
 
 // Duplicated from `packages/redrob/src/util/process.ts` because the SDK cannot
-// import `redrob` without creating a cycle (`redrob` depends on `@redrob-code/sdk`).
+// import `redrob` without creating a cycle (`redrob` depends on `@redrob-labs/sdk`).
 export function stop(proc: ChildProcess) {
   if (proc.exitCode !== null || proc.signalCode !== null) return
   if (process.platform === "win32" && proc.pid) {

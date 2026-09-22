@@ -22,7 +22,7 @@ import type { PromptInfo } from "../../prompt/history"
 import { useFrecency } from "../../prompt/frecency"
 import { useBindings, useCommandSlashes, useRedrobModeStack } from "../../keymap"
 import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
-import type { FileSystemEntry } from "@redrob-code/sdk/v2"
+import type { FileSystemEntry } from "@redrob-labs/sdk/v2"
 import { useLanguage } from "../../context/language"
 
 function removeLineRange(input: string) {

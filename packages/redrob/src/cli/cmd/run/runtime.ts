@@ -12,7 +12,7 @@
 //   3. starts the stream transport (SDK event subscription), lazily for fresh
 //      local sessions,
 //   4. runs the prompt queue until the footer closes.
-import { createRedrobClient } from "@redrob-code/sdk/v2"
+import { createRedrobClient } from "@redrob-labs/sdk/v2"
 import { Flag } from "@redrob-code/core/flag/flag"
 import { MessageID } from "@/session/schema"
 import { createRunDemo } from "./demo"

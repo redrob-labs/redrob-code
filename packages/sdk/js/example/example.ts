@@ -1,4 +1,4 @@
-import { createRedrobClient, createRedrobServer } from "@redrob-code/sdk"
+import { createRedrobClient, createRedrobServer } from "@redrob-labs/sdk"
 import { pathToFileURL } from "bun"
 
 const server = await createRedrobServer()
