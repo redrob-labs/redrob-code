@@ -25,8 +25,24 @@ const ConsoleStateResponse = Schema.Struct({
   switchableOrgCount: NonNegativeInt,
 }).annotate({ identifier: "ConsoleState" })
 
+/**
+ * What this engine's `/v1/chat/completions` supports.
+ *
+ * Declared as a struct rather than a version number so a caller negotiates a
+ * capability instead of pinning an engine build: a downstream app that needs
+ * caller-owned tools checks `callerTools`, and an older engine that lacks the whole
+ * route simply omits `chatCompletions`. `version` is the contract's revision, not
+ * the engine's.
+ */
+const ChatCompletionsCapability = Schema.Struct({
+  version: NonNegativeInt,
+  callerTools: Schema.Boolean,
+  stream: Schema.Boolean,
+}).annotate({ identifier: "ChatCompletionsCapability" })
+
 const CapabilitiesResponse = Schema.Struct({
   backgroundSubagents: Schema.Boolean,
+  chatCompletions: ChatCompletionsCapability,
 }).annotate({ identifier: "ExperimentalCapabilities" })
 
 const ConsoleOrgOption = Schema.Struct({

@@ -775,5 +775,21 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         misses: Effect.sync(() => [...misses]),
       })
     }),
-  ).pipe(Layer.provide(HttpRouter.layer), Layer.provide(NodeHttpServer.layer(() => Http.createServer(), { port: 0 })))
+  ).pipe(
+    // Layer.fresh, not a bare HttpRouter.layer. Layer memoization otherwise hands
+    // this fake the SAME HttpRouter instance the engine's own HttpApi is built on,
+    // so both register into one router. That was harmless only while no engine
+    // route shared a path with the fake: once the engine gained
+    // POST /v1/chat/completions -- the real OpenAI path, which this fake must also
+    // serve to be a credible provider double -- the second registration threw
+    // "Method 'POST' already declared for route '/v1/chat/completions'" and took
+    // down every test that stands up both.
+    //
+    // The fake's path is deliberately NOT renamed to dodge the clash: it exists to
+    // look like a real OpenAI-compatible endpoint, and a fake at a made-up path
+    // would stop exercising the thing under test. Isolating the router is the fix;
+    // the collision was a wiring accident, not a naming one.
+    Layer.provide(Layer.fresh(HttpRouter.layer)),
+    Layer.provide(NodeHttpServer.layer(() => Http.createServer(), { port: 0 })),
+  )
 }
