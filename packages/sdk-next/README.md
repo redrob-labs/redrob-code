@@ -1,6 +1,6 @@
 # @redrob-code/sdk-next
 
-Effect-native scoped Redrob Code host for in-process applications. This transitional package will replace the existing generated `@redrob-code/sdk` after its consumers migrate.
+Effect-native scoped Redrob Code host for in-process applications. This transitional package will replace the existing generated `@redrob-labs/sdk` after its consumers migrate.
 
 The SDK executes Server's assembled HTTP router in memory. It opens no listener and performs no network I/O, while preserving the same routing, middleware, handlers, codecs, and errors as the network client.
 

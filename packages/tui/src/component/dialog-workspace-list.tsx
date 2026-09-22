@@ -1,4 +1,4 @@
-import type { Workspace } from "@redrob-code/sdk/v2"
+import type { Workspace } from "@redrob-labs/sdk/v2"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useProject } from "../context/project"

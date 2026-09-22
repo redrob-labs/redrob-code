@@ -1,6 +1,6 @@
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { httpClient } from "@redrob-code/core/effect/app-node-platform"
-import type * as SDK from "@redrob-code/sdk/v2"
+import type * as SDK from "@redrob-labs/sdk/v2"
 import { serviceUse } from "@redrob-code/core/effect/service-use"
 import { Effect, Exit, Layer, Option, Schema, Scope, Context, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"

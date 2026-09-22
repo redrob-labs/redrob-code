@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PermissionRequest } from "@redrob-code/sdk/v2"
+import type { PermissionRequest } from "@redrob-labs/sdk/v2"
 import {
   createPermissionBodyState,
   permissionAlwaysLines,

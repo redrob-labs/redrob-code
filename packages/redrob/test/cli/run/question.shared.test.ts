@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { QuestionRequest } from "@redrob-code/sdk/v2"
+import type { QuestionRequest } from "@redrob-labs/sdk/v2"
 import {
   createQuestionBodyState,
   questionConfirm,

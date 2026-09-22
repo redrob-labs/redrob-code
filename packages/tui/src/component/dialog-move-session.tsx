@@ -16,7 +16,7 @@ import { useCommandShortcut } from "../keymap"
 import { useProject } from "../context/project"
 import { Spinner } from "./spinner"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
-import type { ProjectDirectories } from "@redrob-code/sdk/v2"
+import type { ProjectDirectories } from "@redrob-labs/sdk/v2"
 import { useRoute } from "../context/route"
 import { useLanguage } from "../context/language"
 

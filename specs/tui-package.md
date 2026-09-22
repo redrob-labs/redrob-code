@@ -17,7 +17,7 @@ Target dependency graph:
 
 ```text
 packages/redrob ---\
-                      > @redrob-code/tui -> @redrob-code/sdk
+                      > @redrob-code/tui -> @redrob-labs/sdk
 packages/cli --------/
 ```
 
@@ -368,7 +368,7 @@ Tasks:
 Exit criteria:
 
 - Domain-facing TUI code imports OpenCode data and operations only from
-  `@redrob-code/sdk`.
+  `@redrob-labs/sdk`.
 - No TUI source imports private session, provider, reference, LSP, server, or
   core domain implementations.
 - SDK generation is clean after any API changes.

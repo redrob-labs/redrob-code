@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@redrob-code/sdk",
+  "name": "@redrob-labs/sdk",
   "version": "0.0.0",
   "type": "module",
   "license": "MIT",

@@ -50,7 +50,7 @@
   "dependencies": {
     "@redrob-code/core": "workspace:*",
     "@redrob-code/plugin": "workspace:*",
-    "@redrob-code/sdk": "workspace:*",
+    "@redrob-labs/sdk": "workspace:*",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",

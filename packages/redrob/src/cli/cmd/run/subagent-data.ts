@@ -1,4 +1,4 @@
-import type { Event, Message, Part, PermissionRequest, QuestionRequest, ToolPart } from "@redrob-code/sdk/v2"
+import type { Event, Message, Part, PermissionRequest, QuestionRequest, ToolPart } from "@redrob-labs/sdk/v2"
 import * as Locale from "@/util/locale"
 import {
   bootstrapSessionData,

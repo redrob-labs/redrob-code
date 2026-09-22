@@ -17,7 +17,7 @@ import {
   type SetSessionModeRequest,
 } from "@agentclientprotocol/sdk"
 import { Effect } from "effect"
-import type { RedrobClient } from "@redrob-code/sdk/v2"
+import type { RedrobClient } from "@redrob-labs/sdk/v2"
 import * as ACPError from "./error"
 import * as ACPService from "./service"
 

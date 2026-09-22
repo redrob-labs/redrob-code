@@ -1,4 +1,4 @@
-import type { GlobalEvent } from "@redrob-code/sdk/v2"
+import type { GlobalEvent } from "@redrob-labs/sdk/v2"
 import type { EventSource } from "@redrob-code/tui/context/sdk"
 
 export const worktree = "/tmp/redrob"

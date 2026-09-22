@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
-import { RedrobClient, type Provider } from "@redrob-code/sdk/v2"
+import { RedrobClient, type Provider } from "@redrob-labs/sdk/v2"
 import type { Resolved } from "@redrob-code/tui/config"
 import { TuiConfig } from "@/config/tui"
 import { resolveDiffStyle, resolveModelInfo, resolveRunTuiConfig } from "@/cli/cmd/run/runtime.boot"

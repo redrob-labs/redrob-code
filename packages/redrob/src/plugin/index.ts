@@ -7,7 +7,7 @@ import type {
   WorkspaceAdapter as PluginWorkspaceAdapter,
 } from "@redrob-code/plugin"
 import { Config } from "@/config/config"
-import { createRedrobClient } from "@redrob-code/sdk"
+import { createRedrobClient } from "@redrob-labs/sdk"
 import { ServerAuth } from "@/server/auth"
 import { Session } from "@/session/session"
 import { NamedError } from "@redrob-code/core/util/error"
