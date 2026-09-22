@@ -1,0 +1,115 @@
+# Publish `@redrob-code/sdk` to npm.
+#
+# DELIBERATELY SEPARATE from release.yml. That workflow reaches the Apple and Windows signing
+# credentials, and bolting an npm publish onto it would mean a missing or expired npm token turns a
+# signed binary release red after the artifacts are already out. Here a token problem fails one run
+# that has published nothing else.
+#
+# `workflow_dispatch` only, and dry-run by default, because the first publish of a public package
+# under this scope is not reversible: npm allows unpublishing a new version only within 72 hours,
+# and a name, once taken, stays taken.
+#
+# The version is NOT read from packages/sdk/js/package.json, which holds 0.0.0 on purpose. It comes
+# from `version` below and reaches `publish.ts` as REDROB_VERSION, so an SDK build is answerable to
+# the CLI release it was generated from.
+name: publish-sdk
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without the leading v (e.g. 0.4.1). Defaults to the latest release tag."
+        required: false
+        type: string
+      dry_run:
+        description: "Build and pack, but publish nothing."
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Pinned to this repository's immutable id, matching release.yml: a fork must never publish under
+    # this scope, and a rename must not silently switch the guard off.
+    if: github.repository_id == '1371675259'
+    steps:
+      # Tags are the version state when `version` is not given, and a shallow checkout carries none.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: resolve
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED" ]; then
+            version="$REQUESTED"
+          else
+            # Same tag discipline as release.yml: only plain vMAJOR.MINOR.PATCH counts, so a
+            # prerelease or a legacy upstream-derived tag cannot become the SDK's version.
+            latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+              | grep -v -- '-' | head -n1 || true)"
+            if [ -z "$latest" ]; then
+              echo "::error::no release tag to take a version from, and none was given"
+              exit 1
+            fi
+            version="${latest#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publishing version $version" >> "$GITHUB_STEP_SUMMARY"
+
+      # The package ships `dist` only, so this is what there is to publish.
+      - name: Build the SDK
+        working-directory: packages/sdk/js
+        run: bun run build
+
+      # Fails loudly rather than letting `npm publish` fail after the pack: an absent token is a
+      # configuration answer, and the run should say so in one line instead of in npm's output.
+      - name: Check the npm token is present
+        if: ${{ !inputs.dry_run }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is not set for this repository or its organization"
+            exit 1
+          fi
+
+      - name: Pack only
+        if: ${{ inputs.dry_run }}
+        working-directory: packages/sdk/js
+        env:
+          REDROB_VERSION: ${{ steps.resolve.outputs.version }}
+          REDROB_CHANNEL: latest
+        run: |
+          set -euo pipefail
+          bun pm pack
+          ls -la ./*.tgz
+          echo "dry run: packed but published nothing" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/sdk/js
+        env:
+          REDROB_VERSION: ${{ steps.resolve.outputs.version }}
+          REDROB_CHANNEL: latest
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          # npm reads the token from the registry-scoped line, not from the environment name alone.
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          bun run ./script/publish.ts
