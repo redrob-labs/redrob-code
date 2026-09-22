@@ -1,4 +1,4 @@
-import type { Model } from "@redrob-code/sdk/v2"
+import type { Model } from "@redrob-labs/sdk/v2"
 import { Schema } from "effect"
 
 const reasoningOption = Schema.Struct({

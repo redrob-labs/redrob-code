@@ -5,7 +5,7 @@ import type {
   RequestPermissionResponse,
   SessionUpdate,
 } from "@agentclientprotocol/sdk"
-import type { Event, RedrobClient } from "@redrob-code/sdk/v2"
+import type { Event, RedrobClient } from "@redrob-labs/sdk/v2"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { createTwoFilesPatch } from "diff"
 import { Effect, ManagedRuntime } from "effect"

@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@redrob-code/sdk/v2"
+import type { AssistantMessage } from "@redrob-labs/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo } from "solid-js"

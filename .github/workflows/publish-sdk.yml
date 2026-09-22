@@ -1,4 +1,4 @@
-# Publish `@redrob-code/sdk` to npm.
+# Publish `@redrob-labs/sdk` to npm.
 #
 # DELIBERATELY SEPARATE from release.yml. That workflow reaches the Apple and Windows signing
 # credentials, and bolting an npm publish onto it would mean a missing or expired npm token turns a

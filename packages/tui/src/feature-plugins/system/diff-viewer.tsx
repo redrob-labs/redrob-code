@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginApi, TuiRouteCurrent } from "@redrob-code/plugin/tui"
-import type { SnapshotFileDiff, VcsFileDiff } from "@redrob-code/sdk/v2"
+import type { SnapshotFileDiff, VcsFileDiff } from "@redrob-labs/sdk/v2"
 import {
   TextAttributes,
   type BorderSides,

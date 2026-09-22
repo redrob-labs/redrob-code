@@ -1,5 +1,5 @@
 import type { McpServer } from "@agentclientprotocol/sdk"
-import type { Message, Part } from "@redrob-code/sdk/v2"
+import type { Message, Part } from "@redrob-labs/sdk/v2"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { ModelV2 } from "@redrob-code/core/model"

@@ -1,4 +1,4 @@
-import { createRedrobClient } from "@redrob-code/sdk/v2"
+import { createRedrobClient } from "@redrob-labs/sdk/v2"
 import { SessionID } from "@/session/schema"
 import { Schema } from "effect"
 

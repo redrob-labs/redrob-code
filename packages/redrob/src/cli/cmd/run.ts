@@ -22,7 +22,7 @@ import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
-import { createRedrobClient, type RedrobClient, type ToolPart } from "@redrob-code/sdk/v2"
+import { createRedrobClient, type RedrobClient, type ToolPart } from "@redrob-labs/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 

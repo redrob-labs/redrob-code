@@ -1,4 +1,4 @@
-import type { Event } from "@redrob-code/sdk/v2"
+import type { Event } from "@redrob-labs/sdk/v2"
 import { useSDK } from "./sdk"
 
 type EventMetadata = {

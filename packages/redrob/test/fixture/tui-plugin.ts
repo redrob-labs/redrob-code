@@ -1,4 +1,4 @@
-import { createRedrobClient } from "@redrob-code/sdk/v2"
+import { createRedrobClient } from "@redrob-labs/sdk/v2"
 import { RGBA, type CliRenderer } from "@opentui/core"
 import type { HostPluginApi } from "@redrob-code/tui/plugin/slots"
 import { createTuiResolvedConfig } from "./tui-runtime"

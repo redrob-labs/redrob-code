@@ -9,8 +9,8 @@ import type {
   Message,
   Part,
   Config as SDKConfig,
-} from "@redrob-code/sdk"
-import type { Provider as ProviderV2, Model as ModelV2, Auth } from "@redrob-code/sdk/v2"
+} from "@redrob-labs/sdk"
+import type { Provider as ProviderV2, Model as ModelV2, Auth } from "@redrob-labs/sdk/v2"
 
 import type { BunShell } from "./shell.js"
 import { type ToolDefinition } from "./tool.js"

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { Model, Provider } from "@redrob-code/sdk/v2"
+import type { Model, Provider } from "@redrob-labs/sdk/v2"
 import { ModalPlugin } from "@/plugin/modal/modal"
 
 const BASE_MODEL_ID = "thinkingmachines/Inkling-NVFP4"

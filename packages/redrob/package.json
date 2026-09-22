@@ -90,7 +90,7 @@
     "@redrob-code/protocol": "workspace:*",
     "@redrob-code/schema": "workspace:*",
     "@redrob-code/script": "workspace:*",
-    "@redrob-code/sdk": "workspace:*",
+    "@redrob-labs/sdk": "workspace:*",
     "@redrob-code/server": "workspace:*",
     "@redrob-code/tui": "workspace:*",
     "@openrouter/ai-sdk-provider": "2.9.0",
