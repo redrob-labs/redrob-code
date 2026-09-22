@@ -12,6 +12,19 @@
 # The version is NOT read from packages/sdk/js/package.json, which holds 0.0.0 on purpose. It comes
 # from `version` below and reaches `publish.ts` as REDROB_VERSION, so an SDK build is answerable to
 # the CLI release it was generated from.
+#
+# NPM_TOKEN MUST BE 2FA-EXEMPT. The first real run failed with `EOTP: This operation requires a
+# one-time password` AFTER authenticating successfully and reaching "Publishing to
+# registry.npmjs.org" -- so a token that works for reads is not enough. npm enforces two-factor on
+# publish, and only two kinds of credential are exempt:
+#
+#   * a classic token of type AUTOMATION (a classic "Publish" token still prompts for an OTP), or
+#   * a granular access token with Read and write on this package or scope.
+#
+# There is no workflow-side fix for EOTP: an interactive one-time password cannot be supplied by CI,
+# which is the point of the exemption. Trusted publishing (OIDC) is the other route and needs no
+# token at all, but it must be configured for the package on npmjs.com first and therefore cannot be
+# used for a name that does not exist yet.
 name: publish-sdk
 
 on:
@@ -75,9 +88,12 @@ jobs:
         working-directory: packages/sdk/js
         run: bun run build
 
-      # Fails loudly rather than letting `npm publish` fail after the pack: an absent token is a
-      # configuration answer, and the run should say so in one line instead of in npm's output.
-      - name: Check the npm token is present
+      # Checks the token AUTHENTICATES, not merely that it is non-empty. The previous version only
+      # tested for emptiness, passed, and was followed by a publish that failed on auth policy -- which
+      # is worse than no check, because a green step implied the credential was good. `whoami` cannot
+      # prove the token is 2FA-exempt (only a publish attempt discovers EOTP), so the failure message
+      # names that as the remaining possibility rather than claiming the credential is fine.
+      - name: Check the npm token authenticates
         if: ${{ !inputs.dry_run }}
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -87,6 +103,12 @@ jobs:
             echo "::error::NPM_TOKEN is not set for this repository or its organization"
             exit 1
           fi
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          if ! who="$(npm whoami 2>&1)"; then
+            echo "::error::NPM_TOKEN did not authenticate: $who"
+            exit 1
+          fi
+          echo "authenticated as $who (2FA exemption is only provable by the publish itself)"
 
       # One step for both modes, so the rehearsal walks the same code as the real thing and stops only at
       # the registry call. Packing directly here instead would skip `publish.ts` -- and therefore skip the
