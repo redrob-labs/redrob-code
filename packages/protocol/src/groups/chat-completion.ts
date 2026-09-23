@@ -133,6 +133,49 @@ export const ChatCompletionResponse = Schema.Struct({
 export type ChatCompletionResponse = typeof ChatCompletionResponse.Type
 
 /**
+ * One frame of the `stream: true` response.
+ *
+ * A DIFFERENT shape from `ChatCompletionResponse`, which is why documenting the streaming
+ * path needed this rather than reusing the JSON one: the object discriminator is
+ * `chat.completion.chunk`, and each choice carries a partial `delta` instead of a complete
+ * `message`. A generated client that assumed the non-streaming shape would look for
+ * `choices[].message.content` and find nothing on every frame.
+ *
+ * Declared for documentation and codegen only — the handler is `handleRaw` and writes SSE
+ * frames itself, because one request answers with JSON and another with
+ * `text/event-stream`. This type is what makes the OpenAPI honest about the second.
+ *
+ * Every field on `delta` is optional because OpenAI's stream uses the shape sparsely: the
+ * first frame typically carries only `role`, middle frames only `content`, a tool call
+ * arrives spread across frames, and the terminator carries an empty delta with
+ * `finish_reason` set. A schema that required `content` would reject the terminator.
+ */
+export const ChatCompletionChunk = Schema.Struct({
+  id: Schema.String,
+  object: Schema.Literal("chat.completion.chunk"),
+  created: Schema.Int,
+  model: Schema.String,
+  choices: Schema.Array(
+    Schema.Struct({
+      index: Schema.Int,
+      delta: Schema.Struct({
+        role: Schema.optional(Schema.Literal("assistant")),
+        content: Schema.optional(Schema.String),
+        tool_calls: Schema.optional(Schema.Array(ToolCall)),
+        reasoning_content: Schema.optional(Schema.String),
+      }),
+      finish_reason: Schema.NullOr(Schema.String),
+    }),
+  ),
+  /**
+   * Sent on the final frame by providers that report it. Optional because many do not,
+   * and a client must not wait for a frame that never comes.
+   */
+  usage: Schema.optional(Usage),
+}).annotate({ identifier: "ChatCompletionChunk" })
+export type ChatCompletionChunk = typeof ChatCompletionChunk.Type
+
+/**
  * The OpenAI error envelope.
  *
  * NOT declared on the endpoint, and that is deliberate rather than an omission.

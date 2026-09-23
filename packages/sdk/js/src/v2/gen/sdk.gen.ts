@@ -15,6 +15,7 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  ChatCompletionRequest,
   CommandListErrors,
   CommandListResponses,
   Config as Config3,
@@ -263,6 +264,8 @@ import type {
   TuiShowToastResponses,
   TuiSubmitPromptErrors,
   TuiSubmitPromptResponses,
+  V1ChatCompletionsErrors,
+  V1ChatCompletionsResponses,
   V2AgentListErrors,
   V2AgentListResponses,
   V2CommandListErrors,
@@ -7137,6 +7140,39 @@ export class V2 extends HeyApiClient {
   }
 }
 
+export class Chat extends HeyApiClient {
+  /**
+   * Create a chat completion
+   *
+   * OpenAI-compatible inference against the engine's own credential and provider registry. Declaring `tools` makes the caller responsible for executing them: the turn ends with finish_reason tool_calls and the results come back as role:tool messages. `stream: true` returns text/event-stream instead of this JSON body. Failures use OpenAI's error envelope -- {error:{message,type,code,param}} -- with 400 invalid_request_error, 401 authentication_error (code engine_not_authenticated, the only status a client should offer a sign-in action for), 429 rate_limit_error or insufficient_quota, and 502 api_error. They are written by the handler rather than declared as endpoint errors, because this is a raw handler and the envelope carries no discriminator field for codegen to branch on.
+   */
+  public completions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      chatCompletionRequest?: ChatCompletionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "chatCompletionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V1ChatCompletionsResponses, V1ChatCompletionsErrors, ThrowOnError>({
+      url: "/v1/chat/completions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class V1 extends HeyApiClient {
+  private _chat?: Chat
+  get chat(): Chat {
+    return (this._chat ??= new Chat({ client: this.client }))
+  }
+}
+
 export class RedrobClient extends HeyApiClient {
   public static readonly __registry = new HeyApiRegistry<RedrobClient>()
 
@@ -7278,5 +7314,10 @@ export class RedrobClient extends HeyApiClient {
   private _v2?: V2
   get v2(): V2 {
     return (this._v2 ??= new V2({ client: this.client }))
+  }
+
+  private _v1?: V1
+  get v1(): V1 {
+    return (this._v1 ??= new V1({ client: this.client }))
   }
 }
