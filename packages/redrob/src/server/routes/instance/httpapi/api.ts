@@ -28,6 +28,7 @@ import { WorkspaceApi } from "./groups/workspace"
 import { makeApi } from "@redrob-code/protocol/api"
 import { LocationMiddleware } from "@redrob-code/server/location"
 import { SessionLocationMiddleware } from "@redrob-code/server/middleware/session-location"
+import { ChatCompletionChunk } from "@redrob-code/protocol/groups/chat-completion"
 import { GlobalApi } from "./groups/global"
 import { Authorization } from "./middleware/authorization"
 import { SchemaErrorMiddleware } from "./middleware/schema-error"
@@ -91,6 +92,11 @@ export const RedrobHttpApi = HttpApi.make("redrob")
     Integration.Method,
     Integration.Ref,
     SkillV2.Source,
+    // Not referenced by any endpoint's declared success type -- the streaming shape is
+    // patched onto /v1/chat/completions in public.ts, because HttpApi cannot express "JSON
+    // or SSE depending on a request field". Registering it here is what makes that patch's
+    // $ref resolve instead of dangling in the generated spec.
+    ChatCompletionChunk,
   ])
 
 export type RootHttpApiType = typeof RootHttpApi

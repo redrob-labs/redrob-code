@@ -169,6 +169,28 @@ function matchLegacyOpenApi(input: Record<string, unknown>) {
           },
         }
       }
+      if (path === "/v1/chat/completions" && method === "post") {
+        // Same gap, and worse consequences here: this route answers with JSON or with
+        // text/event-stream depending on `stream`, and the declared success schema only
+        // describes the JSON. A generated client built from the unpatched spec looks for
+        // choices[].message.content on a streaming response and finds nothing on every
+        // frame, because a chunk carries choices[].delta instead.
+        //
+        // Both content types are declared on the one 200 so the spec says what actually
+        // happens, rather than replacing the JSON shape and lying in the other direction.
+        const existing = operation.responses?.["200"] as
+          | { description?: string; content?: Record<string, unknown> }
+          | undefined
+        operation.responses!["200"] = {
+          description:
+            "Chat completion. `application/json` when `stream` is false or absent; " +
+            "`text/event-stream` of `ChatCompletionChunk` frames terminated by `data: [DONE]` when true.",
+          content: {
+            ...(existing?.content ?? {}),
+            "text/event-stream": { schema: { $ref: "#/components/schemas/ChatCompletionChunk" } },
+          },
+        }
+      }
       const route = `${method.toUpperCase()} ${path}`
       for (const param of operation.parameters ?? []) normalizeParameter(param, route)
     }
