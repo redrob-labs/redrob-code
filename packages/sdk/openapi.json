@@ -11947,6 +11947,190 @@
         ]
       }
     },
+    "/api/variant/paraphrase": {
+      "post": {
+        "tags": ["variants"],
+        "operationId": "v2.variant.paraphrase",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Variant.Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariantResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UnauthorizedError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UnauthorizedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ProviderNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderNotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Send the same text to two or more models and get each rewrite back, with the model that actually answered and what that slot cost.",
+        "summary": "Rewrite one text with several models",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantParaphraseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedrobClient } from \"@redrob-labs/sdk\n\nconst client = createRedrobClient()\nawait client.v2.variant.paraphrase({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/variant/compare": {
+      "post": {
+        "tags": ["variants"],
+        "operationId": "v2.variant.compare",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Variant.Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariantResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UnauthorizedError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UnauthorizedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ProviderNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderNotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Send the same messages to two or more models and get each answer back, so a caller can offer them as a choice.",
+        "summary": "Answer one conversation with several models",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedrobClient } from \"@redrob-labs/sdk\n\nconst client = createRedrobClient()\nawait client.v2.variant.compare({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/integration": {
       "get": {
         "tags": ["integrations"],
@@ -15169,6 +15353,57 @@
         ]
       }
     },
+    "/v1/chat/completions": {
+      "post": {
+        "tags": ["chat completions"],
+        "operationId": "v1.chat.completions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Chat completion. `application/json` when `stream` is false or absent; `text/event-stream` of `ChatCompletionChunk` frames terminated by `data: [DONE]` when true.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionChunk"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "description": "OpenAI-compatible inference against the engine's own credential and provider registry. Declaring `tools` makes the caller responsible for executing them: the turn ends with finish_reason tool_calls and the results come back as role:tool messages. `stream: true` returns text/event-stream instead of this JSON body. Failures use OpenAI's error envelope -- {error:{message,type,code,param}} -- with 400 invalid_request_error, 401 authentication_error (code engine_not_authenticated, the only status a client should offer a sign-in action for), 429 rate_limit_error or insufficient_quota, and 502 api_error. They are written by the handler rather than declared as endpoint errors, because this is a raw handler and the envelope carries no discriminator field for codegen to branch on.",
+        "summary": "Create a chat completion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedrobClient } from \"@redrob-labs/sdk\n\nconst client = createRedrobClient()\nawait client.v1.chat.completions({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/pty/{ptyID}/connect": {
       "get": {
         "tags": ["pty"],
@@ -15563,6 +15798,104 @@
           }
         },
         "required": ["sessionID", "requestID"],
+        "additionalProperties": false
+      },
+      "ChatCompletionChunk": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "enum": ["chat.completion.chunk"]
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "delta": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": ["assistant"]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "tool_calls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": ["function"]
+                          },
+                          "function": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "arguments": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["name", "arguments"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["id", "type", "function"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "reasoning_content": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "finish_reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["index", "delta", "finish_reason"],
+              "additionalProperties": false
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "completion_tokens": {
+                "type": "integer"
+              },
+              "total_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "object", "created", "model", "choices"],
         "additionalProperties": false
       },
       "OAuth": {
@@ -16323,6 +16656,12 @@
           },
           "cost": {
             "type": "number"
+          },
+          "routedModel": {
+            "type": "string"
+          },
+          "upstreamProvider": {
+            "type": "string"
           },
           "tokens": {
             "type": "object",
@@ -17333,6 +17672,45 @@
               }
             },
             "required": ["type"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["blocked"]
+              },
+              "message": {
+                "type": "string"
+              },
+              "action": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "link": {
+                    "type": "string"
+                  }
+                },
+                "required": ["reason", "provider", "title", "message", "label"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "message"],
             "additionalProperties": false
           }
         ]
@@ -21515,6 +21893,13 @@
               "reserved": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "threshold": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxTurnInputCostUsd": {
+                "type": "number"
               }
             },
             "additionalProperties": false
@@ -21859,14 +22244,34 @@
         "required": ["id", "name", "source", "env", "options", "models"],
         "additionalProperties": false
       },
+      "ChatCompletionsCapability": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "callerTools": {
+            "type": "boolean"
+          },
+          "stream": {
+            "type": "boolean"
+          }
+        },
+        "required": ["version", "callerTools", "stream"],
+        "additionalProperties": false
+      },
       "ExperimentalCapabilities": {
         "type": "object",
         "properties": {
           "backgroundSubagents": {
             "type": "boolean"
+          },
+          "chatCompletions": {
+            "$ref": "#/components/schemas/ChatCompletionsCapability"
           }
         },
-        "required": ["backgroundSubagents"],
+        "required": ["backgroundSubagents", "chatCompletions"],
         "additionalProperties": false
       },
       "ConsoleState": {
@@ -24312,6 +24717,360 @@
           }
         },
         "required": ["name", "data"],
+        "additionalProperties": false
+      },
+      "ChatCompletionRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": ["system", "developer", "user", "assistant", "tool"]
+                },
+                "content": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  ]
+                },
+                "tool_calls": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": ["function"]
+                      },
+                      "function": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "arguments": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["name", "arguments"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "type", "function"],
+                    "additionalProperties": false
+                  }
+                },
+                "tool_call_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": ["role"],
+              "additionalProperties": false
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["function"]
+                },
+                "function": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object"
+                    }
+                  },
+                  "required": ["name"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["type", "function"],
+              "additionalProperties": false
+            }
+          },
+          "tool_choice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["auto", "none", "required"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["function"]
+                  },
+                  "function": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["type", "function"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "max_tokens": {
+            "type": "integer"
+          },
+          "max_completion_tokens": {
+            "type": "integer"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "frequency_penalty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "presence_penalty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": ["model", "messages"],
+        "additionalProperties": false
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "enum": ["chat.completion"]
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": ["assistant"]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "tool_calls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": ["function"]
+                          },
+                          "function": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "arguments": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["name", "arguments"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["id", "type", "function"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "reasoning_content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["role", "content"],
+                  "additionalProperties": false
+                },
+                "finish_reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["index", "message", "finish_reason"],
+              "additionalProperties": false
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "completion_tokens": {
+                "type": "integer"
+              },
+              "total_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "object", "created", "model", "choices"],
         "additionalProperties": false
       },
       "effect_HttpApiError_Forbidden": {
@@ -27873,6 +28632,12 @@
           "cost": {
             "type": "number"
           },
+          "routedModel": {
+            "type": "string"
+          },
+          "upstreamProvider": {
+            "type": "string"
+          },
           "tokens": {
             "type": "object",
             "properties": {
@@ -30037,6 +30802,133 @@
           }
         },
         "required": ["id", "name", "api", "request"],
+        "additionalProperties": false
+      },
+      "VariantModel": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": ["model"],
+        "additionalProperties": false
+      },
+      "VariantParaphraseRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantModel"
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "models"],
+        "additionalProperties": false
+      },
+      "VariantProvenance": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "routedModel": {
+            "type": "string"
+          },
+          "upstreamProvider": {
+            "type": "string"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "costUsd": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VariantSlot": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "redrob": {
+            "$ref": "#/components/schemas/VariantProvenance"
+          }
+        },
+        "required": ["slot", "model"],
+        "additionalProperties": false
+      },
+      "VariantResult": {
+        "type": "object",
+        "properties": {
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantSlot"
+            }
+          },
+          "totalCostUsd": {
+            "type": "number"
+          }
+        },
+        "required": ["variants", "totalCostUsd"],
+        "additionalProperties": false
+      },
+      "VariantMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["system", "user", "assistant"]
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": ["role", "content"],
+        "additionalProperties": false
+      },
+      "VariantCompareRequest": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantMessage"
+            }
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantModel"
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": ["messages", "models"],
         "additionalProperties": false
       },
       "IntegrationWhen": {
@@ -36899,6 +37791,10 @@
       "description": "Experimental provider routes."
     },
     {
+      "name": "variants",
+      "description": "Experimental multi-model routes. Available while the Redrob provider is connected."
+    },
+    {
       "name": "integrations",
       "description": "Integration discovery and authentication routes."
     },
@@ -36941,6 +37837,10 @@
     {
       "name": "projectCopy",
       "description": "Project copy management routes."
+    },
+    {
+      "name": "chat completions",
+      "description": "OpenAI-compatible inference route. The shared engine surface for Redrob products."
     },
     {
       "name": "pty",

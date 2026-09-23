@@ -106,6 +106,35 @@ export type QuestionRejected = {
   requestID: string
 }
 
+export type ChatCompletionChunk = {
+  id: string
+  object: "chat.completion.chunk"
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    delta: {
+      role?: "assistant"
+      content?: string
+      tool_calls?: Array<{
+        id: string
+        type: "function"
+        function: {
+          name: string
+          arguments: string
+        }
+      }>
+      reasoning_content?: string
+    }
+    finish_reason: string
+  }>
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
 export type OAuth = {
   type: "oauth"
   refresh: string
@@ -2142,8 +2171,15 @@ export type Provider = {
   }
 }
 
+export type ChatCompletionsCapability = {
+  version: number
+  callerTools: boolean
+  stream: boolean
+}
+
 export type ExperimentalCapabilities = {
   backgroundSubagents: boolean
+  chatCompletions: ChatCompletionsCapability
 }
 
 export type ConsoleState = {
@@ -2970,6 +3006,88 @@ export type ProjectCopyError = {
   data: {
     message: string
     forceRequired?: boolean
+  }
+}
+
+export type ChatCompletionRequest = {
+  model: string
+  messages: Array<{
+    role: "system" | "developer" | "user" | "assistant" | "tool"
+    content?:
+      | string
+      | Array<{
+          [key: string]: unknown
+        }>
+    tool_calls?: Array<{
+      id: string
+      type: "function"
+      function: {
+        name: string
+        arguments: string
+      }
+    }>
+    tool_call_id?: string
+    name?: string
+  }>
+  tools?: Array<{
+    type: "function"
+    function: {
+      name: string
+      description?: string
+      parameters?: {
+        [key: string]: unknown
+      }
+    }
+  }>
+  tool_choice?:
+    | "auto"
+    | "none"
+    | "required"
+    | {
+        type: "function"
+        function: {
+          name: string
+        }
+      }
+  stream?: boolean
+  max_tokens?: number
+  max_completion_tokens?: number
+  temperature?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  top_p?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  stop?: string | Array<string>
+  seed?: number
+  frequency_penalty?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  presence_penalty?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  reasoning_effort?: string
+  user?: string
+}
+
+export type ChatCompletionResponse = {
+  id: string
+  object: "chat.completion"
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    message: {
+      role: "assistant"
+      content: string
+      tool_calls?: Array<{
+        id: string
+        type: "function"
+        function: {
+          name: string
+          arguments: string
+        }
+      }>
+      reasoning_content?: string
+    }
+    finish_reason: string
+  }>
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
   }
 }
 
@@ -13719,6 +13837,31 @@ export type V2ProjectCopyRefreshResponses = {
 }
 
 export type V2ProjectCopyRefreshResponse = V2ProjectCopyRefreshResponses[keyof V2ProjectCopyRefreshResponses]
+
+export type V1ChatCompletionsData = {
+  body?: ChatCompletionRequest
+  path?: never
+  query?: never
+  url: "/v1/chat/completions"
+}
+
+export type V1ChatCompletionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V1ChatCompletionsError = V1ChatCompletionsErrors[keyof V1ChatCompletionsErrors]
+
+export type V1ChatCompletionsResponses = {
+  /**
+   * Chat completion. `application/json` when `stream` is false or absent; `text/event-stream` of `ChatCompletionChunk` frames terminated by `data: [DONE]` when true.
+   */
+  200: ChatCompletionResponse
+}
+
+export type V1ChatCompletionsResponse = V1ChatCompletionsResponses[keyof V1ChatCompletionsResponses]
 
 export type PtyConnectData = {
   body?: never
