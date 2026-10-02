@@ -267,11 +267,12 @@ describe("code mode execute", () => {
         ctx,
       ),
     )
-    // The K-1 domain namespaces (`channel`, `page`) are part of the language, so they are
-    // always present alongside whatever MCP servers are connected.
+    // The K-1 domain namespaces (`channel`, `page`) and K-3's document namespaces (`docx`,
+    // `pdf`, `pptx`, `xlsx`) are part of the language, so they are always present alongside
+    // whatever MCP servers are connected.
     expect(JSON.parse(output.output)).toEqual({
-      namespaces: ["github", "linear", "channel", "page", "$codemode"],
-      count: 5,
+      namespaces: ["github", "linear", "channel", "page", "docx", "pdf", "pptx", "xlsx", "$codemode"],
+      count: 9,
     })
   })
 
