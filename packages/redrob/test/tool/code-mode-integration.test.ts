@@ -18,6 +18,7 @@ import {
   type Tool as MCPToolDef,
 } from "@modelcontextprotocol/sdk/types.js"
 import { Cause, Effect, Exit, Layer } from "effect"
+import { unansweredBrowserLayer } from "./browser-channel"
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 
@@ -152,6 +153,7 @@ async function buildTool() {
       tools: () => Effect.succeed(mcpTools),
       clients: () => Effect.succeed({ [SERVER]: {} as any }),
     }),
+    unansweredBrowserLayer(),
   )
   return {
     tool: await Effect.runPromise(CodeModeTool.pipe(Effect.flatMap(Tool.init), Effect.provide(layer))),

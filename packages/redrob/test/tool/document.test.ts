@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
 import { Cause, Effect, Exit, Layer } from "effect"
+import { unansweredBrowserLayer } from "./browser-channel"
 import { Agent } from "@/agent/agent"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
@@ -95,6 +96,7 @@ const runProgram = (code: string, directory: string) =>
             updatePart: (part: unknown) => Effect.succeed(part as never),
           } as never),
           Layer.mock(MCP.Service, { tools: () => Effect.succeed({}), clients: () => Effect.succeed({}) }),
+          unansweredBrowserLayer(),
         ),
       ),
     ),

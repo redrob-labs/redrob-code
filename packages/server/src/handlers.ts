@@ -12,6 +12,7 @@ import { EventHandler } from "./handlers/event"
 import { AgentHandler } from "./handlers/agent"
 import { HealthHandler } from "./handlers/health"
 import { PtyHandler } from "./handlers/pty"
+import { BrowserRequestHandler } from "./handlers/browser-request"
 import { QuestionHandler } from "./handlers/question"
 import { ReferenceHandler } from "./handlers/reference"
 import { LocationHandler } from "./handlers/location"
@@ -38,6 +39,7 @@ export const handlers = Layer.mergeAll(
   EventHandler,
   PtyHandler,
   QuestionHandler,
+  BrowserRequestHandler,
   ReferenceHandler,
   ProjectCopyHandler,
   ChatCompletionHandler,

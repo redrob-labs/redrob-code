@@ -94,6 +94,14 @@ export type QuestionNotFoundError = {
 export const isQuestionNotFoundError = (value: unknown): value is QuestionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "QuestionNotFoundError"
 
+export type BrowserRequestNotFoundError = {
+  readonly _tag: "BrowserRequestNotFoundError"
+  readonly requestID: string
+  readonly message: string
+}
+export const isBrowserRequestNotFoundError = (value: unknown): value is BrowserRequestNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "BrowserRequestNotFoundError"
+
 export type ProjectCopyError = {
   readonly name: "ProjectCopyError"
   readonly data: { readonly message: string; readonly forceRequired?: boolean | undefined }
@@ -2822,6 +2830,83 @@ export type QuestionsRejectInput = {
 }
 
 export type QuestionsRejectOutput = void
+
+export type BrowserRequestsListRequestsInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type BrowserRequestsListRequestsOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly sessionID: string
+    readonly command:
+      | { readonly action: "page.url" }
+      | { readonly action: "page.text" }
+      | {
+          readonly action: "page.query"
+          readonly selector: string
+          readonly limit?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      | { readonly action: "page.click"; readonly selector: string }
+      | { readonly action: "page.type"; readonly selector: string; readonly text: string; readonly submit?: boolean }
+      | { readonly action: "page.navigate"; readonly url: string }
+  }>
+}
+
+export type BrowserRequestsListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type BrowserRequestsListOutput = {
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly sessionID: string
+    readonly command:
+      | { readonly action: "page.url" }
+      | { readonly action: "page.text" }
+      | {
+          readonly action: "page.query"
+          readonly selector: string
+          readonly limit?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      | { readonly action: "page.click"; readonly selector: string }
+      | { readonly action: "page.type"; readonly selector: string; readonly text: string; readonly submit?: boolean }
+      | { readonly action: "page.navigate"; readonly url: string }
+  }>
+}["data"]
+
+export type BrowserRequestsReplyInput = {
+  readonly sessionID: { readonly sessionID: string; readonly requestID: string }["sessionID"]
+  readonly requestID: { readonly sessionID: string; readonly requestID: string }["requestID"]
+  readonly value: {
+    readonly value:
+      | { readonly type: "string"; readonly value: string }
+      | {
+          readonly type: "nodes"
+          readonly value: ReadonlyArray<{
+            readonly selector: string
+            readonly text: string
+            readonly attributes: { readonly [x: string]: string }
+          }>
+        }
+      | { readonly type: "void" }
+  }["value"]
+}
+
+export type BrowserRequestsReplyOutput = void
+
+export type BrowserRequestsRefuseInput = {
+  readonly sessionID: { readonly sessionID: string; readonly requestID: string }["sessionID"]
+  readonly requestID: { readonly sessionID: string; readonly requestID: string }["requestID"]
+  readonly reason: { readonly reason: string }["reason"]
+}
+
+export type BrowserRequestsRefuseOutput = void
 
 export type ReferencesListInput = {
   readonly location?: {

@@ -52,6 +52,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { ModelV2 } from "@redrob-code/core/model"
 import { MCP } from "@/mcp"
+import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
 import { PermissionV1 } from "@redrob-code/core/v1/permission"
 import { McpCatalog } from "@/mcp/catalog"
 
@@ -447,6 +448,9 @@ export const node = LayerNode.make({
     Truncate.node,
     RuntimeFlags.node,
     MCP.node,
+    // PA-10: the code-mode tool resolves `page` through this service, so the registry that
+    // builds that tool depends on it.
+    BrowserRequestV1.node,
     Database.node,
     Ripgrep.node,
   ],

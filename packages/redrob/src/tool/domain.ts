@@ -12,11 +12,15 @@
  * namespace of tools plus the list of names to bind as globals, and never learns what
  * `page` or `channel` mean (see packages/codemode/AGENTS.md).
  *
- * `page` has no implementation that can act today: nothing in the engine process controls
- * a browser page. Its single implementation is therefore `unavailablePage`, which THROWS a
- * message naming what is missing rather than returning a plausible value, so a skill
- * written against the interface fails loudly instead of silently reading an empty string.
+ * `page` is resolved through the browser channel (PA-10): each call becomes a pending
+ * request published on the event stream the client already subscribes to, and the attached
+ * browser settles it. `bridgedPage` is that implementation. Where no channel exists — the
+ * catalog preview, a harness with no browser — the implementation is `unavailablePage`,
+ * which THROWS a message naming what is missing rather than returning a plausible value, so
+ * a skill written against the interface fails loudly instead of silently reading an empty
+ * string.
  */
+import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
 import { SessionV1 } from "@redrob-code/core/v1/session"
 import { Effect, Schema } from "effect"
 import { Tool as SandboxTool, toolError } from "@redrob-code/codemode"
@@ -79,14 +83,15 @@ export interface Channel {
 }
 
 /**
- * The single `Page` implementation available in the engine process: none of it works.
+ * The `Page` for a caller with no browser channel: every method refuses by name.
  *
- * Kept deliberately rather than omitted, so the interface, the tool schemas, the generated
- * instructions, and the skills written against them all exist and are exercised before the
- * browser side lands. `missing` names the capability, not the symptom.
+ * Still the right implementation for the catalog preview and for any harness that binds no
+ * browser, so the interface, the tool schemas and the generated instructions all exist and
+ * are exercised whether or not a browser is attached. `missing` names the capability, not
+ * the symptom.
  */
 export const unavailablePage = (
-  missing = "the engine process has no browser-page control surface; the browser must expose page control to the engine first",
+  missing = "no browser client is attached to this engine; the page object needs the browser extension connected to this engine's event stream",
 ): Page => {
   const refuse = <A>() =>
     Effect.fail(new DomainUnavailableError({ object: "page", missing })) as Effect.Effect<A, DomainUnavailableError>
@@ -97,6 +102,73 @@ export const unavailablePage = (
     click: () => refuse<void>(),
     type: () => refuse<void>(),
     navigate: () => refuse<string>(),
+  }
+}
+
+/**
+ * The `Page` that actually works: every call becomes a pending browser request the
+ * attached client settles.
+ *
+ * This is PA-10. The engine still controls nothing itself — it publishes the action on the
+ * event stream it already serves and waits for an answer, so no socket is opened and
+ * nothing local can reach the browser through the engine.
+ *
+ * Every failure mode is mapped to `DomainUnavailableError` carrying the service's own
+ * sentence, because the `Page` interface promises exactly that error and a skill reads the
+ * sentence. The three causes stay distinguishable in the text: nobody answered, the browser
+ * refused, or the client answered with a shape the action cannot produce.
+ */
+export const bridgedPage = (input: {
+  readonly browser: BrowserRequestV1.Interface
+  readonly sessionID: SessionID
+}): Page => {
+  const unavailable = (missing: string) => new DomainUnavailableError({ object: "page", missing })
+
+  const ask = (command: BrowserRequestV1.Command) =>
+    input.browser
+      .ask({ sessionID: input.sessionID, command })
+      .pipe(Effect.mapError((error) => unavailable(error.message)))
+
+  /**
+   * Reads the value a settled request carried, insisting on the shape the action promised.
+   *
+   * The insistence is the point. A client answering `page.query` with a string must not
+   * become an empty node list: "nothing matched the selector" and "the client answered
+   * wrongly" are different claims and only one of them is about the page.
+   */
+  const expect =
+    <A>(expected: BrowserRequestV1.Value["type"], read: (value: BrowserRequestV1.Value) => A | undefined) =>
+    (command: BrowserRequestV1.Command) =>
+      ask(command).pipe(
+        Effect.flatMap((value) => {
+          const taken = read(value)
+          if (taken === undefined) {
+            return Effect.fail(
+              unavailable(
+                new BrowserRequestV1.MalformedError({ action: command.action, expected, received: value.type })
+                  .message,
+              ),
+            )
+          }
+          return Effect.succeed(taken)
+        }),
+      )
+
+  const expectString = expect<string>("string", (value) => (value.type === "string" ? value.value : undefined))
+  const expectNodes = expect<ReadonlyArray<PageNode>>("nodes", (value) =>
+    value.type === "nodes" ? value.value : undefined,
+  )
+  // `void` reads as `null` rather than `undefined`, since `undefined` is this helper's own
+  // "wrong shape" signal and would turn every successful click into a malformed answer.
+  const expectVoid = expect<null>("void", (value) => (value.type === "void" ? null : undefined))
+
+  return {
+    url: () => expectString({ action: "page.url" }),
+    text: () => expectString({ action: "page.text" }),
+    query: (query) => expectNodes({ action: "page.query", ...query }),
+    click: (click) => expectVoid({ action: "page.click", ...click }).pipe(Effect.asVoid),
+    type: (type) => expectVoid({ action: "page.type", ...type }).pipe(Effect.asVoid),
+    navigate: (navigate) => expectString({ action: "page.navigate", ...navigate }),
   }
 }
 
