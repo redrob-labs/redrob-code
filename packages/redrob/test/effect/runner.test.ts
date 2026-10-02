@@ -511,4 +511,67 @@ describe("Runner", () => {
       expect(runner.busy).toBe(false)
     }),
   )
+
+  // --- W-1: work is owned by the scope, not by the caller ---
+
+  it.live(
+    "shell work outlives the caller that started it",
+    Effect.gen(function* () {
+      const s = yield* Scope.Scope
+      const runner = Runner.make<string>(s)
+      const gate = yield* Deferred.make<void>()
+      const finished = yield* Deferred.make<void>()
+
+      // The caller stands in for an HTTP request fiber: it starts the work, then vanishes.
+      const caller = yield* runner
+        .startShell(
+          Effect.gen(function* () {
+            yield* Deferred.await(gate)
+            yield* Deferred.succeed(finished, undefined)
+            return "ok"
+          }),
+        )
+        .pipe(Effect.forkChild)
+      yield* waitForState(runner, "Shell")
+      yield* Fiber.interrupt(caller)
+
+      // The command is still running: nothing finished it, and the runner still owns it.
+      expect(runner.busy).toBe(true)
+
+      yield* Deferred.succeed(gate, undefined)
+      // If the shell had died with its caller, nothing would ever complete this Deferred.
+      yield* Deferred.await(finished).pipe(Effect.timeout("1 second"))
+      yield* waitForState(runner, "Idle")
+      expect(runner.busy).toBe(false)
+    }),
+  )
+
+  it.live(
+    "a run outlives the caller that started it",
+    Effect.gen(function* () {
+      const s = yield* Scope.Scope
+      const runner = Runner.make<string>(s)
+      const gate = yield* Deferred.make<void>()
+      const finished = yield* Deferred.make<void>()
+
+      const caller = yield* runner
+        .ensureRunning(
+          Effect.gen(function* () {
+            yield* Deferred.await(gate)
+            yield* Deferred.succeed(finished, undefined)
+            return "ok"
+          }),
+        )
+        .pipe(Effect.forkChild)
+      yield* waitForState(runner, "Running")
+      yield* Fiber.interrupt(caller)
+
+      expect(runner.busy).toBe(true)
+
+      yield* Deferred.succeed(gate, undefined)
+      // If the run had died with its caller, nothing would ever complete this Deferred.
+      yield* Deferred.await(finished).pipe(Effect.timeout("1 second"))
+      yield* waitForState(runner, "Idle")
+    }),
+  )
 })

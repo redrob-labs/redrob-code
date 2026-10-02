@@ -7,6 +7,7 @@ import { Effect, Latch, Layer, Scope, Context } from "effect"
 import { Session } from "./session"
 import { SessionID } from "./schema"
 import { SessionStatus } from "./status"
+import { SessionRecovery } from "./recovery"
 
 export interface Interface {
   readonly assertNotBusy: (sessionID: SessionID) => Effect.Effect<void, Session.BusyError>
@@ -31,9 +32,16 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const background = yield* BackgroundJob.Service
     const status = yield* SessionStatus.Service
+    const recovery = yield* SessionRecovery.Service
 
     const state = yield* InstanceState.make(
       Effect.fn("SessionRunState.state")(function* () {
+        // W-1: before this directory can own any new run, close out the turns a previous engine
+        // process was killed in the middle of. Doing it here rather than at server boot is
+        // deliberate: the server has no ambient directory (it resolves one per request from
+        // `x-redrob-directory`), so "once per directory, on first use" is the only hook that
+        // covers every instance the process ends up serving.
+        yield* recovery.run
         const scope = yield* Scope.Scope
         const runners = new Map<SessionID, Runner.Runner<SessionV1.WithParts>>()
         yield* Effect.addFinalizer(
@@ -146,6 +154,10 @@ function busyError(sessionID: SessionID) {
   return new Session.BusyError({ sessionID })
 }
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: () => [BackgroundJob.node, SessionStatus.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: () => [BackgroundJob.node, SessionStatus.node, SessionRecovery.node],
+})
 
 export * as SessionRunState from "./run-state"

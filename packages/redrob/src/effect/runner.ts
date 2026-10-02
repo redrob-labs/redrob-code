@@ -148,7 +148,12 @@ export const make = <A, E = never>(
         yield* onBusy
         const id = next()
         const cancelled = yield* Deferred.make<void>()
-        const fiber = yield* work.pipe(Effect.ensuring(finishShell(id)), Effect.forkChild)
+        // W-1: forked into the runner's own scope, which the engine instance owns, NOT into the
+        // caller as a child fiber. The caller here is an HTTP request handler, and a child fiber
+        // dies when the request fiber is interrupted — which is exactly what happens when the
+        // window closes mid-command. `startRun` has always forked into this scope; a shell run
+        // used to be the one path that did not, so it alone died with the connection.
+        const fiber = yield* work.pipe(Effect.ensuring(finishShell(id)), Effect.forkIn(scope))
         const shell = { id, cancelled, ready, fiber } satisfies ShellHandle<A, E>
         return [
           Effect.gen(function* () {
