@@ -22,6 +22,8 @@ import { Effect, Schema } from "effect"
 import { Tool as SandboxTool, toolError } from "@redrob-code/codemode"
 import { PartID, type MessageID, type SessionID } from "../session/schema"
 import type { Session } from "@/session/session"
+import { DOCUMENT_GLOBALS, documentTools, unavailableDocuments, type Documents } from "./document"
+import { DomainUnavailableError } from "./domain-error"
 
 /** One node returned by a page query. Kept to what a skill can act on without a handle. */
 export interface PageNode {
@@ -33,15 +35,12 @@ export interface PageNode {
 /**
  * A domain object the running engine cannot reach. Carries the missing capability by name
  * so the model, the logs, and a person reading a transcript all see the same reason.
+ *
+ * Defined in `./domain-error` and re-exported here, so `document.ts` can raise it without
+ * this module and that one forming an evaluation cycle. Importers keep importing it from
+ * here.
  */
-export class DomainUnavailableError extends Schema.TaggedErrorClass<DomainUnavailableError>()(
-  "CodeModeDomainUnavailable",
-  { object: Schema.String, missing: Schema.String },
-) {
-  override get message() {
-    return `The \`${this.object}\` domain object is not available in this session: ${this.missing}`
-  }
-}
+export { DomainUnavailableError } from "./domain-error"
 
 /**
  * The browser page the agent is acting in.
@@ -220,13 +219,22 @@ export const channelTools = (channel: Channel) => ({
 })
 
 /** The names bound as bare globals in the interpreter scope, in the order they are declared. */
-export const DOMAIN_GLOBALS = ["channel", "page"] as const
+export const DOMAIN_GLOBALS = ["channel", "page", ...DOCUMENT_GLOBALS] as const
 
 /**
  * The domain namespaces for one execution, keyed by the global name each is bound to.
  * Returned as one object so the tool tree and `DOMAIN_GLOBALS` cannot drift apart.
+ *
+ * `documents` defaults to the refusing implementation: a caller that has no directory to
+ * resolve a path against — the catalog preview — still advertises the same globals a live
+ * execution binds, and every call on them fails by name instead of pretending.
  */
-export const domainTools = (input: { readonly page: Page; readonly channel: Channel }) => ({
+export const domainTools = (input: {
+  readonly page: Page
+  readonly channel: Channel
+  readonly documents?: Documents
+}) => ({
   channel: channelTools(input.channel),
   page: pageTools(input.page),
+  ...documentTools(input.documents ?? unavailableDocuments()),
 })

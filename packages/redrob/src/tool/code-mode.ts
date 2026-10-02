@@ -9,6 +9,9 @@ import { Session } from "@/session/session"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { DOMAIN_GLOBALS, domainTools, sessionChannel, unavailableChannel, unavailablePage } from "./domain"
+import * as Documents from "./document"
+import { InstanceRef } from "@/effect/instance-ref"
+import { assertExternalDirectoryEffect } from "./external-directory"
 
 export const CODE_MODE_TOOL = "execute"
 
@@ -225,6 +228,34 @@ export const CodeModeTool = Tool.define(
         // refuses by name rather than returning a plausible value.
         const page = unavailablePage()
         const channel = sessionChannel({ sessions, sessionID: ctx.sessionID, messageID: ctx.messageID })
+        // K-3 document objects. Unlike `page`, these DO work in the engine process: a write
+        // lands a real file. The guard is the same external-directory check the `write` tool
+        // uses, so a program cannot drop a document outside the instance directory without
+        // the user being asked.
+        //
+        // `InstanceRef` is read directly rather than through `InstanceState.context`, which
+        // DIES when no instance is bound. A code-mode execution with no instance is a real
+        // configuration — the tool is reachable from harnesses that bind none — and the right
+        // answer there is to resolve relative paths against the process directory, not to
+        // kill the tool over a document global the program may never touch.
+        const instance = yield* InstanceRef
+        const documents = Documents.documents({
+          directory: instance?.directory ?? process.cwd(),
+          guard: (filepath) =>
+            assertExternalDirectoryEffect(ctx, filepath).pipe(
+              Effect.asVoid,
+              Effect.catchCause((cause) => {
+                const error = Cause.squash(cause)
+                return Effect.fail(
+                  new Documents.DocumentFailureError({
+                    object: "document",
+                    operation: "write",
+                    reason: `writing ${filepath} was not permitted: ${error instanceof Error ? error.message : String(error)}`,
+                  }),
+                )
+              }),
+            ),
+        })
         const publish = () =>
           ctx.metadata({ title: CODE_MODE_TOOL, metadata: { toolCalls: calls.map((c) => ({ ...c })) } })
 
@@ -252,7 +283,7 @@ export const CodeModeTool = Tool.define(
           // Domain namespaces are spread last deliberately: a connected MCP server named
           // `page` must not shadow the typed domain object a skill document is written
           // against. The domain objects are part of the language; the MCP catalog is not.
-          tools: { ...toolTree(catalog, callTool), ...domainTools({ page, channel }) },
+          tools: { ...toolTree(catalog, callTool), ...domainTools({ page, channel, documents }) },
           globals: DOMAIN_GLOBALS,
           onToolCallStart: ({ index, name, input }) =>
             Effect.suspend(() => {
