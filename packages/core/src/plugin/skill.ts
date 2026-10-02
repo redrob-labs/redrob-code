@@ -8,11 +8,15 @@ import { AbsolutePath } from "../schema"
 import { SkillV2 } from "../skill"
 import customizeRedrobContent from "./skill/customize-redrob.md" with { type: "text" }
 import documentToolchainContent from "./skill/document-toolchain.md" with { type: "text" }
+import skillWriterContent from "./skill/skill-writer.md" with { type: "text" }
 
 export const CustomizeRedrobContent = customizeRedrobContent
 
 /** K-3's skill document. Exported so a test can assert its claims against the real tool tree. */
 export const DocumentToolchainContent = documentToolchainContent
+
+/** K-5's skill document. Exported so a test can round-trip the template it prescribes. */
+export const SkillWriterContent = skillWriterContent
 
 /**
  * The skills the engine ships with. Exported as data rather than built inline in the plugin
@@ -44,6 +48,15 @@ export const BuiltinSkills: ReadonlyArray<SkillV2.Info> = [
       ],
     }),
     content: DocumentToolchainContent,
+  }),
+  // K-5. No `autoInject`: writing a skill is something a person asks for by name, and a skill
+  // that armed on the word "skill" would be in the prompt of every session that mentions one.
+  SkillV2.Info.make({
+    name: "skill-writer",
+    description:
+      "Use when creating a new redrob skill, or fixing one that does not load: where SKILL.md must sit for the loader to find it, every frontmatter key the loader actually reads, the auto-arming block, and the template to copy. Do not use for agents, commands or plugins, which are different files with different shapes.",
+    location: AbsolutePath.make("/builtin/skill-writer.md"),
+    content: SkillWriterContent,
   }),
 ]
 
