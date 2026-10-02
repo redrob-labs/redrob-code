@@ -8,6 +8,7 @@ import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
+import { DOMAIN_GLOBALS, domainTools, sessionChannel, unavailableChannel, unavailablePage } from "./domain"
 
 export const CODE_MODE_TOOL = "execute"
 
@@ -57,10 +58,16 @@ function groupByServer(mcpTools: Record<string, MCP.McpTool>, servers: readonly 
 
 export function describeCatalog(mcpTools: Record<string, MCP.McpTool>, servers: readonly string[]): string {
   return CodeMode.make({
-    tools: toolTree(
-      [...groupByServer(mcpTools, servers).values()].flat(),
-      () => () => Effect.fail(toolError("Tool preview is not executable.")),
-    ),
+    tools: {
+      ...toolTree(
+        [...groupByServer(mcpTools, servers).values()].flat(),
+        () => () => Effect.fail(toolError("Tool preview is not executable.")),
+      ),
+      // The preview must list the same domain globals a live execution binds, so the
+      // description a model reads matches the scope it will actually run in.
+      ...domainTools({ page: unavailablePage(), channel: unavailableChannel() }),
+    },
+    globals: DOMAIN_GLOBALS,
   }).instructions()
 }
 
@@ -213,6 +220,11 @@ export const CodeModeTool = Tool.define(
 
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
+        // K-1 domain objects for this execution. `channel` posts into the session that owns
+        // the run; `page` has no working implementation in the engine process yet and
+        // refuses by name rather than returning a plausible value.
+        const page = unavailablePage()
+        const channel = sessionChannel({ sessions, sessionID: ctx.sessionID, messageID: ctx.messageID })
         const publish = () =>
           ctx.metadata({ title: CODE_MODE_TOOL, metadata: { toolCalls: calls.map((c) => ({ ...c })) } })
 
@@ -237,7 +249,11 @@ export const CodeModeTool = Tool.define(
           )
 
         const runtime = CodeMode.make({
-          tools: toolTree(catalog, callTool),
+          // Domain namespaces are spread last deliberately: a connected MCP server named
+          // `page` must not shadow the typed domain object a skill document is written
+          // against. The domain objects are part of the language; the MCP catalog is not.
+          tools: { ...toolTree(catalog, callTool), ...domainTools({ page, channel }) },
+          globals: DOMAIN_GLOBALS,
           onToolCallStart: ({ index, name, input }) =>
             Effect.suspend(() => {
               const shown = (() => {

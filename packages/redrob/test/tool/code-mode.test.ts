@@ -256,7 +256,7 @@ describe("code mode execute", () => {
     expect(output.metadata.toolCalls).toEqual([])
   })
 
-  test("Object.keys(tools) enumerates the MCP server and CodeMode namespaces", async () => {
+  test("Object.keys(tools) enumerates the MCP server, domain, and CodeMode namespaces", async () => {
     const tool = await build({
       github_list_issues: mcpTool("list_issues", () => ""),
       linear_search: mcpTool("search", () => ""),
@@ -267,7 +267,12 @@ describe("code mode execute", () => {
         ctx,
       ),
     )
-    expect(JSON.parse(output.output)).toEqual({ namespaces: ["github", "linear", "$codemode"], count: 3 })
+    // The K-1 domain namespaces (`channel`, `page`) are part of the language, so they are
+    // always present alongside whatever MCP servers are connected.
+    expect(JSON.parse(output.output)).toEqual({
+      namespaces: ["github", "linear", "channel", "page", "$codemode"],
+      count: 5,
+    })
   })
 
   test("calls a namespaced MCP tool and flows its text result back into the program", async () => {

@@ -482,6 +482,24 @@ export const assertValidTools = <R>(tools: HostTools<R>): void => {
 }
 
 /**
+ * Renders the host-global aliases. Each listed namespace is reachable both as a bare
+ * identifier and under `tools`, so a skill document can open with `await page.text()`
+ * without the model having to be told that `page` is "really" a tool namespace.
+ */
+const globalsSection = (globals: ReadonlyArray<string>): Array<string> => {
+  if (globals.length === 0) return []
+  const ordered = [...globals].sort((left, right) => left.localeCompare(right))
+  return [
+    "",
+    "## Domain globals",
+    "",
+    `These namespaces are also bound as bare globals: ${ordered.map((name) => `\`${name}\``).join(", ")}.`,
+    "`<global>.<tool>(input)` and `tools.<global>.<tool>(input)` are the same call; prefer the bare form.",
+    "A global's tools are listed under its namespace in the catalog below, like any other tool.",
+  ]
+}
+
+/**
  * Budgeted catalog: every namespace is always listed with its tool count; full call
  * signatures are inlined against the `catalogBudget` (estimated tokens,
  * chars/4) round-robin across namespaces - in each round (namespaces alphabetical), every
@@ -492,7 +510,12 @@ export const assertValidTools = <R>(tools: HostTools<R>): void => {
  * namespace. Namespace stub lines are never budgeted: every namespace appears with its
  * tool count even at budget 0.
  */
-export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBudget): DiscoveryPlan => {
+export const prepare = <R>(
+  tools: HostTools<R>,
+  catalogBudget = defaultCatalogBudget,
+  /** Namespaces also bound as bare globals; rendered so the model knows it may write `page.text()`. */
+  globals: ReadonlyArray<string> = [],
+): DiscoveryPlan => {
   if (!Number.isSafeInteger(catalogBudget) || catalogBudget < 0) {
     throw new RangeError("discovery.catalogBudget must be a non-negative safe integer")
   }
@@ -639,7 +662,7 @@ export const prepare = <R>(tools: HostTools<R>, catalogBudget = defaultCatalogBu
     }
   }
 
-  const lines = [...intro, ...workflow, ...rules, ...language, ...toolSection]
+  const lines = [...intro, ...workflow, ...rules, ...globalsSection(globals), ...language, ...toolSection]
   return {
     catalog: described,
     instructions: lines.join("\n"),

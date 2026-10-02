@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { executeWithLimits } from "./interpreter/runtime.js"
+import { assertValidGlobals, executeWithLimits } from "./interpreter/runtime.js"
 import { type HostTools, type Services, type ToolDescription, ToolRuntime } from "./tool-runtime.js"
 import type { Definition } from "./tool.js"
 
@@ -38,6 +38,14 @@ export type ExecuteOptions<Tools extends Record<string, unknown> = {}> = {
   code: string
   /** Explicit tool tree exposed to the program as `tools`. */
   tools?: Tools & ToolTree<Services<Tools>>
+  /**
+   * Top-level tool namespaces ALSO bound as bare globals, so a skill document can be
+   * written as `await page.text()` rather than `await tools.page.text()`. Each name must
+   * be a namespace at the top level of `tools` and must not shadow a builtin global.
+   * A global is an alias for the same tool path: one implementation, one authorization
+   * point. Code Mode stays host-neutral - it never knows what `page` means.
+   */
+  globals?: ReadonlyArray<string>
   /** Per-execution overrides for the default resource limits. */
   limits?: ExecutionLimits
   /** Observes decoded tool input immediately before tool execution. */
@@ -139,6 +147,7 @@ export const execute = <const Tools extends Record<string, unknown>>(
 ): Effect.Effect<Result, never, Services<Tools>> => {
   const tools = (options.tools ?? {}) as HostTools<Services<Tools>>
   ToolRuntime.assertValidTools(tools)
+  assertValidGlobals(tools, options.globals ?? [])
   return executeWithLimits(options, resolveExecutionLimits(options.limits), ToolRuntime.searchIndex(tools))
 }
 
@@ -148,8 +157,10 @@ export const make = <const Tools extends Record<string, unknown> = {}>(
 ): Runtime<Services<Tools>> => {
   const tools = (options.tools ?? {}) as HostTools<Services<Tools>>
   ToolRuntime.assertValidTools(tools)
+  const globals = options.globals ?? []
+  assertValidGlobals(tools, globals)
   const limits = resolveExecutionLimits(options.limits)
-  const prepared = ToolRuntime.prepare(tools, options.discovery?.catalogBudget)
+  const prepared = ToolRuntime.prepare(tools, options.discovery?.catalogBudget, globals)
 
   return {
     catalog: () => prepared.catalog,
