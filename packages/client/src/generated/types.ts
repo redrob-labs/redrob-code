@@ -2609,6 +2609,8 @@ export type SkillsListOutput = {
     readonly name: string
     readonly description?: string
     readonly slash?: boolean
+    readonly icon?: string
+    readonly autoInject?: { readonly keywords?: ReadonlyArray<string>; readonly url?: ReadonlyArray<string> }
     readonly location: string
     readonly content: string
   }>
