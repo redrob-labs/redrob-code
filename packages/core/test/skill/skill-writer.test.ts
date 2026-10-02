@@ -34,12 +34,17 @@ const it = testEffect(
  * The template the document tells an agent to copy. Anchored on the document's own
  * `<!-- template:skill -->` marker rather than on "the first code fence", so adding an earlier
  * example to the document cannot silently repoint this at the wrong block.
+ *
+ * `\r` is stripped and the fence match tolerates CRLF: git checks this file out with native
+ * line endings, so on Windows the document arrives CRLF and an `\n`-only pattern finds no fence
+ * at all. That failed the Windows core job, which is the only place it could show.
  */
 const template = (() => {
   const marker = "<!-- template:skill -->"
-  const start = SkillPlugin.SkillWriterContent.indexOf(marker)
+  const content = SkillPlugin.SkillWriterContent.replaceAll("\r\n", "\n")
+  const start = content.indexOf(marker)
   if (start < 0) throw new Error("the skill-writer document no longer carries its template marker")
-  const fence = /```markdown\n([\s\S]*?)```/.exec(SkillPlugin.SkillWriterContent.slice(start))
+  const fence = /```markdown\n([\s\S]*?)```/.exec(content.slice(start))
   if (!fence) throw new Error("no ```markdown fence follows the template marker")
   return fence[1]!
 })()
