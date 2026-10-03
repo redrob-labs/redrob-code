@@ -140,6 +140,7 @@ describe("K-5 the skill document itself", () => {
       expect(SkillPlugin.BuiltinSkills.map((skill) => skill.name)).toStrictEqual([
         "customize-redrob",
         "documents",
+        "page-control",
         "skill-writer",
       ])
       for (const skill of SkillPlugin.BuiltinSkills) {

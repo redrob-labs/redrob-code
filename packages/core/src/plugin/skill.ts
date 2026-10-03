@@ -8,6 +8,7 @@ import { AbsolutePath } from "../schema"
 import { SkillV2 } from "../skill"
 import customizeRedrobContent from "./skill/customize-redrob.md" with { type: "text" }
 import documentToolchainContent from "./skill/document-toolchain.md" with { type: "text" }
+import pageControlContent from "./skill/page-control.md" with { type: "text" }
 import skillWriterContent from "./skill/skill-writer.md" with { type: "text" }
 
 export const CustomizeRedrobContent = customizeRedrobContent
@@ -17,6 +18,9 @@ export const DocumentToolchainContent = documentToolchainContent
 
 /** K-5's skill document. Exported so a test can round-trip the template it prescribes. */
 export const SkillWriterContent = skillWriterContent
+
+/** PA-9's skill document. Exported so a test can assert it against the real `page` surface. */
+export const PageControlContent = pageControlContent
 
 /**
  * The skills the engine ships with. Exported as data rather than built inline in the plugin
@@ -48,6 +52,28 @@ export const BuiltinSkills: ReadonlyArray<SkillV2.Info> = [
       ],
     }),
     content: DocumentToolchainContent,
+  }),
+  // PA-9. `page` resolves through the browser channel now, so this document describes calls
+  // that actually run. The keywords are what a request to read or drive the page contains;
+  // no url globs, because arming on a URL would put it in every session on any page.
+  SkillV2.Info.make({
+    name: "page-control",
+    description:
+      "Use when the task is about the page the user is looking at: reading its text, finding nodes by selector, filling a field, clicking, or navigating. Covers the six `page` calls in code mode, what a refusal means, and the round-trip cost. Do not use for fetching a URL the user is not on, which is a plain HTTP request.",
+    location: AbsolutePath.make("/builtin/page-control.md"),
+    autoInject: SkillV2.AutoInject.make({
+      keywords: [
+        "this page",
+        "current page",
+        "on screen",
+        "the tab",
+        "click the",
+        "fill in",
+        "selector",
+        "scrape",
+      ],
+    }),
+    content: PageControlContent,
   }),
   // K-5. No `autoInject`: writing a skill is something a person asks for by name, and a skill
   // that armed on the word "skill" would be in the prompt of every session that mentions one.

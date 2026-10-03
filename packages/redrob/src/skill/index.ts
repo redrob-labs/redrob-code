@@ -1,12 +1,13 @@
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import path from "path"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Effect, Layer, Context, Option, Schema } from "effect"
 import { NamedError } from "@redrob-code/core/util/error"
 import type { Agent } from "@/agent/agent"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@redrob-code/core/global"
 import { SkillPlugin } from "@redrob-code/core/plugin/skill"
+import { SkillV2 } from "@redrob-code/core/skill"
 import { Permission } from "@/permission"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { Config } from "@/config/config"
@@ -39,6 +40,15 @@ export const Info = Schema.Struct({
   description: Schema.optional(Schema.String),
   location: Schema.String,
   content: Schema.String,
+  /**
+   * The skill's own auto-arming block, when it declares one.
+   *
+   * Carried here because this is the skill surface the system prompt reads. K-2 landed the
+   * matcher and the frontmatter key, but this `Info` dropped the field, so arming had no
+   * data to work on no matter who called it -- every skill looked like a skill that
+   * declared nothing. Same schema as the loader's, not a second copy.
+   */
+  autoInject: Schema.optional(SkillV2.AutoInject),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
@@ -50,12 +60,30 @@ const Issue = Schema.StructWithRest(
   [Schema.Record(Schema.String, Schema.Unknown)],
 )
 
-function isSkillFrontmatter(data: unknown): data is { name: string; description?: string } {
+/**
+ * Does this frontmatter block carry what a skill needs?
+ *
+ * `autoInject` is checked but NOT required: a malformed block costs only the arming
+ * behaviour, and the skill still loads and stays explicitly selectable. Refusing the whole
+ * file would lose a working skill over an optional key.
+ */
+function isSkillFrontmatter(data: unknown): data is { name: string; description?: string; autoInject?: unknown } {
   return (
     isRecord(data) &&
     typeof data.name === "string" &&
     (data.description === undefined || typeof data.description === "string")
   )
+}
+
+/**
+ * Decode an `autoInject` block, keeping the skill when it is malformed.
+ *
+ * Returns undefined for anything the schema rejects, which makes the skill behave exactly
+ * like one that declared no block at all -- the documented failure mode.
+ */
+function autoInjectOf(data: { autoInject?: unknown }): SkillV2.AutoInject | undefined {
+  if (data.autoInject === undefined) return undefined
+  return Schema.decodeUnknownOption(SkillV2.AutoInject)(data.autoInject).pipe(Option.getOrUndefined)
 }
 
 export class InvalidError extends Schema.TaggedErrorClass<InvalidError>()("SkillInvalidError", {
@@ -136,6 +164,7 @@ const add = Effect.fnUntraced(function* (state: State, match: string, events: Ev
     description: md.data.description,
     location: match,
     content: md.content,
+    autoInject: autoInjectOf(md.data),
   }
 })
 
