@@ -9,12 +9,18 @@ describe("public event manifest", () => {
     expect(EventManifest.Definitions).toBe(SchemaEventManifest.Definitions)
     expect(EventManifest.Latest).toBe(SchemaEventManifest.Latest)
     expect(EventManifest.Durable).toBe(SchemaEventManifest.Durable)
-    expect(EventManifest.Latest.size).toBe(88)
+    expect(EventManifest.Latest.size).toBe(91)
     expect(EventManifest.Latest.get("session.next.step.ended")).toBe(SessionEvent.Step.Ended)
     expect(EventManifest.Latest.get("todo.updated")).toBe(Todo.Event.Updated)
     expect(EventManifest.Latest.has("ide.installed")).toBe(false)
     expect(EventManifest.Latest.has("server.connected")).toBe(true)
     expect(EventManifest.Latest.has("global.disposed")).toBe(true)
+    // PA-10's three, named rather than merely counted. The size above is a tripwire for an
+    // accidental addition, and a bare bump would have satisfied it without saying what
+    // arrived -- so the thing that moved the count asserts itself here.
+    expect(EventManifest.Latest.has("browser.request.asked")).toBe(true)
+    expect(EventManifest.Latest.has("browser.request.answered")).toBe(true)
+    expect(EventManifest.Latest.has("browser.request.refused")).toBe(true)
   })
 
   test("contains only the current step settlement versions", () => {

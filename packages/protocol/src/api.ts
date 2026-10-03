@@ -15,6 +15,7 @@ import type { Definition } from "@redrob-code/schema/event"
 import { AgentGroup } from "./groups/agent"
 import { HealthGroup } from "./groups/health"
 import { PtyGroup } from "./groups/pty"
+import { makeBrowserRequestGroup } from "./groups/browser-request"
 import { makeQuestionGroup } from "./groups/question"
 import { ReferenceGroup } from "./groups/reference"
 import { Authorization } from "./middleware/authorization"
@@ -54,6 +55,7 @@ const makeApiFromGroup = <
     .add(eventGroup)
     .add(PtyGroup.middleware(locationMiddleware))
     .add(makeQuestionGroup(locationMiddleware, sessionLocationMiddleware))
+    .add(makeBrowserRequestGroup(locationMiddleware, sessionLocationMiddleware))
     .add(ReferenceGroup.middleware(locationMiddleware))
     .add(ProjectCopyGroup.middleware(locationMiddleware))
     // The OpenAI-compatible inference route. It takes locationMiddleware like the

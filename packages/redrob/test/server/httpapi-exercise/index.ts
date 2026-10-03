@@ -919,6 +919,47 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
     }))
     .json(404, object, "status"),
+  // PA-10's four, mirroring the V2 question scenarios above because the browser request
+  // service is deliberately the same shape: a global list, a per-session list, and the two
+  // settlement routes. The settlements name a request id that does not exist, so each
+  // asserts the 404 path rather than needing a live browser on the other end.
+  http.protected.get("/api/browser/request", "v2.browser.request.list").json(200, (body) => {
+    object(body)
+    object(body.location)
+    array(body.data)
+  }),
+  http.protected
+    .get("/api/session/{sessionID}/browser", "v2.session.browser.list")
+    .seeded((ctx) => ctx.session({ title: "Browser request list owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, data(array)),
+  http.protected
+    .post("/api/session/{sessionID}/browser/{requestID}/reply", "v2.session.browser.reply")
+    .seeded((ctx) => ctx.session({ title: "Browser request reply owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser/{requestID}/reply", {
+        sessionID: ctx.state.id,
+        requestID: "brq_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: { value: { type: "string", value: "" } },
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/api/session/{sessionID}/browser/{requestID}/refuse", "v2.session.browser.refuse")
+    .seeded((ctx) => ctx.session({ title: "Browser request refuse owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser/{requestID}/refuse", {
+        sessionID: ctx.state.id,
+        requestID: "brq_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: { reason: "no page executor" },
+    }))
+    .json(404, object, "status"),
   http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, (body) => {
     object(body)
     array(body.data)

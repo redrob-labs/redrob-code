@@ -8,7 +8,15 @@ import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
-import { DOMAIN_GLOBALS, domainTools, sessionChannel, unavailableChannel, unavailablePage } from "./domain"
+import {
+  DOMAIN_GLOBALS,
+  bridgedPage,
+  domainTools,
+  sessionChannel,
+  unavailableChannel,
+  unavailablePage,
+} from "./domain"
+import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
 import * as Documents from "./document"
 import { InstanceRef } from "@/effect/instance-ref"
 import { assertExternalDirectoryEffect } from "./external-directory"
@@ -202,6 +210,10 @@ export const CodeModeTool = Tool.define(
     const agents = yield* Agent.Service
     const sessions = yield* Session.Service
     const plugin = yield* Plugin.Service
+    // Resolved here with the other location services, not inside `execute`: the tool
+    // contract requires `execute` to need nothing from the context, so pulling the service
+    // per call would put it back in the effect's requirements and fail to typecheck.
+    const browser = yield* BrowserRequestV1.Service
 
     const init: Tool.DefWithoutID<typeof Parameters, Metadata> = {
       description: DESCRIPTION,
@@ -224,9 +236,12 @@ export const CodeModeTool = Tool.define(
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
         // K-1 domain objects for this execution. `channel` posts into the session that owns
-        // the run; `page` has no working implementation in the engine process yet and
-        // refuses by name rather than returning a plausible value.
-        const page = unavailablePage()
+        // the run; `page` (PA-10) resolves through the browser channel — each call is
+        // published as a pending request on the event stream and settled by the attached
+        // browser client. With no client attached the request expires on the service's
+        // deadline and the call refuses by name, which is the same outcome the earlier
+        // `unavailablePage` gave and for a reason the message states.
+        const page = bridgedPage({ browser, sessionID: ctx.sessionID })
         const channel = sessionChannel({ sessions, sessionID: ctx.sessionID, messageID: ctx.messageID })
         // K-3 document objects. Unlike `page`, these DO work in the engine process: a write
         // lands a real file. The guard is the same external-directory check the `write` tool

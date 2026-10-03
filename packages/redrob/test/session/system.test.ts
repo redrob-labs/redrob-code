@@ -35,6 +35,32 @@ const skills: Skill.Info[] = [
     location: "/tmp/manual-skill/SKILL.md",
     content: "# manual-skill",
   },
+  // Two armable skills, because one proves too little: with a single candidate a wiring bug
+  // that armed EVERY skill and one that armed the right skill look identical.
+  {
+    name: "docs-skill",
+    description: "Docs skill.",
+    location: "/tmp/docs-skill/SKILL.md",
+    content: "# docs-skill\nHow to edit a document.",
+    autoInject: { keywords: ["spreadsheet", "pptx"], url: ["docs.google.com/**"] },
+  },
+  {
+    name: "deploy-skill",
+    description: "Deploy skill.",
+    location: "/tmp/deploy-skill/SKILL.md",
+    content: "# deploy-skill\nHow to roll back.",
+    autoInject: { keywords: ["rollback"] },
+  },
+  // A keyword carrying the characters that break an attribute. Skill files are author
+  // supplied, so this is reachable, and the first version of the armed-by attribute put the
+  // raw quote straight into the tag.
+  {
+    name: "quoted-skill",
+    description: "Quoted skill.",
+    location: "/tmp/quoted-skill/SKILL.md",
+    content: "# quoted-skill\nBody of the quoted skill.",
+    autoInject: { keywords: ['say "hello" <now>'] },
+  },
 ]
 
 const build: Agent.Info = {
@@ -159,8 +185,53 @@ describe("session.system", () => {
     }),
   )
 
-  it.effect("MCP output includes connected server instructions", () =>
+  it.effect("a keyword in the prompt arms that skill's body and no other", () =>
     Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.armedSkills(build, { prompt: "export this as a spreadsheet please" })
+      const armed = output ?? (yield* Effect.fail(new NamedError.Unknown({ message: "nothing armed" })))
+
+      // The BODY, not the description: an armed skill is one the model is already reading.
+      expect(armed).toContain("How to edit a document.")
+      expect(armed).toContain('armed-by="keyword spreadsheet"')
+      // The other armable skill did not match, and must not ride along.
+      expect(armed).not.toContain("How to roll back.")
+      // A skill with no autoInject block never arms, however the prompt reads.
+      expect(armed).not.toContain("manual-skill")
+    }),
+  )
+
+  it.effect("a prompt matching nothing arms nothing at all", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      // Mentions skills and documents in the abstract, matching no declared keyword.
+      expect(yield* prompt.armedSkills(build, { prompt: "what skills do you have?" })).toBeUndefined()
+    }),
+  )
+
+  it.effect("arming is denied with the skill permission, like the discovery list", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const denied: Agent.Info = { ...build, permission: Permission.fromConfig({ skill: "deny" }) }
+      expect(yield* prompt.armedSkills(denied, { prompt: "export this as a spreadsheet" })).toBeUndefined()
+    }),
+  )
+
+  it.effect("a pattern with markup characters is escaped, not emitted raw", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.armedSkills(build, { prompt: 'please say "hello" <now>' })
+      const armed = output ?? (yield* Effect.fail(new NamedError.Unknown({ message: "nothing armed" })))
+
+      expect(armed).toContain("Body of the quoted skill.")
+      expect(armed).toContain("armed-by=\"keyword say &quot;hello&quot; &lt;now&gt;\"")
+      // The tag must close where it is supposed to: one `">` on the opening line.
+      const opening = armed.split("\n").find((line) => line.includes("quoted-skill")) ?? ""
+      expect(opening.endsWith('">')).toBe(true)
+    }),
+  )
+
+  it.effect("MCP output includes connected server instructions", () =>    Effect.gen(function* () {
       const prompt = yield* SystemPrompt.Service
       const output = yield* prompt.mcp(build)
 

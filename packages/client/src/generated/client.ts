@@ -108,6 +108,14 @@ import type {
   QuestionsReplyOutput,
   QuestionsRejectInput,
   QuestionsRejectOutput,
+  BrowserRequestsListRequestsInput,
+  BrowserRequestsListRequestsOutput,
+  BrowserRequestsListInput,
+  BrowserRequestsListOutput,
+  BrowserRequestsReplyInput,
+  BrowserRequestsReplyOutput,
+  BrowserRequestsRefuseInput,
+  BrowserRequestsRefuseOutput,
   ReferencesListInput,
   ReferencesListOutput,
   ProjectCopiesCreateInput,
@@ -958,6 +966,55 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/question/${encodeURIComponent(input.requestID)}/reject`,
+            successStatus: 204,
+            declaredStatuses: [404, 400, 401],
+            empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    browserRequests: {
+      listRequests: (input?: BrowserRequestsListRequestsInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsListRequestsOutput>(
+          {
+            method: "GET",
+            path: `/api/browser/request`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      list: (input: BrowserRequestsListInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: BrowserRequestsListOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser`,
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      reply: (input: BrowserRequestsReplyInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsReplyOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser/${encodeURIComponent(input.requestID)}/reply`,
+            body: { value: input["value"] },
+            successStatus: 204,
+            declaredStatuses: [404, 400, 401],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      refuse: (input: BrowserRequestsRefuseInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsRefuseOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser/${encodeURIComponent(input.requestID)}/refuse`,
+            body: { reason: input["reason"] },
             successStatus: 204,
             declaredStatuses: [404, 400, 401],
             empty: true,

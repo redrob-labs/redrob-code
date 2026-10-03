@@ -14,10 +14,12 @@ import {
   pageTools,
   sessionChannel,
   unavailableChannel,
+  bridgedPage,
   unavailablePage,
 } from "@/tool/domain"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import type { SessionV1 } from "@redrob-code/core/v1/session"
+import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
 import { Cause, Effect, Exit, Layer } from "effect"
 
 const sessionID = SessionID.make("ses_domain")
@@ -48,7 +50,25 @@ function recordingSessions() {
   return { parts, sessions }
 }
 
-function harness(sessions: Record<string, unknown>) {
+/**
+ * A browser channel that never gets a client. The default for the harness, because that is
+ * the state of a session with no browser attached, and it is the state the PA-10 refusal
+ * messages are written for.
+ *
+ * It fails immediately rather than sleeping to the service's real deadline: the deadline
+ * itself is the service's own test, and a 20s sleep in every page test here would buy
+ * nothing.
+ */
+function unansweredBrowser(): BrowserRequestV1.Interface {
+  return {
+    ask: (input) => Effect.fail(new BrowserRequestV1.UnansweredError({ action: input.command.action })),
+    reply: () => Effect.void,
+    refuse: () => Effect.void,
+    list: () => Effect.succeed([]),
+  }
+}
+
+function harness(sessions: Record<string, unknown>, browser: BrowserRequestV1.Interface = unansweredBrowser()) {
   return Layer.mergeAll(
     Layer.mock(Plugin.Service, {
       trigger: ((_name, _input, output) => Effect.succeed(output)) as Plugin.Interface["trigger"],
@@ -59,27 +79,28 @@ function harness(sessions: Record<string, unknown>) {
     Layer.mock(Agent.Service, { get: () => Effect.succeed({ name: "build", permission: [] } as any) }),
     Layer.mock(Session.Service, sessions as any),
     Layer.mock(MCP.Service, { tools: () => Effect.succeed({}), clients: () => Effect.succeed({}) }),
+    Layer.mock(BrowserRequestV1.Service, browser),
   )
 }
 
 /** Runs one Code Mode program through the real `execute` tool. */
-function run(code: string, sessions: Record<string, unknown>) {
+function run(code: string, sessions: Record<string, unknown>, browser?: BrowserRequestV1.Interface) {
   return Effect.runPromise(
     CodeModeTool.pipe(
       Effect.flatMap(Tool.init),
       Effect.flatMap((def) => def.execute({ code }, ctx)),
-      Effect.provide(harness(sessions)),
+      Effect.provide(harness(sessions, browser)),
     ),
   )
 }
 
 /** Program failures die at the tool boundary; recover the defect for message assertions. */
-async function failureOf(code: string, sessions: Record<string, unknown>) {
+async function failureOf(code: string, sessions: Record<string, unknown>, browser?: BrowserRequestV1.Interface) {
   const exit = await Effect.runPromise(
     CodeModeTool.pipe(
       Effect.flatMap(Tool.init),
       Effect.flatMap((def) => def.execute({ code }, ctx)),
-      Effect.provide(harness(sessions)),
+      Effect.provide(harness(sessions, browser)),
       Effect.exit,
     ),
   )
@@ -138,7 +159,7 @@ describe("K-1 typed domain objects", () => {
     })
   })
 
-  describe("page is unavailable rather than faked", () => {
+  describe("page with no browser attached refuses rather than faking", () => {
     test("every method refuses, naming the missing capability", async () => {
       const page = unavailablePage()
       const calls = [
@@ -154,7 +175,7 @@ describe("K-1 typed domain objects", () => {
         expect(Exit.isFailure(exit)).toBe(true)
         const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
         expect(error).toBeInstanceOf(DomainUnavailableError)
-        expect((error as DomainUnavailableError).message).toContain("no browser-page control surface")
+        expect((error as DomainUnavailableError).message).toContain("no browser client is attached")
       }
     })
 
@@ -162,7 +183,8 @@ describe("K-1 typed domain objects", () => {
       const { sessions } = recordingSessions()
       const message = await failureOf("return await page.text({})", sessions)
       expect(message).toContain("`page` domain object is not available")
-      expect(message).toContain("no browser-page control surface")
+      // The bridge's reason, not the no-channel one: a channel exists, nobody answered on it.
+      expect(message).toContain("no browser client answered page.text")
     })
 
     test("the refusal carries the named object", () => {
@@ -181,5 +203,97 @@ describe("K-1 typed domain objects", () => {
 
   test("PartID is the id shape channel.send returns", () => {
     expect(PartID.ascending()).toStartWith("prt_")
+  })
+})
+
+/**
+ * PA-10. These are the tests that say the channel carries real work, rather than that it
+ * refuses politely: a program reads what the attached client answered, and a client that
+ * answers with the wrong shape is reported as a protocol error instead of being read as a
+ * fact about the page.
+ */
+describe("PA-10 page over the browser channel", () => {
+  /** A client that answers every action, recording what it was asked. */
+  function answeringBrowser(value: BrowserRequestV1.Value) {
+    const asked: BrowserRequestV1.Command[] = []
+    const browser: BrowserRequestV1.Interface = {
+      ask: (input) =>
+        Effect.sync(() => {
+          asked.push(input.command)
+          return value
+        }),
+      reply: () => Effect.void,
+      refuse: () => Effect.void,
+      list: () => Effect.succeed([]),
+    }
+    return { asked, browser }
+  }
+
+  test("page.text returns what the client answered", async () => {
+    const { sessions } = recordingSessions()
+    const { asked, browser } = answeringBrowser({ type: "string", value: "the page said this" })
+    const result = await run("return await page.text({})", sessions, browser)
+    expect(result.output).toContain("the page said this")
+    expect(asked.map((command) => command.action)).toStrictEqual(["page.text"])
+  })
+
+  test("the selector and the submit flag reach the client, not just the action name", async () => {
+    const { sessions } = recordingSessions()
+    const { asked, browser } = answeringBrowser({ type: "void" })
+    await run('return await page.type({ selector: "#q", text: "hello", submit: true })', sessions, browser)
+    expect(asked).toStrictEqual([{ action: "page.type", selector: "#q", text: "hello", submit: true }])
+  })
+
+  test("page.query returns the client's nodes", async () => {
+    const { sessions } = recordingSessions()
+    const { browser } = answeringBrowser({
+      type: "nodes",
+      value: [{ selector: "h1", text: "Title", attributes: { id: "top" } }],
+    })
+    const result = await run('return (await page.query({ selector: "h1" }))[0].text', sessions, browser)
+    expect(result.output).toContain("Title")
+  })
+
+  test("a wrong-shaped answer is a protocol error, NOT an empty result", async () => {
+    const { sessions } = recordingSessions()
+    // The client answers `page.query` with a string. Reading that as zero nodes would tell
+    // the model "nothing matched the selector", which is a claim about the page that nobody
+    // made.
+    const { browser } = answeringBrowser({ type: "string", value: "h1" })
+    const message = await failureOf('return await page.query({ selector: "h1" })', sessions, browser)
+    expect(message).toContain("answered page.query with a string value where nodes was required")
+  })
+
+  test("a refusal from the client carries its own sentence through", async () => {
+    const { sessions } = recordingSessions()
+    const browser: BrowserRequestV1.Interface = {
+      ask: () =>
+        Effect.fail(new BrowserRequestV1.RefusedError({ action: "page.click", reason: "that tab is not shared" })),
+      reply: () => Effect.void,
+      refuse: () => Effect.void,
+      list: () => Effect.succeed([]),
+    }
+    const message = await failureOf('return await page.click({ selector: "h1" })', sessions, browser)
+    expect(message).toContain("the browser refused page.click: that tab is not shared")
+  })
+
+  test("bridgedPage asks with the session that owns the run", async () => {
+    const asked: BrowserRequestV1.AskInput[] = []
+    const page = bridgedPage({
+      sessionID,
+      browser: {
+        ask: (input) =>
+          Effect.sync(() => {
+            asked.push(input)
+            return { type: "string", value: "https://example.invalid/" } as const
+          }),
+        reply: () => Effect.void,
+        refuse: () => Effect.void,
+        list: () => Effect.succeed([]),
+      },
+    })
+    const url = await Effect.runPromise(page.url())
+    expect(url).toBe("https://example.invalid/")
+    expect(asked.map((input) => input.sessionID)).toStrictEqual([sessionID])
   })
 })

@@ -11,6 +11,7 @@ import { Tool } from "@/tool/tool"
 import * as Truncate from "@/tool/truncate"
 import { MessageID, SessionID } from "@/session/schema"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
+import { unansweredBrowserLayer } from "./browser-channel"
 
 const ctx: Tool.Context = {
   sessionID: SessionID.make("ses_code-mode"),
@@ -60,6 +61,7 @@ function harness(input: {
       tools: () => Effect.succeed(input.mcpTools),
       clients: () => Effect.succeed(Object.fromEntries(input.servers.map((name) => [name, {} as any]))),
     }),
+    unansweredBrowserLayer(),
   )
 }
 

@@ -1,5 +1,6 @@
 export * as EventManifest from "./event-manifest"
 
+import { BrowserRequest } from "./browser-request"
 import { Catalog } from "./catalog"
 import { Durable } from "./durable-event-manifest"
 import { Event } from "./event"
@@ -52,6 +53,7 @@ const featureDefinitions = Event.inventory(
   ...FileSystemWatcher.Event.Definitions,
   ...Pty.Event.Definitions,
   ...Question.Event.Definitions,
+  ...BrowserRequest.Event.Definitions,
 )
 
 export const ServerDefinitions = Event.inventory(
