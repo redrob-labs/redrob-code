@@ -78,8 +78,23 @@ export type Progress = {
   readonly done: boolean
 }
 
-export const tagsUrl = (base: string): string => `${base.replace(/\/+$/, "")}/api/tags`
-export const pullUrl = (base: string): string => `${base.replace(/\/+$/, "")}/api/pull`
+/**
+ * The runtime's own API lives at the ROOT, not under the OpenAI base path.
+ *
+ * A local runtime is configured with its OpenAI-compatible base, which is conventionally
+ * `http://host:port/v1` -- that is the URL the provider needs and the one a user copies out
+ * of the runtime's own banner. But `/api/tags` and `/api/pull` are siblings of `/v1`, not
+ * children: joining them onto the configured base produces `/v1/api/tags`, which answers 404.
+ *
+ * Measured, not reasoned about. The first version joined onto the base, and against a server
+ * serving the real `/api/tags` shape the command printed "answering, with nothing installed"
+ * -- a wrong statement that looked like a working feature, because a 404 and an empty list
+ * are both "no models" to a caller that does not separate them.
+ */
+const runtimeRoot = (base: string): string => base.replace(/\/+$/, "").replace(/\/v\d+$/, "")
+
+export const tagsUrl = (base: string): string => `${runtimeRoot(base)}/api/tags`
+export const pullUrl = (base: string): string => `${runtimeRoot(base)}/api/pull`
 
 /**
  * Read one progress frame.

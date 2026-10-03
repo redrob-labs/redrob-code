@@ -22,6 +22,30 @@ describe("urls", () => {
     expect(LocalModelPull.tagsUrl("http://127.0.0.1:11434/")).toBe("http://127.0.0.1:11434/api/tags")
     expect(LocalModelPull.pullUrl("http://127.0.0.1:11434///")).toBe("http://127.0.0.1:11434/api/pull")
   })
+
+  test("the runtime API is a sibling of the OpenAI base, not a child of it", () => {
+    // A local runtime is configured with its OpenAI base, conventionally `/v1` -- that is the
+    // URL the provider needs and the one a user copies out of the runtime's own banner. But
+    // `/api/tags` sits beside `/v1`, not under it.
+    //
+    // This is a REGRESSION TEST for a defect only an end-to-end run exposed: the first version
+    // joined onto the configured base, produced `/v1/api/tags`, got a 404, and the command
+    // printed "answering, with nothing installed" against a server that was serving two
+    // models. A wrong statement that reads as a working feature, because a 404 and an empty
+    // list are both "no models" to a caller that does not separate them.
+    expect(LocalModelPull.tagsUrl("http://127.0.0.1:11434/v1")).toBe("http://127.0.0.1:11434/api/tags")
+    expect(LocalModelPull.pullUrl("http://127.0.0.1:11434/v1/")).toBe("http://127.0.0.1:11434/api/pull")
+    // Any version segment, not just v1: some runtimes serve /v2.
+    expect(LocalModelPull.tagsUrl("http://127.0.0.1:11434/v2")).toBe("http://127.0.0.1:11434/api/tags")
+  })
+
+  test("a path that merely CONTAINS a version segment is left alone", () => {
+    // Only a TRAILING version segment is the OpenAI base. Stripping `/v1` from the middle of a
+    // path would break a runtime served under a prefix by a reverse proxy.
+    expect(LocalModelPull.tagsUrl("http://127.0.0.1:11434/v1/engine")).toBe(
+      "http://127.0.0.1:11434/v1/engine/api/tags",
+    )
+  })
 })
 
 describe("readFrames", () => {
