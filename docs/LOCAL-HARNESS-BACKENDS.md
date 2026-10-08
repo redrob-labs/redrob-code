@@ -1,7 +1,7 @@
 # Local harness backends, for every product at once
 
 How Codex and Claude Code become an option in *all* Redrob products — office,
-cowork, browser, design, extension, canvas, query, recall, cad, reblend — from one
+cowork, browser, design, extension, canvas, query, recall, cad, shape — from one
 implementation in this engine, rather than ten adapters in ten repositories.
 
 Companion documents: `docs/PROVIDER-AUTH.md` (what each vendor permits, and why we
@@ -44,7 +44,7 @@ codex exec  /  claude -p          subprocess; holds its OWN credential
         ▲
   POST /v1/chat/completions       one receiving route
         ▲
-  office · cowork · browser · design · extension · canvas · query · recall · cad · reblend
+  office · cowork · browser · design · extension · canvas · query · recall · cad · shape
 ```
 
 Models then select a backend by id — `codex/<model>`, `claude-code/<model>` — which
@@ -91,7 +91,7 @@ defaults this way; the shim must not relax it for convenience.
 The tool-ownership split surveyed earlier decides which products need more than the
 chat tier:
 
-- **No tool protocol** — query, recall, reblend. Chat tier is the whole story.
+- **No tool protocol** — query, recall, shape. Chat tier is the whole story.
 - **Host-owned tools** — office, browser, canvas. Chat tier works today. Giving the
   harness their tools means a **stdio MCP server** (`~/.codex/config.toml`, a
   project-scoped `.codex/config.toml`, or per-invocation

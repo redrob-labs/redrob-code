@@ -21,7 +21,7 @@ existed.
   `tool`, `worktree`, `session` and `resource` and nothing else
   (`packages/redrob/src/server/routes/instance/httpapi/groups/experimental.ts:91-101`).
   The string `external` does not appear anywhere under `packages/redrob/src/server`.
-- `redrob-reblend` ranks a LOCAL transport at `http://127.0.0.1:4096` and health-probes
+- `redrob-shape` ranks a LOCAL transport at `http://127.0.0.1:4096` and health-probes
   it, but its sidecar rejects any non-HTTPS base URL, so that transport cannot carry a
   request even when the probe succeeds.
 - `redrob-office` compiles this engine from source at release time and ships it inside
@@ -198,7 +198,7 @@ run `redrob upgrade` instead of failing with a transport error.
 | redrob-browser | point `sidecar_client.cc:592` at `/v1/chat/completions`; its host-owned tool loop already matches the contract |
 | redrob-office | drop the bundled binary and the packaging guard; point the engine route at the local daemon; keep its editor-owned tool loop |
 | redrob-cowork | drop the download-and-stage step and the duplicate alias copy; keep driving the session API for agent work |
-| redrob-reblend | either pass the local base URL and allow loopback HTTP in its sidecar, or delete the LOCAL transport that cannot work |
+| redrob-shape | either pass the local base URL and allow loopback HTTP in its sidecar, or delete the LOCAL transport that cannot work |
 | redrob-canvas, redrob-query, redrob-recall | optional: switching from the Console to the local daemon buys them one shared login |
 | redrob-extension, redrob-cad | unchanged; they want engine-owned tools and the session API already serves that |
 
