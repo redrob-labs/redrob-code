@@ -3,12 +3,36 @@ import { Auth } from "@/auth"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
-import { LogInput } from "../groups/control"
+import { LogInput, SpeechInput } from "../groups/control"
+import { InvalidRequestError, ServiceUnavailableError, TimeoutError, UpstreamError } from "../errors"
+import { prepareSpeech, requestSpeech, speechKey, type SpeechError } from "@/tool/speech_generate"
+import { HttpClient } from "effect/unstable/http"
 import { ProviderV2 } from "@redrob-code/core/provider"
 
 export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (handlers) =>
   Effect.gen(function* () {
     const auth = yield* Auth.Service
+    const http = yield* HttpClient.HttpClient
+
+    /** Each failure as the endpoint declares it; no_key is 503 because the engine, not the caller, lacks it. */
+    const speechFailure = (error: SpeechError) =>
+      error.reason === "invalid"
+        ? new InvalidRequestError({ message: error.message })
+        : error.reason === "no_key"
+          ? new ServiceUnavailableError({ message: error.message, service: "redrob" })
+          : error.reason === "timeout"
+            ? new TimeoutError({ message: error.message, operation: "speech" })
+            : new UpstreamError({
+                message: error.message,
+                service: "redrob",
+                ...(error.status ? { status: error.status } : {}),
+              })
+
+    const speech = Effect.fn("ControlHttpApi.speech")(function* (ctx: { payload: typeof SpeechInput.Type }) {
+      const prepared = yield* prepareSpeech(ctx.payload)
+      const key = yield* speechKey(auth)
+      return (yield* requestSpeech(http, key, prepared)).audio
+    }, Effect.mapError(speechFailure))
 
     const authSet = Effect.fn("ControlHttpApi.authSet")(function* (ctx: {
       params: { providerID: ProviderV2.ID }
@@ -38,6 +62,10 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
       return true
     })
 
-    return handlers.handle("authSet", authSet).handle("authRemove", authRemove).handle("log", log)
+    return handlers
+      .handle("authSet", authSet)
+      .handle("authRemove", authRemove)
+      .handle("speech", speech)
+      .handle("log", log)
   }),
 )
