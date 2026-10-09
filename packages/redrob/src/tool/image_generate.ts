@@ -11,6 +11,7 @@ import { Watcher } from "@redrob-code/core/filesystem/watcher"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { CONSOLE_URL } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { sniffAttachmentMime } from "@/util/media"
 
 /**
  * Image generation through the Redrob gateway, on the Redrob credential this engine already holds.
@@ -37,7 +38,10 @@ function gatewayUrl(): string {
 }
 
 const TIMEOUT_MS = 180_000
+/** A handful, which is what the image models take; each one is billed as image input. */
+const MAX_REFERENCES = 4
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_REFERENCE_BYTES = 10 * 1024 * 1024
 
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
@@ -53,6 +57,9 @@ export const Parameters = Schema.Struct({
   }),
   model: Schema.optional(Schema.String).annotate({
     description: `Optional image model id served by the Redrob gateway. Defaults to ${DEFAULT_IMAGE_MODEL}.`,
+  }),
+  references: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description: `Optional paths of up to ${MAX_REFERENCES} images in the project to edit or to use as a reference (PNG, JPEG, WebP, or GIF). To edit an image, pass it here and describe the change in the prompt.`,
   }),
 })
 
@@ -103,9 +110,35 @@ export const ImageGenerateTool = Tool.define(
   "image_generate",
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
+
     const auth = yield* Auth.Service
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
+
+    /**
+     * The reference images, read and checked before anything is spent: in the project (or approved
+     * outside it, as for any read), an image of a type the models take, and not too large to send.
+     */
+    const readReferences = Effect.fn("ImageGenerateTool.readReferences")(function* (
+      paths: readonly string[],
+      directory: string,
+      ctx: Tool.Context,
+    ) {
+      if (paths.length > MAX_REFERENCES) throw new Error(`Pass at most ${MAX_REFERENCES} reference images.`)
+      const references: { path: string; url: string }[] = []
+      for (const given of paths) {
+        const filepath = path.isAbsolute(given) ? given : path.join(directory, given)
+        /* Asked before the file is opened, the same as any read outside the project. */
+        yield* assertExternalDirectoryEffect(ctx, filepath)
+        const bytes = yield* fs.readFile(filepath).pipe(Effect.orElseSucceed(() => undefined))
+        if (!bytes) throw new Error(`Reference image not found: ${given}`)
+        const mime = sniffAttachmentMime(bytes, "application/octet-stream")
+        if (!EXTENSIONS[mime]) throw new Error(`Not a PNG, JPEG, WebP, or GIF image: ${given}`)
+        if (bytes.byteLength > MAX_REFERENCE_BYTES) throw new Error(`Reference image is over 10 MB: ${given}`)
+        references.push({ path: filepath, url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}` })
+      }
+      return references
+    })
 
     return {
       description: DESCRIPTION,
@@ -119,6 +152,7 @@ export const ImageGenerateTool = Tool.define(
           const model = params.model?.trim() || DEFAULT_IMAGE_MODEL
 
           const instance = yield* InstanceState.context
+          const references = yield* readReferences(params.references ?? [], instance.directory, ctx)
           const directory = path.join(instance.directory, "artifacts")
           const stem = slug(params.filename?.trim() || prompt)
 
@@ -145,7 +179,21 @@ export const ImageGenerateTool = Tool.define(
             HttpClientRequest.acceptJson,
             HttpClientRequest.bodyJson({
               model,
-              messages: [{ role: "user", content: prompt }],
+              /*
+               * Text first, then the images, which is the order every vendor documents. A plain string
+               * when there are none, so a text-only request is exactly what it was.
+               */
+              messages: [
+                {
+                  role: "user",
+                  content: references.length
+                    ? [
+                        { type: "text", text: prompt },
+                        ...references.map((reference) => ({ type: "image_url", image_url: { url: reference.url } })),
+                      ]
+                    : prompt,
+                },
+              ],
               modalities: ["image", "text"],
             }),
           )
@@ -187,7 +235,12 @@ export const ImageGenerateTool = Tool.define(
             output: [`Generated ${relative} with ${model}.`, caption ? `The model said: ${caption}` : undefined]
               .filter(Boolean)
               .join("\n"),
-            metadata: { filepath, model, ...(costUsd === undefined ? {} : { costUsd }) },
+            metadata: {
+              filepath,
+              model,
+              ...(references.length ? { references: references.map((reference) => reference.path) } : {}),
+              ...(costUsd === undefined ? {} : { costUsd }),
+            },
             attachments: [
               {
                 type: "file" as const,

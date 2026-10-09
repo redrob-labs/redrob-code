@@ -155,6 +155,54 @@ describe("tool.image_generate", () => {
     }),
   )
 
+  it.instance("sends reference images after the prompt, to edit one, and leaves the original alone", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const original = path.join(test.directory, "artifacts", "logo.png")
+      yield* Effect.promise(() => fs.mkdir(path.dirname(original), { recursive: true }))
+      yield* Effect.promise(() => fs.writeFile(original, Buffer.from(PIXEL_PNG, "base64")))
+      const { seen, server } = gateway(imageAnswer)
+      process.env.REDROB_CONSOLE_URL = server.url.toString()
+      try {
+        const result = yield* run({ prompt: "Make the logo blue", references: ["artifacts/logo.png"] })
+        expect(seen[0].body.messages).toEqual([
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Make the logo blue" },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${PIXEL_PNG}` } },
+            ],
+          },
+        ])
+        expect(result.metadata.references).toEqual([original])
+        expect(result.title.endsWith(path.join("artifacts", "make-the-logo-blue.png"))).toBe(true)
+        expect(Buffer.from(yield* Effect.promise(() => fs.readFile(original))).toString("base64")).toBe(PIXEL_PNG)
+      } finally {
+        void server.stop(true)
+      }
+    }),
+  )
+
+  it.instance("refuses a reference that is missing, not an image, or one too many, before anything is sent", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => fs.writeFile(path.join(test.directory, "notes.txt"), "not an image"))
+      const { seen, server } = gateway(imageAnswer)
+      process.env.REDROB_CONSOLE_URL = server.url.toString()
+      try {
+        const missing = yield* run({ prompt: "x", references: ["nope.png"] }).pipe(Effect.exit)
+        expect(failure(missing)).toContain("Reference image not found: nope.png")
+        const text = yield* run({ prompt: "x", references: ["notes.txt"] }).pipe(Effect.exit)
+        expect(failure(text)).toContain("Not a PNG, JPEG, WebP, or GIF image: notes.txt")
+        const many = yield* run({ prompt: "x", references: ["a", "b", "c", "d", "e"] }).pipe(Effect.exit)
+        expect(failure(many)).toContain("at most 4 reference images")
+        expect(seen).toHaveLength(0)
+      } finally {
+        void server.stop(true)
+      }
+    }),
+  )
+
   it.instance("fails with what the model said when it returns no image", () =>
     Effect.gen(function* () {
       const { server } = gateway(() => Response.json({ choices: [{ message: { content: "I cannot draw that." } }] }))

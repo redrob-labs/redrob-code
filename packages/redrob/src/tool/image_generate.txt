@@ -6,4 +6,5 @@
 Usage notes:
   - Write the prompt as a full visual description: subject, setting, style, composition, colors, and any text that must appear in the image
   - `filename` is optional and has no extension; a name is derived from the prompt when it is omitted, and an existing file is never overwritten
+  - To edit an existing image, or to keep a person, product, or style consistent, pass the image's path in `references` and describe the change in the prompt; the original is left untouched and the result is saved as a new file
   - Leave `model` unset unless the user names an image model
