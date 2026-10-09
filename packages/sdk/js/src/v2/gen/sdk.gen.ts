@@ -15,6 +15,8 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  BrowserRequestRefusal,
+  BrowserRequestReply,
   ChatCompletionRequest,
   CommandListErrors,
   CommandListResponses,
@@ -264,8 +266,16 @@ import type {
   TuiShowToastResponses,
   TuiSubmitPromptErrors,
   TuiSubmitPromptResponses,
+  V1BrowserRequestListErrors,
+  V1BrowserRequestListResponses,
   V1ChatCompletionsErrors,
   V1ChatCompletionsResponses,
+  V1SessionBrowserListErrors,
+  V1SessionBrowserListResponses,
+  V1SessionBrowserRefuseErrors,
+  V1SessionBrowserRefuseResponses,
+  V1SessionBrowserReplyErrors,
+  V1SessionBrowserReplyResponses,
   V2AgentListErrors,
   V2AgentListResponses,
   V2CommandListErrors,
@@ -7140,6 +7150,155 @@ export class V2 extends HeyApiClient {
   }
 }
 
+export class Request3 extends HeyApiClient {
+  /**
+   * List pending browser requests
+   *
+   * Retrieve browser actions awaiting a client for a location. A client that reconnects uses this to recover requests published while it was away.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<
+      V1BrowserRequestListResponses,
+      V1BrowserRequestListErrors,
+      ThrowOnError
+    >({
+      url: "/api/browser/request",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Browser extends HeyApiClient {
+  private _request?: Request3
+  get request(): Request3 {
+    return (this._request ??= new Request3({ client: this.client }))
+  }
+}
+
+export class Browser2 extends HeyApiClient {
+  /**
+   * List session browser requests
+   *
+   * Retrieve browser actions awaiting a client, owned by a session.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      V1SessionBrowserListResponses,
+      V1SessionBrowserListErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Answer a pending browser request
+   *
+   * Settle a browser action with the value it produced. The value is typed per action, so answering with the wrong shape is reported to the engine's caller rather than read as a fact about the page.
+   */
+  public reply<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+      browserRequestReply: BrowserRequestReply
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "requestID" },
+            { key: "browserRequestReply", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V1SessionBrowserReplyResponses,
+      V1SessionBrowserReplyErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Refuse a pending browser request
+   *
+   * Report that the action could not be performed, with the reason. Refusing is faster and more honest than letting the request expire on the engine's deadline.
+   */
+  public refuse<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+      browserRequestRefusal: BrowserRequestRefusal
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "requestID" },
+            { key: "browserRequestRefusal", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V1SessionBrowserRefuseResponses,
+      V1SessionBrowserRefuseErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser/{requestID}/refuse",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Session4 extends HeyApiClient {
+  private _browser?: Browser2
+  get browser(): Browser2 {
+    return (this._browser ??= new Browser2({ client: this.client }))
+  }
+}
+
 export class Chat extends HeyApiClient {
   /**
    * Create a chat completion
@@ -7167,6 +7326,16 @@ export class Chat extends HeyApiClient {
 }
 
 export class V1 extends HeyApiClient {
+  private _browser?: Browser
+  get browser(): Browser {
+    return (this._browser ??= new Browser({ client: this.client }))
+  }
+
+  private _session?: Session4
+  get session(): Session4 {
+    return (this._session ??= new Session4({ client: this.client }))
+  }
+
   private _chat?: Chat
   get chat(): Chat {
     return (this._chat ??= new Chat({ client: this.client }))
