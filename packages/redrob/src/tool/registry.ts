@@ -26,6 +26,8 @@ import { Plugin } from "../plugin"
 import { Provider } from "@/provider/provider"
 
 import { WebSearchTool } from "./websearch"
+import { ImageGenerateTool, redrobKey } from "./image_generate"
+import { Auth } from "@/auth"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
@@ -58,10 +60,7 @@ import { McpCatalog } from "@/mcp/catalog"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return (
-    providerID === ProviderV2.ID.redrob ||
-    providerID === ProviderV2.ID.make("redrob-go") ||
-    flags.exa ||
-    flags.parallel
+    providerID === ProviderV2.ID.redrob || providerID === ProviderV2.ID.make("redrob-go") || flags.exa || flags.parallel
   )
 }
 
@@ -108,6 +107,8 @@ const layer = Layer.effect(
     const plan = yield* PlanExitTool
     const webfetch = yield* WebFetchTool
     const websearch = yield* WebSearchTool
+    const imageGenerate = yield* ImageGenerateTool
+    const auth = yield* Auth.Service
     const shell = yield* ShellTool
     const globtool = yield* GlobTool
     const writetool = yield* WriteTool
@@ -219,6 +220,7 @@ const layer = Layer.effect(
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
           search: Tool.init(websearch),
+          image: Tool.init(imageGenerate),
           skill: Tool.init(skilltool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
@@ -242,6 +244,7 @@ const layer = Layer.effect(
             tool.fetch,
             tool.todo,
             tool.search,
+            tool.image,
             tool.skill,
             tool.patch,
             ...(tool.execute ? [tool.execute] : []),
@@ -290,7 +293,16 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
+      /*
+       * Image generation is offered only where it can run: it bills the Redrob account, so without a
+       * Redrob credential it would be a tool that fails on every call. Read per request because the
+       * credential can be connected or removed while the engine runs.
+       */
+      const canGenerateImages = Boolean(
+        redrobKey(yield* auth.get("redrob").pipe(Effect.orElseSucceed(() => undefined))),
+      )
       const filtered = (yield* all()).filter((tool) => {
+        if (tool.id === ImageGenerateTool.id) return canGenerateImages
         if (tool.id === WebSearchTool.id) {
           return webSearchEnabled(input.providerID, { exa: flags.enableExa, parallel: flags.enableParallel })
         }
@@ -438,6 +450,7 @@ export const node = LayerNode.make({
     Session.node,
     BackgroundJob.node,
     Provider.node,
+    Auth.node,
     LSP.node,
     Instruction.node,
     FSUtil.node,

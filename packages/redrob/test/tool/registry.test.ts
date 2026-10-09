@@ -150,6 +150,39 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("offers image_generate only while a Redrob credential is available", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const agents = yield* Agent.Service
+      const agent = yield* agents.defaultInfo()
+      const saved = { auth: process.env.REDROB_AUTH_CONTENT, key: process.env.REDROB_API_KEY }
+      const visible = () =>
+        registry
+          .tools({ providerID: ProviderV2.ID.redrob, modelID: ModelV2.ID.make("test"), agent })
+          .pipe(Effect.map((tools) => tools.map((tool) => tool.id).includes("image_generate")))
+      try {
+        delete process.env.REDROB_API_KEY
+        process.env.REDROB_AUTH_CONTENT = JSON.stringify({})
+        expect(yield* visible()).toBe(false)
+
+        process.env.REDROB_AUTH_CONTENT = JSON.stringify({ redrob: { type: "api", key: "rk_test" } })
+        expect(yield* visible()).toBe(true)
+
+        process.env.REDROB_AUTH_CONTENT = JSON.stringify({})
+        process.env.REDROB_API_KEY = "rk_env"
+        expect(yield* visible()).toBe(true)
+      } finally {
+        for (const [name, value] of [
+          ["REDROB_AUTH_CONTENT", saved.auth],
+          ["REDROB_API_KEY", saved.key],
+        ] as const) {
+          if (value === undefined) delete process.env[name]
+          else process.env[name] = value
+        }
+      }
+    }),
+  )
+
   it.instance("hides task background parameter unless experimental background subagents are enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
