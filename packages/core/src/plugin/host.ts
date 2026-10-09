@@ -211,7 +211,8 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
         skill.transform((draft) =>
           callback({
             source: (source) => draft.source(Schema.decodeUnknownSync(SkillV2.Source)(source)),
-            list: draft.list,
+            // The SDK's generated SkillV2 types spell arrays mutable; the schema's are readonly.
+            list: () => mutable(draft.list()),
           }),
         ),
     },
