@@ -1,0 +1,10 @@
+- Turns text into spoken audio and saves it as an MP3 in the project's `artifacts/` folder
+- Use this when the user asks for a voice-over, narration, a spoken summary, an audio version of a document, or anything else they want to listen to
+- The audio is not played back to you; you get the file's path. The user can play it in the conversation
+- Billed to the user's Redrob account per character, so speak only what the user asked for
+
+Usage notes:
+  - `text` is read aloud as written, up to 4096 characters per call; split longer material into parts and save each as its own file
+  - Write numbers, abbreviations and names the way they should be spoken
+  - Leave `model` and `voice` unset unless the user asks for a specific one; the default speaks Korean, English and many other languages
+  - `filename` is optional and has no extension; a name is derived from the text when it is omitted, and an existing file is never overwritten

@@ -33,7 +33,7 @@ export const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image"
  * (never set in a shipped build); reading it here rather than only at module load is what lets a test
  * point one call at a stand-in without depending on which module loaded first.
  */
-function gatewayUrl(): string {
+export function gatewayUrl(): string {
   return (process.env["REDROB_CONSOLE_URL"] ?? CONSOLE_URL).replace(/\/+$/, "")
 }
 
@@ -256,7 +256,7 @@ export const ImageGenerateTool = Tool.define(
 )
 
 /** The gateway's error message, from OpenAI's envelope or Nest's, without echoing a whole body. */
-function gatewayMessage(body: string): string {
+export function gatewayMessage(body: string): string {
   try {
     const parsed: unknown = JSON.parse(body)
     if (parsed && typeof parsed === "object") {
