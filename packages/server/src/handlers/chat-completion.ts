@@ -15,7 +15,7 @@ import { Integration } from "@redrob-code/core/integration"
 import { ModelV2 } from "@redrob-code/core/model"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { fromCatalogModel } from "@redrob-code/core/session/runner/model"
-import { LLM, LLMError } from "@redrob-code/llm"
+import { LLM, LLMClient, LLMError } from "@redrob-code/llm"
 import type { LLMEvent, LLMResponse } from "@redrob-code/llm"
 import type { Credential } from "@redrob-code/schema/credential"
 import { ChatCompletionRequest } from "@redrob-code/protocol/groups/chat-completion"
@@ -164,7 +164,25 @@ const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   return yield* fromCatalogModel(info, credential)
 })
 
-const buildRequest = Effect.fn("chat.buildRequest")(function* (payload: ChatCompletionRequest) {
+/**
+ * The session a request belongs to, as the Redrob console knows it: `x-redrob-session`, which a product
+ * sets so the console can join a labeled session (POST /api/insights/sessions) to what its requests cost.
+ * Forwarded to the Redrob provider only, and only in the console's own id format (1-128 of letters,
+ * digits, `.`, `_`, `:`, `-`), so it carries an id and never text, and no other vendor receives it.
+ */
+const SESSION_HEADER = "x-redrob-session"
+const SESSION_ID = /^[A-Za-z0-9._:-]{1,128}$/
+
+export function sessionHeader(model: string, headers: Readonly<Record<string, string | undefined>>) {
+  const value = headers[SESSION_HEADER]
+  const redrob = !model.includes("/") || model.startsWith("redrob/")
+  return redrob && value !== undefined && SESSION_ID.test(value) ? { [SESSION_HEADER]: value } : undefined
+}
+
+const buildRequest = Effect.fn("chat.buildRequest")(function* (
+  payload: ChatCompletionRequest,
+  session?: Record<string, string>,
+) {
   const model = yield* resolveModel(payload.model)
   const messages = toLLMMessages(payload)
   const tools = toLLMTools(payload)
@@ -176,6 +194,7 @@ const buildRequest = Effect.fn("chat.buildRequest")(function* (payload: ChatComp
     // tell the provider "you may call nothing", which is a different thing.
     ...(tools ? { tools: tools.definitions, ...(tools.choice ? { toolChoice: tools.choice } : {}) } : {}),
     ...(generation ? { generation } : {}),
+    ...(session ? { http: { headers: session } } : {}),
   })
 })
 
@@ -288,8 +307,9 @@ export const ChatCompletionHandler = HttpApiBuilder.group(Api, "server.chat", (h
         // to answer with either JSON or an event stream. The declared schema is
         // still the contract, so it is applied here rather than trusting the body.
         const payload = yield* HttpServerRequest.schemaBodyJson(ChatCompletionRequest)
+        const incoming = yield* HttpServerRequest.HttpServerRequest
         const id = completionID()
-        const request = yield* buildRequest(payload)
+        const request = yield* buildRequest(payload, sessionHeader(payload.model, incoming.headers))
 
         if (payload.stream !== true) {
           const response = yield* LLM.generate(request)
@@ -299,7 +319,11 @@ export const ChatCompletionHandler = HttpApiBuilder.group(Api, "server.chat", (h
         // Streaming: the error envelope can only be sent before the first byte,
         // so a failure after headers travels as an SSE error frame (see
         // eventFrames) rather than as a status code.
-        const frames = toChunks(id, payload.model, LLM.stream(request)).pipe(
+        // The client is taken HERE, inside the handler. `LLM.stream` reads it from the context when the
+        // stream starts, and the response body runs after this handler returns, where it is gone: every
+        // streamed reply was an empty 200.
+        const client = yield* LLMClient.Service
+        const frames = toChunks(id, payload.model, client.stream(request)).pipe(
           Stream.pipeThroughChannel(Sse.encode()),
           Stream.encodeText,
         )

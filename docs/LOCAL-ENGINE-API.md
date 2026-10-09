@@ -119,6 +119,20 @@ on the message text, which is localized. A client that offers sign-in on any fai
 reports a network timeout as "please log in" — that shipped, and it is what this code
 exists to prevent.
 
+## 1b. `POST /api/insights/sessions`
+
+Labeled AI work sessions, sent to the Console's insights for a product that holds no key. It carries the same rule as the completions route: the product hands over labels, and the engine posts them with its own Console credential, resolved the same way. Office is the first caller, because its rule is that it never holds a provider key.
+
+- **Request:** `{ sessions: [...] }`, 1 to 500 sessions. A session is passed through as the product's object; the Console owns that shape and refuses any field that is not a label (`POST /v1/insights/sessions` in redrob-console).
+- **Destination:** fixed at `${CONSOLE_URL}/insights/sessions`. The route takes no URL, and the key is never in a reply, so it cannot be used to read the key or send it anywhere else.
+- **Reply:** the Console's `{ accepted, updated, rejected: [{ externalId, reason }] }`.
+- **Errors:**
+  - `404 ProviderNotFoundError` when the engine has no Redrob key.
+  - `401` for a refused or over-budget key.
+  - `400` for a refused batch, carrying the Console's message.
+  - `503` when the Console is unreachable, or for 429 and 5xx.
+- **No retries:** the product keeps a batch that got no answer for its next sync.
+
 ## 2. Promoting `/experimental`
 
 Every `/experimental/*` route is promoted out of the experimental namespace and
