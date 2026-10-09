@@ -2172,7 +2172,10 @@ const layer = Layer.effect(
       const configured = Object.keys(cfg.provider ?? {})
       const provider = Object.values(s.providers).find((p) => configured.length === 0 || configured.includes(p.id))
       if (!provider) return yield* new NoProvidersError()
-      const [model] = sort(Object.values(provider.models))
+      const [model] =
+        provider.id === ProviderV2.ID.redrob && provider.models[REDROB_DEFAULT_MODEL]
+          ? [provider.models[REDROB_DEFAULT_MODEL]]
+          : sort(Object.values(provider.models))
       if (!model) return yield* new NoModelsError({ providerID: provider.id })
       return {
         providerID: provider.id,
@@ -2186,9 +2189,27 @@ const layer = Layer.effect(
 
 const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro"]
 const smallModelFamilyPriority = ["gemini-flash", "gpt-nano", "claude-haiku"]
+// An image-generation model answers a plain chat turn with an error, so it must never be picked as a
+// default. "gemini-3-pro" in `priority` also matches "gemini-3-pro-image-preview", which made that
+// model the default for the redrob provider and every first message failed with a 404.
+// Capabilities are read when the caller passes full model records; bare {id} rows fall back to the id.
+const IMAGE_MODEL_ID = /(^|[-/_.])image([-/_.]|$)/
+export function isChatModel(model: {
+  id: string
+  capabilities?: { output?: { text?: boolean; image?: boolean } }
+}) {
+  const output = model.capabilities?.output
+  if (output?.text === false || output?.image === true) return false
+  return !IMAGE_MODEL_ID.test(model.id)
+}
+
+// Redrob's own router. When the redrob provider lists it, it is the default.
+export const REDROB_DEFAULT_MODEL = "auto"
+
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(
     models,
+    [(model) => (isChatModel(model) ? 0 : 1), "asc"],
     [(model) => priority.findIndex((filter) => model.id.includes(filter)), "desc"],
     [(model) => (model.id.includes("latest") ? 0 : 1), "asc"],
     [(model) => model.id, "desc"],

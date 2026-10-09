@@ -379,6 +379,16 @@ it.instance(
 )
 
 it.instance(
+  "defaultModel picks redrob/auto when the redrob provider is the one in use",
+  Effect.gen(function* () {
+    const model = yield* Provider.use.defaultModel()
+    expect(String(model.providerID)).toBe("redrob")
+    expect(String(model.modelID)).toBe("auto")
+  }),
+  { config: { enabled_providers: ["redrob"] } },
+)
+
+it.instance(
   "defaultModel returns a typed error when config excludes every provider",
   Effect.gen(function* () {
     const error = yield* Provider.use.defaultModel().pipe(Effect.flip)
@@ -844,6 +854,29 @@ test("provider.sort prioritizes preferred models", () => {
   expect(sorted[0].id).toContain("latest")
   expect(sorted[sorted.length - 1].id).not.toContain("gpt-5")
   expect(sorted[sorted.length - 1].id).not.toContain("sonnet-4")
+})
+
+test("provider.sort never puts an image model first", () => {
+  // The redrob catalog listed gemini-3-pro-image-preview; "gemini-3-pro" in the priority list
+  // matched it, so it became the default and every chat turn failed.
+  const models = [
+    { id: "gemini-3-pro-image-preview", capabilities: { output: { text: true, image: true } } },
+    { id: "gpt-image-1", capabilities: { output: { text: false, image: true } } },
+    { id: "gemini-3-pro-preview", capabilities: { output: { text: true, image: false } } },
+    { id: "some-chat-model", capabilities: { output: { text: true, image: false } } },
+  ] as any[]
+  const sorted = Provider.sort(models)
+  expect(sorted[0].id).toBe("gemini-3-pro-preview")
+  expect(sorted.slice(-2).map((m) => m.id).sort()).toEqual(["gemini-3-pro-image-preview", "gpt-image-1"])
+
+  // Bare {id} rows (the ACP model picker) fall back to the id.
+  const bare = Provider.sort([{ id: "gemini-3-pro-image-preview" }, { id: "plain-model" }])
+  expect(bare[0].id).toBe("plain-model")
+})
+
+test("isChatModel does not reject ids that merely contain 'image' inside a word", () => {
+  expect(Provider.isChatModel({ id: "imagenation-chat" })).toBe(true)
+  expect(Provider.isChatModel({ id: "flux/image" })).toBe(false)
 })
 
 it.instance(
