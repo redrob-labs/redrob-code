@@ -1835,6 +1835,20 @@ const scenarios: Scenario[] = [
       },
     }))
     .json(404, object, "status"),
+  /*
+    The insights route, also through its NOT-CONNECTED path and for the same reason as the variants: the
+    exerciser holds no console key, and a key would send a real batch to the live console on every run.
+    The connected path, with the key in the request to the console and nowhere in the answer, is asserted
+    in packages/core/test/insights.test.ts against a stand-in console.
+  */
+  http.protected
+    .post("/api/insights/sessions", "insights.sessions")
+    .at((ctx) => ({
+      path: "/api/insights/sessions",
+      headers: ctx.headers(),
+      body: { sessions: [{ externalId: "of_exercise", toolKey: "office" }] },
+    }))
+    .json(404, object, "status"),
   http.protected
     .post("/global/upgrade", "global.upgrade")
     .global()

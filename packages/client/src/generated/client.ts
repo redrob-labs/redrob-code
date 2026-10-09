@@ -49,6 +49,8 @@ import type {
   ServerVariantParaphraseOutput,
   ServerVariantCompareInput,
   ServerVariantCompareOutput,
+  ServerInsightsSessionsInput,
+  ServerInsightsSessionsOutput,
   IntegrationsListInput,
   IntegrationsListOutput,
   IntegrationsGetInput,
@@ -580,6 +582,20 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/variant/compare`,
             body: { messages: input["messages"], models: input["models"], requestId: input["requestId"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404, 503],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    "server.insights": {
+      sessions: (input: ServerInsightsSessionsInput, requestOptions?: RequestOptions) =>
+        request<ServerInsightsSessionsOutput>(
+          {
+            method: "POST",
+            path: `/api/insights/sessions`,
+            body: { sessions: input["sessions"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 404, 503],
             empty: false,
