@@ -78,7 +78,8 @@ export const send = Effect.fn("Insights.send")(function* (request: Wire.Sessions
     return yield* Effect.fail(new Refused(response.status, describe(response.status, body)))
   }
   const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Wire.SessionsResult))(body)
-  if (decoded._tag === "None") return yield* Effect.fail(new Refused(response.status, "could not read the console's answer"))
+  if (decoded._tag === "None")
+    return yield* Effect.fail(new Refused(response.status, "could not read the console's answer"))
   return decoded.value
 })
 

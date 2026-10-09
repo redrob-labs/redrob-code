@@ -1,11 +1,6 @@
 import { Insights } from "@redrob-code/schema/insights"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import {
-  InvalidRequestError,
-  ProviderNotFoundError,
-  ServiceUnavailableError,
-  UnauthorizedError,
-} from "../errors"
+import { InvalidRequestError, ProviderNotFoundError, ServiceUnavailableError, UnauthorizedError } from "../errors"
 
 /**
  * Sending labeled AI work sessions to the Redrob console's insights.

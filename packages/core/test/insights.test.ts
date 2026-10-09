@@ -36,7 +36,9 @@ function fakeConsole(status: number, body: unknown, seen: Seen[]) {
 const connectRedrob = Effect.gen(function* () {
   const integrations = yield* Integration.Service
   const integrationID = Integration.ID.make("redrob")
-  yield* integrations.transform((editor) => editor.method.update({ integrationID, method: { type: "key", label: "Redrob API key" } }))
+  yield* integrations.transform((editor) =>
+    editor.method.update({ integrationID, method: { type: "key", label: "Redrob API key" } }),
+  )
   yield* integrations.connection.key({ integrationID, key: KEY, label: "Redrob" })
 })
 
@@ -50,7 +52,11 @@ describe("Insights", () => {
       )
       expect(result).toEqual({ accepted: 1, updated: 0, rejected: [] })
       expect(seen).toEqual([
-        { url: "https://console.redrob.ai/api/backend/v1/insights/sessions", authorization: `Bearer ${KEY}`, body: { sessions: [SESSION] } },
+        {
+          url: "https://console.redrob.ai/api/backend/v1/insights/sessions",
+          authorization: `Bearer ${KEY}`,
+          body: { sessions: [SESSION] },
+        },
       ])
       expect(JSON.stringify(result)).not.toContain(KEY)
     }),
@@ -85,7 +91,11 @@ describe("Insights", () => {
       const exit = yield* Insights.send({ sessions: [SESSION] }).pipe(
         Effect.provideService(
           HttpClient.HttpClient,
-          fakeConsole(400, { statusCode: 400, message: ["sessions.0.summary is not a field"], error: "Bad Request" }, []),
+          fakeConsole(
+            400,
+            { statusCode: 400, message: ["sessions.0.summary is not a field"], error: "Bad Request" },
+            [],
+          ),
         ),
         Effect.flip,
       )
