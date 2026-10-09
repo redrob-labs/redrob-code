@@ -605,6 +605,44 @@ const scenarios: Scenario[] = [
       check(typeof error?.message === "string", "error should carry a message")
       check(typeof error?.type === "string", "error should carry a type")
     }),
+  /*
+    The same route answering, through the fake LLM server the session scenarios use. The 400 scenario
+    above never reaches a provider, which is how a 500 on every real request ("Service not found:
+    @redrob/LLMClient") and an empty 200 on every streamed one went unnoticed. These resolve a real
+    model (`test/test-model`, the project's fake provider) and assert the reply.
+  */
+  http.protected
+    .post("/v1/chat/completions", "chat.completions.reply")
+    .withLlm()
+    .seeded((ctx) => ctx.llmText("pong"))
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: { model: "test/test-model", messages: [{ role: "user", content: "ping" }] },
+    }))
+    .json(
+      200,
+      (body) => {
+        const choices = (body as { choices?: { message?: { content?: unknown } }[] }).choices
+        check(choices?.[0]?.message?.content === "pong", "a completion should carry the model's answer")
+      },
+      "status",
+    ),
+  http.protected
+    .post("/v1/chat/completions", "chat.completions.stream")
+    .withLlm()
+    .seeded((ctx) => ctx.llmText("pong"))
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: { model: "test/test-model", stream: true, messages: [{ role: "user", content: "ping" }] },
+    }))
+    .status(200, (_ctx, result) =>
+      Effect.sync(() => {
+        check(result.text.includes('"content":"pong"'), "a streamed completion should carry the answer")
+        check(result.text.includes("data: [DONE]"), "a streamed completion should end with [DONE]")
+      }),
+    ),
   http.protected
     .post("/experimental/session/{sessionID}/background", "experimental.session.background")
     .mutating()
