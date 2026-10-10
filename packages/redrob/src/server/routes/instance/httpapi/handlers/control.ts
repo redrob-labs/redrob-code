@@ -3,7 +3,8 @@ import { Auth } from "@/auth"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
-import { LogInput, SpeechInput } from "../groups/control"
+import { LogInput, SpeechInput, TranscribeInput } from "../groups/control"
+import { RedrobTranscription, type TranscriptionError } from "@/redrob/transcription"
 import { InvalidRequestError, ServiceUnavailableError, TimeoutError, UpstreamError } from "../errors"
 import { prepareSpeech, requestSpeech, speechKey, type SpeechError } from "@/tool/speech_generate"
 import { HttpClient } from "effect/unstable/http"
@@ -14,14 +15,17 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
     const auth = yield* Auth.Service
     const http = yield* HttpClient.HttpClient
 
-    /** Each failure as the endpoint declares it; no_key is 503 because the engine, not the caller, lacks it. */
-    const speechFailure = (error: SpeechError) =>
+    /**
+     * Each gateway failure as the endpoints declare it; no_key is 503 because the engine, not the
+     * caller, lacks it. Speech and transcription fail for the same four reasons.
+     */
+    const gatewayFailure = (operation: string) => (error: SpeechError | TranscriptionError) =>
       error.reason === "invalid"
         ? new InvalidRequestError({ message: error.message })
         : error.reason === "no_key"
           ? new ServiceUnavailableError({ message: error.message, service: "redrob" })
           : error.reason === "timeout"
-            ? new TimeoutError({ message: error.message, operation: "speech" })
+            ? new TimeoutError({ message: error.message, operation })
             : new UpstreamError({
                 message: error.message,
                 service: "redrob",
@@ -32,7 +36,15 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
       const prepared = yield* prepareSpeech(ctx.payload)
       const key = yield* speechKey(auth)
       return (yield* requestSpeech(http, key, prepared)).audio
-    }, Effect.mapError(speechFailure))
+    }, Effect.mapError(gatewayFailure("speech")))
+
+    const transcribe = Effect.fn("ControlHttpApi.transcribe")(function* (ctx: {
+      payload: typeof TranscribeInput.Type
+    }) {
+      const prepared = yield* RedrobTranscription.prepare(ctx.payload)
+      const key = yield* RedrobTranscription.key(auth)
+      return yield* RedrobTranscription.request(http, key, prepared)
+    }, Effect.mapError(gatewayFailure("transcribe")))
 
     const authSet = Effect.fn("ControlHttpApi.authSet")(function* (ctx: {
       params: { providerID: ProviderV2.ID }
@@ -66,6 +78,7 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
       .handle("authSet", authSet)
       .handle("authRemove", authRemove)
       .handle("speech", speech)
+      .handle("transcribe", transcribe)
       .handle("log", log)
   }),
 )
