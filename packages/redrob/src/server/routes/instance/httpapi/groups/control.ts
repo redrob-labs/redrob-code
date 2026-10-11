@@ -33,7 +33,9 @@ export const LogInput = Schema.Struct({
 export const SpeechInput = Schema.Struct({
   text: Schema.String.annotate({ description: "The words to speak, at most 4096 characters" }),
   voice: Schema.optional(Schema.String).annotate({ description: "A voice of the chosen model" }),
-  model: Schema.optional(Schema.String).annotate({ description: "A speech model id served by the Redrob gateway" }),
+  model: Schema.optional(Schema.String).annotate({
+    description: "A speech model id served by the Redrob gateway. Defaults to elevenlabs/eleven-flash-v2.5, for playback.",
+  }),
 })
 
 export const TranscribeInput = Schema.Struct({
