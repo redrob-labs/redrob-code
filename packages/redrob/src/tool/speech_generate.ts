@@ -30,6 +30,17 @@ import { gatewayMessage, gatewayUrl, redrobKey, slug } from "./image_generate"
 export const DEFAULT_SPEECH_MODEL = "elevenlabs/eleven-multilingual-v2"
 export const DEFAULT_SPEECH_VOICE = "sarah"
 
+/**
+ * For speech that is played as it arrives, a reply read aloud or a voice conversation's answer, where
+ * the wait before the first word matters more than the last bit of quality. Same voice, so a saved file
+ * and a reply read aloud sound like the same speaker. Multilingual, so Korean is spoken as Korean.
+ */
+export const PLAYBACK_SPEECH_MODEL = "elevenlabs/eleven-flash-v2.5"
+
+export type SpeechDefaults = { model: string; voice: string }
+const FILE_DEFAULTS: SpeechDefaults = { model: DEFAULT_SPEECH_MODEL, voice: DEFAULT_SPEECH_VOICE }
+export const PLAYBACK_DEFAULTS: SpeechDefaults = { model: PLAYBACK_SPEECH_MODEL, voice: DEFAULT_SPEECH_VOICE }
+
 /** The gateway's limit for one request, checked here so an over-long request costs nothing. */
 export const MAX_SPEECH_CHARACTERS = 4_096
 
@@ -56,11 +67,10 @@ function characters(text: string): number {
 }
 
 /** The request as it will be sent, or why it would be refused, with nothing sent either way. */
-export const prepareSpeech = Effect.fn("Speech.prepare")(function* (input: {
-  text: string
-  model?: string
-  voice?: string
-}) {
+export const prepareSpeech = Effect.fn("Speech.prepare")(function* (
+  input: { text: string; model?: string; voice?: string },
+  defaults: SpeechDefaults = FILE_DEFAULTS,
+) {
   const text = input.text.trim()
   if (!text) return yield* new SpeechError({ reason: "invalid", message: "Give the words to speak." })
   const length = characters(text)
@@ -70,9 +80,9 @@ export const prepareSpeech = Effect.fn("Speech.prepare")(function* (input: {
       message: `The text is ${length} characters; speak at most ${MAX_SPEECH_CHARACTERS} per call and save longer material in parts.`,
     })
   }
-  const model = input.model?.trim() || DEFAULT_SPEECH_MODEL
+  const model = input.model?.trim() || defaults.model
   /* Voices belong to a model, so the default voice only goes with the default model. */
-  const voice = input.voice?.trim() || (model === DEFAULT_SPEECH_MODEL ? DEFAULT_SPEECH_VOICE : undefined)
+  const voice = input.voice?.trim() || (model === defaults.model ? defaults.voice : undefined)
   const prepared: PreparedSpeech = { text, model, ...(voice ? { voice } : {}), characters: length }
   return prepared
 })
