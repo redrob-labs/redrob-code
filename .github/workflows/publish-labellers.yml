@@ -1,0 +1,120 @@
+# Publish the shared on-device labellers (`@redrob-labs/route-labeller`, `@redrob-labs/work-labeller`)
+# to npm from redrob-code, which is their single source of truth. Cowork, Office and Design consume
+# them downstream.
+#
+# Modelled on publish-sdk.yml and DELIBERATELY SEPARATE from release.yml for the same reason: that
+# workflow reaches the Apple and Windows signing credentials, and an npm-token problem must not turn
+# a signed binary release red.
+#
+# `workflow_dispatch` only, and dry-run by DEFAULT, because the first publish of a public package
+# under this scope is not reversible: npm allows unpublishing a new version only within 72 hours, and
+# a name, once taken, stays taken. Pick which package to publish with the `package` input.
+#
+# Unlike the SDK, these packages carry an intrinsic `version` in their own package.json (not tied to
+# a CLI release), so there is no version injection: `publishConfig.exports` already swaps `src` for
+# `dist` at pack time, and `prepublishOnly` builds `dist`. Bump the package's `version` in a normal
+# PR before dispatching this.
+#
+# NPM_TOKEN MUST BE 2FA-EXEMPT (a classic AUTOMATION token, or a granular token with Read and write
+# on the scope). npm enforces two-factor on publish and an interactive OTP cannot be supplied by CI;
+# this is the same constraint documented at length in publish-sdk.yml.
+name: publish-labellers
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Which labeller to publish."
+        required: true
+        type: choice
+        options:
+          - "@redrob-labs/route-labeller"
+          - "@redrob-labs/work-labeller"
+      dry_run:
+        description: "Build and pack, but publish nothing."
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: publish-labellers-${{ github.event.inputs.package }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Pinned to this repository's immutable id, matching release.yml and publish-sdk.yml: a fork must
+    # never publish under this scope, and a rename must not silently switch the guard off.
+    if: github.repository_id == '1371675259'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: resolve
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          case "$PACKAGE" in
+            "@redrob-labs/route-labeller") dir="packages/route-labeller" ;;
+            "@redrob-labs/work-labeller")  dir="packages/work-labeller"  ;;
+            *) echo "::error::unknown package $PACKAGE"; exit 1 ;;
+          esac
+          version="$(cd "$dir" && node -p "require('./package.json').version")"
+          if [ "$version" = "0.0.0" ]; then
+            echo "::error::$PACKAGE is still at 0.0.0 — bump its package.json version in a PR before publishing"
+            exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publishing $PACKAGE@$version from $dir" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build
+        working-directory: ${{ steps.resolve.outputs.dir }}
+        run: bun run build
+
+      # Checks the token AUTHENTICATES, not merely that it is non-empty — see publish-sdk.yml for why
+      # a green emptiness check is worse than none. `whoami` cannot prove the token is 2FA-exempt; only
+      # the publish itself discovers EOTP.
+      - name: Check the npm token authenticates
+        if: ${{ !inputs.dry_run }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is not set for this repository or its organization"
+            exit 1
+          fi
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          if ! who="$(npm whoami 2>&1)"; then
+            echo "::error::NPM_TOKEN did not authenticate: $who"
+            exit 1
+          fi
+          echo "authenticated as $who (2FA exemption is only provable by the publish itself)"
+
+      - name: Publish
+        working-directory: ${{ steps.resolve.outputs.dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run — packing only, publishing nothing"
+            bun pm pack
+            ls -la ./*.tgz
+          else
+            bun publish --access public
+          fi

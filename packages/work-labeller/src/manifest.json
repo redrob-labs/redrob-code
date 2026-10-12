@@ -1,0 +1,15 @@
+{
+  "id": "Xenova/multilingual-e5-base",
+  "revision": "1ec9243030a27d1a115d5c340572074c125b58b2",
+  "license": "MIT",
+  "model": {
+    "file": "model_int8.onnx",
+    "sha256": "9ddfd8b45086dabc59a7e1bb00463225dace8954962418b240840f2153bc87da",
+    "url": "https://github.com/redrob-labs/redrob-cowork/releases/download/insights-model-e5-base-2026.10/model_int8.onnx"
+  },
+  "tokenizer": {
+    "file": "tokenizer.json",
+    "sha256": "62c24cdc13d4c9952d63718d6c9fa4c287974249e16b7ade6d5a85e7bbb75626",
+    "url": "https://github.com/redrob-labs/redrob-cowork/releases/download/insights-model-e5-base-2026.10/tokenizer.json"
+  }
+}
