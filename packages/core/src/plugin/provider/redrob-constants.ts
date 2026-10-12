@@ -21,10 +21,7 @@ import { Flag } from "../../flag/flag"
 // credentials come from: a local console still wants a key it recognises. Importing Flag is safe from
 // this leaf module because `flag/flag.ts` imports only `effect` -- the cycle this file avoids is
 // through the plugin and event modules, which Flag does not touch.
-export const CONSOLE_URL = (Flag.REDROB_CONSOLE_URL ?? "https://console.redrob.ai/api/backend/v1").replace(
-  /\/+$/,
-  "",
-)
+export const CONSOLE_URL = (Flag.REDROB_CONSOLE_URL ?? "https://console.redrob.ai/api/backend/v1").replace(/\/+$/, "")
 export const CONSOLE_PACKAGE = "@ai-sdk/openai-compatible"
 
 /**
