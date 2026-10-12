@@ -26,6 +26,12 @@ export const CONSOLE_URL = (Flag.REDROB_CONSOLE_URL ?? "https://console.redrob.a
   "",
 )
 export const CONSOLE_PACKAGE = "@ai-sdk/openai-compatible"
+
+/**
+ * The Console's skill library (`/skills/index.json` and one directory per skill). Every engine pulls
+ * it, so every Redrob app that runs on the engine has the same skills; `config.skills` adds more.
+ */
+export const CONSOLE_SKILLS_URL = new URL("/skills/", CONSOLE_URL).href
 // Every served console model publishes `capabilities.maxContextTokens: 1_000_000`. Held as one
 // constant because the value is uniform across the six ids, and used as the no-key fallback
 // context window. A zero here is not cosmetic: `usable()` in packages/redrob/src/session/overflow.ts
