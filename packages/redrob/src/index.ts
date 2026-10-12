@@ -13,6 +13,7 @@ import { UI } from "./cli/ui"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
+import { BuildoffCommand } from "./cli/cmd/buildoff"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
@@ -91,6 +92,7 @@ const cli = yargs(args)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ServeCommand)
+  .command(BuildoffCommand)
   .command(ModelsCommand)
   .command(ModelsLocalCommand)
   .command(StatsCommand)
