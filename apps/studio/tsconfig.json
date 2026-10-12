@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@tsconfig/bun/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": ["bun", "vite/client"],
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src", "test", "vite.config.ts"]
+}
