@@ -90,7 +90,7 @@ type Args = {
   json: boolean
 }
 
-async function startEngine(args: { attach?: string; username?: string; password?: string }) {
+export async function startEngine(args: { attach?: string; username?: string; password?: string }) {
   if (args.attach) {
     return {
       url: args.attach,

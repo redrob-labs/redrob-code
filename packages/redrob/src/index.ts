@@ -14,6 +14,7 @@ import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { BuildoffCommand } from "./cli/cmd/buildoff"
+import { BenchCommand } from "./cli/cmd/bench"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
@@ -93,6 +94,7 @@ const cli = yargs(args)
   .command(UninstallCommand)
   .command(ServeCommand)
   .command(BuildoffCommand)
+  .command(BenchCommand)
   .command(ModelsCommand)
   .command(ModelsLocalCommand)
   .command(StatsCommand)
@@ -134,7 +136,9 @@ try {
     UI.error("Unexpected error" + EOL)
     process.stderr.write(errorMessage(e) + EOL)
   }
-  process.exitCode = 1
+  // FormatError has already applied a CliError's own exit code; only default to 1 when none was set,
+  // so a command can still report a distinct failure (`redrob bench --baseline` exits 3).
+  if (!process.exitCode) process.exitCode = 1
 } finally {
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
