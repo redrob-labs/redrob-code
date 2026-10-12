@@ -125,6 +125,18 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/contest": {
+      "name": "@redrob-code/contest",
+      "version": "0.0.0",
+      "dependencies": {
+        "@redrob-code/client": "workspace:*",
+      },
+      "devDependencies": {
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@typescript/native-preview": "catalog:",
+      },
+    },
     "packages/core": {
       "name": "@redrob-code/core",
       "version": "0.0.0",
@@ -450,6 +462,7 @@
       "devDependencies": {
         "@babel/core": "7.28.4",
         "@octokit/webhooks-types": "7.6.1",
+        "@redrob-code/contest": "workspace:*",
         "@redrob-code/core": "workspace:*",
         "@redrob-code/http-recorder": "workspace:*",
         "@redrob-code/script": "workspace:*",
@@ -1353,6 +1366,8 @@
     "@redrob-code/client": ["@redrob-code/client@workspace:packages/client"],
 
     "@redrob-code/codemode": ["@redrob-code/codemode@workspace:packages/codemode"],
+
+    "@redrob-code/contest": ["@redrob-code/contest@workspace:packages/contest"],
 
     "@redrob-code/core": ["@redrob-code/core@workspace:packages/core"],
 
