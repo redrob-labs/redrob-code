@@ -80,9 +80,22 @@ redrob buildoff @task.md --builders 4 --budget 8 --auto --apply commit
 
 The contest drives the engine only through its public HTTP API (sessions, messages, permissions,
 models), the same surface Redrob Cowork and the desktop app use. `redrob buildoff` starts an engine in
-process on loopback behind a random credential, or uses `--attach <url>`. The desktop app will call the
-same library from its main process. A `/contest` HTTP surface on the engine is deferred until the
-build-off interface (M3) needs one.
+process on loopback behind a random credential, or uses `--attach <url>`. The desktop app calls the
+same library from its main process (`apps/desktop/src/main/buildoff.ts`) against the engine it already
+runs, so the build-off screen needed no new engine routes. A `/contest` HTTP surface stays deferred
+until something other than the app and the CLI (Redrob Cowork, a remote runtime) has to start one.
+
+What the app adds on top of the library:
+
+- **Cancel.** `runContest` takes an `AbortSignal`; aborting stops every builder and reviewer session and
+  records the contest as `cancelled`.
+- **Preview.** `startPreview` checks a candidate's ref out into a scratch worktree and runs the repo's
+  own dev script there, so a person can try a candidate before choosing it. Names stay hidden.
+- **Diff and history.** `candidateDiff` returns a candidate's blinded diff against base; `history` lists
+  earlier contests from `.git/redrob/contests/`.
+- **Only usable models compete.** Models from an integration that is not connected, or a provider the
+  person disabled, are dropped before slots are assigned, so a missing key cannot take a builder slot.
+  With fewer than two contenders left the consensus gate fails rather than passing a one-model "build-off".
 
 ## Tests
 
@@ -97,11 +110,11 @@ build-off interface (M3) needs one.
 
 ## Not yet
 
-| Item                                                                                                                                                     | Milestone           |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Mutation score of the winner's tests                                                                                                                     | M4, with refinement |
-| Tie-breaker tests written where candidates disagree; polish rounds; weights calibrated on the repo's defect history; standard mined from review comments | M4                  |
-| Build-off interface; `/contest` HTTP surface                                                                                                             | M3                  |
+| Item                                                                                                                                                     | Milestone            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Mutation score of the winner's tests                                                                                                                     | M4, with refinement  |
+| Tie-breaker tests written where candidates disagree; polish rounds; weights calibrated on the repo's defect history; standard mined from review comments | M4                   |
+| `/contest` HTTP surface on the engine                                                                                                                    | When Cowork needs it |
 
 ## The Quality Lab (`redrob bench --replay`)
 

@@ -59,7 +59,15 @@ cd apps/desktop && bun run typecheck && bun test
 cd apps/studio  && bun run typecheck && bun test && bun run build
 bun run --cwd packages/redrob build --single --skip-install
 cd apps/desktop && bun run prepare-engine && bun run package --dir && bun run smoke
+xvfb-run -a bun run e2e   # Linux
 ```
+
+`bun run e2e` (Linux, under `xvfb-run`) then drives a whole blind build-off through the packaged app's
+window with Playwright: scripted vendors from `packages/contest/test/fixture`, the bundled engine, no key
+and no network. It checks that names stay hidden until a candidate is chosen, that the judges' choice is
+the correct candidate, and that applying it creates a branch whose commit carries `Redrob-Model`.
+`E2E_ROOT` holds scratch data and `E2E_SHOTS` receives screenshots; CI uploads them as
+`buildoff-screenshots`.
 
 `smoke` launches the packaged app with `--smoke-test`. The app starts the bundled engine, checks that an
 authenticated health request succeeds and an unauthenticated one gets 401, then exits 0.
@@ -68,10 +76,10 @@ authenticated health request succeeds and an unauthenticated one gets 401, then 
 
 | Milestone | Scope                                                                                                                                            |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| M0 (this) | Shell, bundled engine, sign-in, projects, sessions (chat, changes, terminal), en/ko, Windows installer, updater, CI smoke and CLI install checks |
-| M1        | Contest engine: blind build-off with rival-vendor builders, verification, pairwise judge, gates, `redrob buildoff`                               |
-| M2        | Quality Lab: `redrob bench --replay`, head-to-head against the human patch, quality percentile, judge reliability checks with no human labels    |
-| M3        | Build-off interface                                                                                                                              |
+| M0 (done) | Shell, bundled engine, sign-in, projects, sessions (chat, changes, terminal), en/ko, Windows installer, updater, CI smoke and CLI install checks |
+| M1 (done) | Contest engine: blind build-off with rival-vendor builders, verification, pairwise judge, gates, `redrob buildoff`                               |
+| M2 (done) | Quality Lab: `redrob bench --replay`, head-to-head against the human patch, quality percentile, judge reliability checks with no human labels    |
+| M3 (done) | Build-off screen: the first tab of a project, live lanes, verdict, gates, matrix, preview, reveal on choice                                      |
 | M4        | Refinement rounds, standard mined from the repo automatically, Linux packages                                                                    |
 | M5        | Fleet View, macOS on Apple Silicon                                                                                                               |
 | M6        | Conflict radar, shared engine daemon with the CLI, macOS on Intel                                                                                |
