@@ -1,0 +1,60 @@
+name: contest
+
+# The blind build-off (packages/contest and `redrob buildoff`).
+#
+# Unit tests cover the pure parts: bench selection, diff measurement, the Quality Score, the
+# test-gaming guard, the pairwise tournament and review parsing. The integration tests then run a
+# whole build-off against this commit's REAL engine binary, with a scripted model server standing in
+# for five vendors, twice: through the library and through the compiled `redrob buildoff` command.
+# No API key and no network are involved.
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contest:
+    name: contest (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      - name: Typecheck
+        run: bun run --cwd packages/contest typecheck
+
+      - name: Build the engine
+        run: bun run --cwd packages/redrob build --single --skip-install
+        env:
+          REDROB_VERSION: 0.0.0-ci
+
+      - name: Unit and integration tests
+        working-directory: packages/contest
+        run: bun test --timeout 300000

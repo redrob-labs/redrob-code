@@ -10,7 +10,7 @@ syncs never touch it. Do not move the app under `packages/app` or `packages/desk
 still develops. Design of record: `docs/DESKTOP.md`.
 
 Per-package instructions live beside the code they describe and are more specific than this file.
-There are twelve of them; list them with `git ls-files | grep 'AGENTS.md$'`. **Read the nearest one
+There are thirteen of them; list them with `git ls-files | grep 'AGENTS.md$'`. **Read the nearest one
 before editing a package** — `packages/redrob/`, `packages/redrob/test/`, `packages/schema/`,
 `packages/llm/` and `packages/codemode/` each have their own, and three sit deeper under
 `packages/redrob/src/**`.
