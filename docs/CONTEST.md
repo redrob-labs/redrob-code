@@ -97,8 +97,51 @@ build-off interface (M3) needs one.
 
 ## Not yet
 
-| Item                                                                                                                                                     | Milestone        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| Mutation score; replay on the repo's history (`redrob bench --replay`); head-to-head against the human patch; judge reliability checks                   | M2 (Quality Lab) |
-| Tie-breaker tests written where candidates disagree; polish rounds; weights calibrated on the repo's defect history; standard mined from review comments | M4               |
-| Build-off interface; `/contest` HTTP surface                                                                                                             | M3               |
+| Item                                                                                                                                                     | Milestone           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Mutation score of the winner's tests                                                                                                                     | M4, with refinement |
+| Tie-breaker tests written where candidates disagree; polish rounds; weights calibrated on the repo's defect history; standard mined from review comments | M4                  |
+| Build-off interface; `/contest` HTTP surface                                                                                                             | M3                  |
+
+## The Quality Lab (`redrob bench --replay`)
+
+The Lab uses the repository's own history as the benchmark. No human reviews anything.
+
+1. **Mine.** Find merged commits that changed code _and_ tests, skipping docs-only changes and commits
+   the contest wrote itself (`Redrob-Model:`). The commit message, minus trailers, is the task.
+2. **Snapshot without history.** Each task's parent tree is extracted into a fresh one-commit
+   repository (`git archive`), so a builder cannot read the answer from `git log`.
+3. **Validate.** The commit's tests must fail on the parent and pass with the human patch. Anything
+   else is reported as not replayable, with the reason.
+4. **Build-off** on the snapshot. Percentiles use the real repository's history before the parent.
+5. **Hidden tests.** The commit's tests are restored over every candidate and run, and each candidate
+   is marked resolved or not.
+6. **Head to head.** The resolved winner is reviewed against the human patch, blind, in both orders,
+   by reviewers outside the winner's company.
+7. **Judge checks, with no labels.**
+   - **Grounded accuracy:** wherever exactly one side of a judged pair passes the hidden tests, did
+     the tournament pick it?
+   - **Perturbations:** the human patch is damaged in one way at a time (`src/perturb.ts`: a flipped
+     operator, a duplicated block, debris, a skipped test). The judge must prefer the original in
+     both orders.
+   - **Identity:** the judge must call an identical pair a tie.
+
+| Metric                                                                    | Meaning                                                     |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `resolvedRate`                                                            | Judges' winner passes the hidden tests                      |
+| `oracleRate`                                                              | Any candidate does (the ceiling of a perfect judge)         |
+| `singleAttemptRate`                                                       | One attempt, on average (what best-of-N is beating)         |
+| `atLeastHumanRate`                                                        | Resolved winners judged level with or above the human patch |
+| `winnerPercentileMedian`                                                  | Winner's Quality Score against the repo's human commits     |
+| `judgeGroundedAccuracy`, `judgePerturbationAccuracy`, `judgeIdentityRate` | Whether to trust the judge                                  |
+
+Reports are kept in `.git/redrob/bench/`. `--save-baseline` writes the metrics; `--baseline` exits 3
+when a guarded metric falls beyond its tolerance (`GUARDED` in `src/replay.ts`). The `bench` workflow
+runs this with real models weekly and on pull requests that change `packages/contest/src`, whenever
+`REDROB_BENCH_API_KEY` is configured.
+
+**Limits, stated honestly:**
+
+- Only changes that came with tests can be replayed.
+- Public repositories may be in models' training data.
+- The judge checks are automatic proxies for human agreement, not a human panel.

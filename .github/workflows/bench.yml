@@ -1,0 +1,96 @@
+name: bench
+
+# The Quality Lab with real models: `redrob bench --replay` over this repository's own history,
+# compared against the committed baseline in bench/baseline.json. A guarded metric falling beyond its
+# tolerance (packages/contest/src/replay.ts GUARDED) fails the run with exit code 3.
+#
+# Real models cost money, so this does not run on every pull request. It runs weekly, by hand, and on
+# pull requests that change what decides a build-off (prompts, judge, gates, scoring), and only when the
+# REDROB_BENCH_API_KEY secret is set. Without the secret it says so and passes rather than pretending to
+# have measured anything. The contest workflow covers the same code with scripted models on every PR.
+#
+# With no committed baseline the first run records one and uploads it as an artifact; commit it to
+# bench/baseline.json to arm the gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Tasks to replay"
+        default: "10"
+      builders:
+        description: "Builders per task"
+        default: "3"
+  schedule:
+    - cron: "41 5 * * 2"
+  pull_request:
+    paths:
+      - "packages/contest/src/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: bench (replay)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: github.repository_id == '1371675259'
+    env:
+      REDROB_API_KEY: ${{ secrets.REDROB_BENCH_API_KEY }}
+    steps:
+      - name: Skip without a key
+        if: env.REDROB_API_KEY == ''
+        run: echo "::notice::REDROB_BENCH_API_KEY is not set; the real-model benchmark did not run"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: env.REDROB_API_KEY != ''
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun
+        if: env.REDROB_API_KEY != ''
+
+      - name: Configure git identity
+        if: env.REDROB_API_KEY != ''
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      - name: Build the engine
+        if: env.REDROB_API_KEY != ''
+        run: bun run --cwd packages/redrob build --single --skip-install
+        env:
+          REDROB_VERSION: 0.0.0-bench
+
+      - name: Replay
+        if: env.REDROB_API_KEY != ''
+        run: |
+          set -euo pipefail
+          binary=packages/redrob/dist/redrob-linux-x64/bin/redrob
+          args=(bench --replay --json --limit "${{ inputs.limit || '10' }}" --builders "${{ inputs.builders || '3' }}" --provider redrob)
+          if [ -f bench/baseline.json ]; then
+            args+=(--baseline bench/baseline.json)
+          else
+            echo "::notice::no bench/baseline.json yet; recording one"
+            args+=(--save-baseline "$RUNNER_TEMP/baseline.json")
+          fi
+          set +e
+          "$binary" "${args[@]}" > "$RUNNER_TEMP/report.json"
+          code=$?
+          set -e
+          node -e 'const r=require(process.argv[1]); console.log(JSON.stringify(r.metrics,null,2))' "$RUNNER_TEMP/report.json" || true
+          exit $code
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && env.REDROB_API_KEY != ''
+        with:
+          name: bench-report
+          path: |
+            ${{ runner.temp }}/report.json
+            ${{ runner.temp }}/baseline.json
+          if-no-files-found: ignore
