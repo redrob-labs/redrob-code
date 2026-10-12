@@ -10,7 +10,7 @@ import { shell } from "./proc"
 import { median, percentile, score, type Quality } from "./quality"
 import { redact } from "./redact"
 import { builderPrompt, parseReview, reviewPrompt, type Evidence, type ReviewAnswer } from "./review"
-import { loadRecord, readStandard, recordPreference, saveRecord, stateDir, worktreeRoot } from "./store"
+import { listRecords, loadRecord, readStandard, recordPreference, saveRecord, stateDir, worktreeRoot } from "./store"
 import { combine, consensus, pairs, rank, type PairOutcome, type Standing, type Vote } from "./tournament"
 
 /**
@@ -40,6 +40,8 @@ export type ContestOptions = {
   escalate?: boolean
   /** Only models from these provider ids take part, e.g. ["redrob"] or a person's own keys. */
   providers?: string[]
+  /** Aborting stops every builder and reviewer session and ends the contest with status "cancelled". */
+  signal?: AbortSignal
   /** Commit to start from instead of HEAD. */
   base?: string
   /**
@@ -61,18 +63,11 @@ export type ContestEvent =
   | { type: "note"; message: string }
 
 export type Stage =
-  | "preparing"
-  | "baseline"
-  | "building"
-  | "verifying"
-  | "reviewing"
-  | "gating"
-  | "escalating"
-  | "ready"
+  "preparing" | "baseline" | "building" | "verifying" | "reviewing" | "gating" | "escalating" | "ready"
 
 export type CandidateReport = {
   slot: string
-  status: "done" | "over_budget" | "timeout" | "error" | "no_change"
+  status: "done" | "over_budget" | "timeout" | "error" | "no_change" | "cancelled"
   changed: boolean
   files: { path: string; status: string }[]
   added: number
@@ -98,7 +93,7 @@ export type ContestResult = {
   repo: string
   base: string
   task: string
-  status: "passed" | "below_standard" | "failed"
+  status: "passed" | "below_standard" | "failed" | "cancelled"
   winner: string | null
   ranking: string[]
   candidates: CandidateReport[]
@@ -231,6 +226,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
         text: builderPrompt({ task: options.task, standard }),
         budgetUsd: share,
         timeoutMs: Math.max(60_000, deadline - Date.now()),
+        signal: options.signal,
         onProgress: (progress) =>
           emit({ type: "candidate", slot, status: "building", costUsd: progress.costUsd, tools: progress.tools }),
       })
@@ -348,6 +344,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
           }),
           budgetUsd: perReview,
           timeoutMs: 5 * 60_000,
+          signal: options.signal,
           deny: ["edit", "external_directory", "bash", "shell"],
         })
         .catch(() => null)
@@ -405,6 +402,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
             standings.find((s) => s.slot === top.slot),
             contenders.length,
           ),
+          contenders.length,
           history,
           options,
         )
@@ -412,7 +410,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
     return { disqualified, accepted }
   }
 
-  let verdict = await judge()
+  let verdict = options.signal?.aborted ? { disqualified: () => "cancelled", accepted: () => true } : await judge()
   const escalate = options.escalate ?? true
   while (
     escalate &&
@@ -452,7 +450,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
     repo,
     base,
     task: options.task,
-    status: winner === null ? "failed" : passed ? "passed" : "below_standard",
+    status: options.signal?.aborted ? "cancelled" : winner === null ? "failed" : passed ? "passed" : "below_standard",
     winner,
     ranking,
     candidates: built.map((candidate) => ({
@@ -526,6 +524,7 @@ function gate(
   winner: Built,
   baseline: CheckResult[],
   agreement: number,
+  contenders: number,
   history: { scores: number[] },
   options: ContestOptions,
 ): Gate[] {
@@ -560,6 +559,15 @@ function gate(
       passed: winner.quality.score >= 80,
       detail: `not enough history to rank against; quality score ${winner.quality.score}/100 (target 80)`,
     })
+  }
+  if (contenders < 2) {
+    // A lone candidate has won nothing: there was no one to beat.
+    gates.push({
+      name: "consensus",
+      passed: false,
+      detail: "only one candidate produced a change, so nothing was compared",
+    })
+    return gates
   }
   gates.push({
     name: "consensus",
@@ -776,6 +784,33 @@ export async function unblindedRecord(directory: string, id: string) {
     reviewers: record.reviewers,
     commits: record.commits,
   }
+}
+
+/** A candidate's change as a unified diff, read from its kept ref after the worktrees are gone. */
+export async function candidateDiff(directory: string, id: string, slot: string) {
+  const repo = await Git.repoRoot(directory)
+  const record = loadRecord<Private>(await stateDir(repo), id)
+  const commit = record.commits[slot]
+  if (!commit) return ""
+  return redact(await Git.diff(repo, record.result.base, commit))
+}
+
+/** Every recorded contest in this repository, newest first, anonymous unless already revealed. */
+export async function history(directory: string) {
+  const repo = await Git.repoRoot(directory)
+  const state = await stateDir(repo)
+  return listRecords(state)
+    .map((id) => loadRecord<Private>(state, id))
+    .map((record) => ({
+      id: record.result.id,
+      task: record.result.task,
+      status: record.result.status,
+      winner: record.result.winner,
+      chosen: record.chosen ?? null,
+      revealed: record.revealed,
+      models: record.revealed ? record.models : null,
+    }))
+    .reverse()
 }
 
 /** The last record's anonymous result, for a caller that lost it (the CLI's `--show`). */

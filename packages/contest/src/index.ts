@@ -1,4 +1,4 @@
-export { runContest, pick, apply, load, readTask } from "./contest"
+export { runContest, pick, apply, load, readTask, candidateDiff, history } from "./contest"
 export type {
   ContestOptions,
   ContestResult,
@@ -17,3 +17,5 @@ export type { Preference } from "./store"
 export { runReplay, mineTasks, summarise, regressions, GUARDED } from "./replay"
 export type { ReplayReport, ReplayMetrics, ReplayOptions, TaskReport } from "./replay"
 export { perturbations } from "./perturb"
+export { startPreview, previewCommand } from "./preview"
+export type { Preview } from "./preview"

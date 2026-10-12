@@ -18,11 +18,13 @@ export type RunInput = {
   /** Permission actions answered "reject" instead of "once". */
   deny?: string[]
   onProgress?: (progress: { costUsd: number; tools: number; elapsedMs: number }) => void
+  /** Stops the session and returns what it had when aborted. */
+  signal?: AbortSignal
 }
 
 export type RunOutput = {
   sessionID: string
-  status: "done" | "over_budget" | "timeout" | "error"
+  status: "done" | "over_budget" | "timeout" | "error" | "cancelled"
   costUsd: number
   text: string
   error?: string
@@ -49,8 +51,28 @@ const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 export function engineFromClient(client: Client): Engine {
   return {
     async models(directory) {
-      const listed = await client.models.list({ location: { directory } })
+      const location = { directory }
+      const [listed, providers, integrations] = await Promise.all([
+        client.models.list({ location }),
+        client.providers.list({ location }).catch(() => null),
+        client.integrations.list({ location }).catch(() => null),
+      ])
+      // A provider behind an integration competes only when that integration is connected (a stored
+      // credential or an environment key). Listing a model is not the same as being able to call it:
+      // without a key, a Console model would take a slot and fail every turn.
+      const connected = new Set(
+        integrations?.data.filter((entry) => entry.connections.length > 0).map((entry) => entry.id) ?? [],
+      )
+      const unusable = new Set(
+        (providers?.data ?? [])
+          .filter(
+            (provider) =>
+              provider.disabled || (provider.integrationID && integrations && !connected.has(provider.integrationID)),
+          )
+          .map((provider) => provider.id),
+      )
       return listed.data
+        .filter((model) => !unusable.has(model.providerID))
         .map((model) => ({
           providerID: model.providerID,
           id: model.id,
@@ -101,6 +123,10 @@ export function engineFromClient(client: Client): Engine {
           tools = usage.tools
           settled = usage.settled
           input.onProgress?.({ costUsd, tools, elapsedMs: Date.now() - started })
+        }
+        if (input.signal?.aborted) {
+          status = "cancelled"
+          break
         }
         if (costUsd > input.budgetUsd) {
           status = "over_budget"
