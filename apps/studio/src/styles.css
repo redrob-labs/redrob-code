@@ -244,3 +244,61 @@ body,
   max-width: 760px;
   padding: var(--space-4, 16px);
 }
+
+.rc-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3, 12px);
+}
+
+.rc-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--space-3, 12px);
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 13px;
+}
+
+.rc-facts dt {
+  opacity: 0.7;
+}
+
+.rc-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-penalties {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.rc-matrix {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.rc-matrix th,
+.rc-matrix td {
+  padding: 4px 10px;
+  text-align: center;
+  border: 1px solid var(--color-border, rgba(127, 127, 127, 0.25));
+}
+
+.rc-matrix--win {
+  background: rgba(47, 158, 90, 0.16);
+}
+
+.rc-matrix--loss {
+  background: rgba(214, 69, 69, 0.14);
+}
+
+.rc-matrix--tie {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.rc-buildoff select {
+  margin-left: 6px;
+}

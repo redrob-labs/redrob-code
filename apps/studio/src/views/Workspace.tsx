@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button, EmptyState, Tabs, TaskStatus } from "@redrob-labs/ui"
 import { useEngine, useEngineEvents } from "../engine"
 import { useT } from "../i18n"
+import { BuildOff } from "./BuildOff"
 import { Changes } from "./Changes"
 import { Chat } from "./Chat"
 import { Terminal } from "./Terminal"
 
-type Tab = "chat" | "changes" | "terminal"
+type Tab = "buildoff" | "chat" | "changes" | "terminal"
 
 /** One project folder: its sessions on the left, the selected session's chat, changes and terminal. */
 export function Workspace(props: { directory: string }) {
@@ -15,7 +16,8 @@ export function Workspace(props: { directory: string }) {
   const { client } = useEngine()
   const queries = useQueryClient()
   const [sessionID, setSessionID] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>("chat")
+  // The build-off is the front door; sessions are one click away.
+  const [tab, setTab] = useState<Tab>("buildoff")
 
   const sessions = useQuery({
     queryKey: ["sessions", props.directory],
@@ -75,6 +77,7 @@ export function Workspace(props: { directory: string }) {
           value={tab}
           onChange={(id) => setTab(id as Tab)}
           items={[
+            { id: "buildoff", label: t("tabs.buildoff") },
             { id: "chat", label: t("tabs.chat") },
             { id: "changes", label: t("tabs.changes") },
             { id: "terminal", label: t("tabs.terminal") },
@@ -94,6 +97,7 @@ export function Workspace(props: { directory: string }) {
                 }
               />
             ))}
+          {tab === "buildoff" && <BuildOff directory={props.directory} />}
           {tab === "changes" && <Changes directory={props.directory} />}
           {tab === "terminal" && <Terminal directory={props.directory} />}
         </div>
