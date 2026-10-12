@@ -605,6 +605,44 @@ const scenarios: Scenario[] = [
       check(typeof error?.message === "string", "error should carry a message")
       check(typeof error?.type === "string", "error should carry a type")
     }),
+  /*
+    The same route answering, through the fake LLM server the session scenarios use. The 400 scenario
+    above never reaches a provider, which is how a 500 on every real request ("Service not found:
+    @redrob/LLMClient") and an empty 200 on every streamed one went unnoticed. These resolve a real
+    model (`test/test-model`, the project's fake provider) and assert the reply.
+  */
+  http.protected
+    .post("/v1/chat/completions", "chat.completions.reply")
+    .withLlm()
+    .seeded((ctx) => ctx.llmText("pong"))
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: { model: "test/test-model", messages: [{ role: "user", content: "ping" }] },
+    }))
+    .json(
+      200,
+      (body) => {
+        const choices = (body as { choices?: { message?: { content?: unknown } }[] }).choices
+        check(choices?.[0]?.message?.content === "pong", "a completion should carry the model's answer")
+      },
+      "status",
+    ),
+  http.protected
+    .post("/v1/chat/completions", "chat.completions.stream")
+    .withLlm()
+    .seeded((ctx) => ctx.llmText("pong"))
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: { model: "test/test-model", stream: true, messages: [{ role: "user", content: "ping" }] },
+    }))
+    .status(200, (_ctx, result) =>
+      Effect.sync(() => {
+        check(result.text.includes('"content":"pong"'), "a streamed completion should carry the answer")
+        check(result.text.includes("data: [DONE]"), "a streamed completion should end with [DONE]")
+      }),
+    ),
   http.protected
     .post("/experimental/session/{sessionID}/background", "experimental.session.background")
     .mutating()
@@ -1835,6 +1873,43 @@ const scenarios: Scenario[] = [
       },
     }))
     .json(404, object, "status"),
+  /*
+    The insights route, also through its NOT-CONNECTED path and for the same reason as the variants: the
+    exerciser holds no console key, and a key would send a real batch to the live console on every run.
+    The connected path, with the key in the request to the console and nowhere in the answer, is asserted
+    in packages/core/test/insights.test.ts against a stand-in console.
+  */
+  http.protected
+    .post("/api/insights/sessions", "insights.sessions")
+    .at((ctx) => ({
+      path: "/api/insights/sessions",
+      headers: ctx.headers(),
+      body: { sessions: [{ externalId: "of_exercise", toolKey: "office" }] },
+    }))
+    .json(404, object, "status"),
+  /*
+    The speech and transcribe routes, through their NOT-CONNECTED path, for the same reason as the
+    variants and insights above: the exerciser holds no console key, so the gateway call fails with
+    no_key, which both routes map to a 503 (the engine, not the caller, lacks the key). A key would
+    send a paid request to the live gateway on every CI run. The connected path is covered by the
+    tool and endpoint unit tests against a stand-in gateway.
+  */
+  http.protected
+    .post("/redrob/speech", "redrob.speech")
+    .at((ctx) => ({
+      path: "/redrob/speech",
+      headers: ctx.headers(),
+      body: { text: "exercise" },
+    }))
+    .json(503, object, "status"),
+  http.protected
+    .post("/redrob/transcribe", "redrob.transcribe")
+    .at((ctx) => ({
+      path: "/redrob/transcribe",
+      headers: ctx.headers(),
+      body: { audio: Buffer.from("exercise").toString("base64"), format: "wav" },
+    }))
+    .json(503, object, "status"),
   http.protected
     .post("/global/upgrade", "global.upgrade")
     .global()

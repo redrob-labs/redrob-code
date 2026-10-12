@@ -1,0 +1,662 @@
+[
+ {
+  "text": "Mock up a settings page for our iPad app with dark mode",
+  "cell": "designer/design-screens",
+  "language": "en"
+ },
+ {
+  "text": "I need an illustration for our newsletter header, something playful",
+  "cell": "designer/create-graphics",
+  "language": "en"
+ },
+ {
+  "text": "Here are notes from eight customer interviews, what patterns do you see?",
+  "cell": "designer/research-users",
+  "language": "en"
+ },
+ {
+  "text": "Document the spacing, colours and states of this button component for the devs",
+  "cell": "designer/handoff-specs",
+  "language": "en"
+ },
+ {
+  "text": "Is this checkout page accessible to screen reader users?",
+  "cell": "designer/review-usability",
+  "language": "en"
+ },
+ {
+  "text": "Implement pagination for the /orders endpoint in our Express app",
+  "cell": "engineer/build-features",
+  "language": "en"
+ },
+ {
+  "text": "My React component re-renders forever and the browser freezes, why?",
+  "cell": "engineer/debug-fix",
+  "language": "en"
+ },
+ {
+  "text": "How should we shard our Postgres database as we grow to 50M users?",
+  "cell": "engineer/design-systems",
+  "language": "en"
+ },
+ {
+  "text": "Add Jest tests covering the edge cases of this currency formatter",
+  "cell": "engineer/write-tests",
+  "language": "en"
+ },
+ {
+  "text": "Look over this diff before I merge it and tell me what's risky",
+  "cell": "engineer/review-code",
+  "language": "en"
+ },
+ {
+  "text": "Help me tell our story to seed investors in ten slides",
+  "cell": "founder/raise-funding",
+  "language": "en"
+ },
+ {
+  "text": "How many months of runway do we have if we hire two more engineers?",
+  "cell": "founder/plan-finances",
+  "language": "en"
+ },
+ {
+  "text": "Draft a pitch email to land our first paying customers",
+  "cell": "founder/sell-customers",
+  "language": "en"
+ },
+ {
+  "text": "Who should be our first three hires after the founders?",
+  "cell": "founder/hire-team",
+  "language": "en"
+ },
+ {
+  "text": "Write the quarterly update to our shareholders with revenue and burn",
+  "cell": "founder/update-investors",
+  "language": "en"
+ },
+ {
+  "text": "Can employees carry unused vacation days into next year?",
+  "cell": "hr/answer-policy-questions",
+  "language": "en"
+ },
+ {
+  "text": "Draft an offer letter for a marketing manager starting next month",
+  "cell": "hr/prepare-employment-documents",
+  "language": "en"
+ },
+ {
+  "text": "An employee reported their manager for bullying; what are our next steps?",
+  "cell": "hr/handle-employee-relations",
+  "language": "en"
+ },
+ {
+  "text": "Write review feedback for an engineer who exceeded expectations",
+  "cell": "hr/run-performance-reviews",
+  "language": "en"
+ },
+ {
+  "text": "Write our policy on working from abroad for the handbook",
+  "cell": "hr/write-hr-policies",
+  "language": "en"
+ },
+ {
+  "text": "Does this fintech startup fit our fund's thesis? Here's their deck",
+  "cell": "investor/screen-deals",
+  "language": "en"
+ },
+ {
+  "text": "Who are the main competitors in the EV charging market?",
+  "cell": "investor/research-companies",
+  "language": "en"
+ },
+ {
+  "text": "Write the IC memo recommending we lead this Series B",
+  "cell": "investor/write-memos",
+  "language": "en"
+ },
+ {
+  "text": "Go through the data room and flag anything odd in the financials",
+  "cell": "investor/review-diligence",
+  "language": "en"
+ },
+ {
+  "text": "Summarise portfolio performance for our LPs this quarter",
+  "cell": "investor/report-portfolio",
+  "language": "en"
+ },
+ {
+  "text": "Email the client explaining the court date moved and what it means for them",
+  "cell": "lawyer/client",
+  "language": "en"
+ },
+ {
+  "text": "What precedent exists on enforcing arbitration clauses in employment contracts?",
+  "cell": "lawyer/research",
+  "language": "en"
+ },
+ {
+  "text": "Check this supplier agreement for one-sided indemnification",
+  "cell": "lawyer/review",
+  "language": "en"
+ },
+ {
+  "text": "Prepare a memorandum analysing liability for the warehouse fire",
+  "cell": "lawyer/memo",
+  "language": "en"
+ },
+ {
+  "text": "Draft a consulting agreement between a freelancer and a startup",
+  "cell": "lawyer/draft",
+  "language": "en"
+ },
+ {
+  "text": "Write a blog post announcing our new feature for small shops",
+  "cell": "marketer/write-content",
+  "language": "en"
+ },
+ {
+  "text": "Plan a holiday marketing campaign across social and email",
+  "cell": "marketer/plan-campaigns",
+  "language": "en"
+ },
+ {
+  "text": "Write a win-back email sequence for lapsed subscribers",
+  "cell": "marketer/run-messaging-campaigns",
+  "language": "en"
+ },
+ {
+  "text": "Which of last quarter's ads had the best return on spend?",
+  "cell": "marketer/analyze-campaigns",
+  "language": "en"
+ },
+ {
+  "text": "Improve this product page so it ranks on Google",
+  "cell": "marketer/optimize-search",
+  "language": "en"
+ },
+ {
+  "text": "Help me decide what goes into next quarter's roadmap",
+  "cell": "pm/plan-roadmap",
+  "language": "en"
+ },
+ {
+  "text": "Write a product spec for in-app notifications with acceptance criteria",
+  "cell": "pm/write-prd",
+  "language": "en"
+ },
+ {
+  "text": "Cluster these 200 support tickets into product themes",
+  "cell": "pm/synthesize-feedback",
+  "language": "en"
+ },
+ {
+  "text": "Write a launch status update for the leadership team",
+  "cell": "pm/stakeholder-updates",
+  "language": "en"
+ },
+ {
+  "text": "Did the new onboarding flow improve week-one retention?",
+  "cell": "pm/analyze-metrics",
+  "language": "en"
+ },
+ {
+  "text": "Find data scientists in Seoul open to a new role and message them",
+  "cell": "recruiter/find-contact-candidates",
+  "language": "en"
+ },
+ {
+  "text": "Rank these applicants for the backend role",
+  "cell": "recruiter/screen-resumes",
+  "language": "en"
+ },
+ {
+  "text": "Prepare a structured interview for a sales manager",
+  "cell": "recruiter/prepare-interviews",
+  "language": "en"
+ },
+ {
+  "text": "Write a job posting for a part-time bookkeeper",
+  "cell": "recruiter/write-job-descriptions",
+  "language": "en"
+ },
+ {
+  "text": "Find a time next week for the final round with three interviewers",
+  "cell": "recruiter/schedule-interviews",
+  "language": "en"
+ },
+ {
+  "text": "Write a follow-up to a lead who opened my email but didn't reply",
+  "cell": "sales/write-outreach",
+  "language": "en"
+ },
+ {
+  "text": "Put together a proposal for a 50-seat annual contract",
+  "cell": "sales/create-proposals",
+  "language": "en"
+ },
+ {
+  "text": "A customer wants to know if we integrate with Salesforce; reply to them",
+  "cell": "sales/answer-customers",
+  "language": "en"
+ },
+ {
+  "text": "Tell me about Acme Corp before my discovery call",
+  "cell": "sales/research-prospects",
+  "language": "en"
+ },
+ {
+  "text": "Log today's calls in HubSpot and move deals to the right stage",
+  "cell": "sales/update-crm",
+  "language": "en"
+ },
+ {
+  "text": "Reply to a customer whose parcel arrived damaged",
+  "cell": "small-team/answer-customers",
+  "language": "en"
+ },
+ {
+  "text": "Categorise this month's receipts and tell me my profit",
+  "cell": "small-team/keep-books",
+  "language": "en"
+ },
+ {
+  "text": "Remind a client politely that their invoice is 30 days overdue",
+  "cell": "small-team/send-invoices",
+  "language": "en"
+ },
+ {
+  "text": "Make an Instagram post for our café's new menu",
+  "cell": "small-team/create-marketing",
+  "language": "en"
+ },
+ {
+  "text": "Price up a quote for painting a three-bedroom house",
+  "cell": "small-team/prepare-quotes",
+  "language": "en"
+ },
+ {
+  "text": "아이패드 앱 설정 화면 시안을 다크 모드로 만들어줘",
+  "cell": "designer/design-screens",
+  "language": "ko"
+ },
+ {
+  "text": "뉴스레터 상단에 들어갈 귀여운 일러스트가 필요해",
+  "cell": "designer/create-graphics",
+  "language": "ko"
+ },
+ {
+  "text": "고객 인터뷰 여덟 건 메모야, 공통된 패턴을 찾아줘",
+  "cell": "designer/research-users",
+  "language": "ko"
+ },
+ {
+  "text": "이 버튼 컴포넌트의 간격, 색상, 상태를 개발자용으로 정리해줘",
+  "cell": "designer/handoff-specs",
+  "language": "ko"
+ },
+ {
+  "text": "이 결제 화면이 스크린 리더 사용자에게 접근 가능한지 봐줘",
+  "cell": "designer/review-usability",
+  "language": "ko"
+ },
+ {
+  "text": "Express 앱의 주문 API에 페이지네이션을 구현해줘",
+  "cell": "engineer/build-features",
+  "language": "ko"
+ },
+ {
+  "text": "리액트 컴포넌트가 무한 렌더링돼서 브라우저가 멈춰, 원인이 뭐야?",
+  "cell": "engineer/debug-fix",
+  "language": "ko"
+ },
+ {
+  "text": "사용자가 5천만 명으로 늘면 Postgres를 어떻게 샤딩해야 할까?",
+  "cell": "engineer/design-systems",
+  "language": "ko"
+ },
+ {
+  "text": "이 통화 포맷 함수의 경계 사례를 다루는 테스트를 추가해줘",
+  "cell": "engineer/write-tests",
+  "language": "ko"
+ },
+ {
+  "text": "머지하기 전에 이 변경 사항을 검토하고 위험한 부분을 알려줘",
+  "cell": "engineer/review-code",
+  "language": "ko"
+ },
+ {
+  "text": "시드 투자자에게 보여줄 열 장짜리 발표 자료를 만들어줘",
+  "cell": "founder/raise-funding",
+  "language": "ko"
+ },
+ {
+  "text": "엔지니어 두 명을 더 뽑으면 런웨이가 몇 달 남아?",
+  "cell": "founder/plan-finances",
+  "language": "ko"
+ },
+ {
+  "text": "첫 유료 고객을 잡기 위한 제안 메일을 써줘",
+  "cell": "founder/sell-customers",
+  "language": "ko"
+ },
+ {
+  "text": "창업자 다음으로 누구를 먼저 뽑아야 할까?",
+  "cell": "founder/hire-team",
+  "language": "ko"
+ },
+ {
+  "text": "주주들에게 보낼 분기 업데이트를 매출과 지출 포함해서 써줘",
+  "cell": "founder/update-investors",
+  "language": "ko"
+ },
+ {
+  "text": "남은 연차를 내년으로 이월할 수 있는지 직원이 물어봤어",
+  "cell": "hr/answer-policy-questions",
+  "language": "ko"
+ },
+ {
+  "text": "다음 달 입사하는 마케팅 매니저의 근로계약서를 준비해줘",
+  "cell": "hr/prepare-employment-documents",
+  "language": "ko"
+ },
+ {
+  "text": "직원이 팀장을 괴롭힘으로 신고했어, 다음 절차가 뭐야?",
+  "cell": "hr/handle-employee-relations",
+  "language": "ko"
+ },
+ {
+  "text": "기대 이상으로 잘한 엔지니어의 평가 코멘트를 써줘",
+  "cell": "hr/run-performance-reviews",
+  "language": "ko"
+ },
+ {
+  "text": "해외 원격 근무에 관한 규정을 핸드북용으로 작성해줘",
+  "cell": "hr/write-hr-policies",
+  "language": "ko"
+ },
+ {
+  "text": "이 핀테크 스타트업이 우리 펀드 투자 기준에 맞는지 봐줘",
+  "cell": "investor/screen-deals",
+  "language": "ko"
+ },
+ {
+  "text": "전기차 충전 시장의 주요 경쟁사는 누구야?",
+  "cell": "investor/research-companies",
+  "language": "ko"
+ },
+ {
+  "text": "이 시리즈 B를 리드하자는 투자심의 메모를 써줘",
+  "cell": "investor/write-memos",
+  "language": "ko"
+ },
+ {
+  "text": "데이터룸 재무 자료에서 이상한 점을 찾아줘",
+  "cell": "investor/review-diligence",
+  "language": "ko"
+ },
+ {
+  "text": "이번 분기 포트폴리오 성과를 LP에게 보고할 수 있게 정리해줘",
+  "cell": "investor/report-portfolio",
+  "language": "ko"
+ },
+ {
+  "text": "의뢰인에게 재판 기일이 바뀐 사실과 그 의미를 설명하는 메일을 써줘",
+  "cell": "lawyer/client",
+  "language": "ko"
+ },
+ {
+  "text": "근로계약의 중재 조항 효력에 관한 판례가 있어?",
+  "cell": "lawyer/research",
+  "language": "ko"
+ },
+ {
+  "text": "이 공급 계약서에 일방적인 손해배상 조항이 있는지 확인해줘",
+  "cell": "lawyer/review",
+  "language": "ko"
+ },
+ {
+  "text": "창고 화재의 책임 소재를 분석하는 의견서를 작성해줘",
+  "cell": "lawyer/memo",
+  "language": "ko"
+ },
+ {
+  "text": "프리랜서와 스타트업 간 용역 계약서 초안을 써줘",
+  "cell": "lawyer/draft",
+  "language": "ko"
+ },
+ {
+  "text": "소상공인용 신기능을 알리는 블로그 글을 써줘",
+  "cell": "marketer/write-content",
+  "language": "ko"
+ },
+ {
+  "text": "SNS와 이메일을 아우르는 연말 마케팅 캠페인을 기획해줘",
+  "cell": "marketer/plan-campaigns",
+  "language": "ko"
+ },
+ {
+  "text": "이탈한 구독자를 되찾는 이메일 시리즈를 써줘",
+  "cell": "marketer/run-messaging-campaigns",
+  "language": "ko"
+ },
+ {
+  "text": "지난 분기 광고 중 광고 효율이 가장 좋았던 건 뭐야?",
+  "cell": "marketer/analyze-campaigns",
+  "language": "ko"
+ },
+ {
+  "text": "이 상품 페이지가 구글 검색에서 상위에 오르게 고쳐줘",
+  "cell": "marketer/optimize-search",
+  "language": "ko"
+ },
+ {
+  "text": "다음 분기 로드맵에 무엇을 넣을지 정하는 걸 도와줘",
+  "cell": "pm/plan-roadmap",
+  "language": "ko"
+ },
+ {
+  "text": "인앱 알림 기능의 제품 명세를 인수 조건과 함께 작성해줘",
+  "cell": "pm/write-prd",
+  "language": "ko"
+ },
+ {
+  "text": "고객 문의 200건을 제품 주제별로 묶어줘",
+  "cell": "pm/synthesize-feedback",
+  "language": "ko"
+ },
+ {
+  "text": "경영진에게 보낼 출시 진행 상황 보고를 써줘",
+  "cell": "pm/stakeholder-updates",
+  "language": "ko"
+ },
+ {
+  "text": "새 온보딩이 첫 주 리텐션을 높였는지 분석해줘",
+  "cell": "pm/analyze-metrics",
+  "language": "ko"
+ },
+ {
+  "text": "이직 의향이 있는 서울의 데이터 사이언티스트를 찾아 연락해줘",
+  "cell": "recruiter/find-contact-candidates",
+  "language": "ko"
+ },
+ {
+  "text": "백엔드 직무 지원자들의 순위를 매겨줘",
+  "cell": "recruiter/screen-resumes",
+  "language": "ko"
+ },
+ {
+  "text": "영업 매니저 구조화 면접 질문을 준비해줘",
+  "cell": "recruiter/prepare-interviews",
+  "language": "ko"
+ },
+ {
+  "text": "파트타임 경리 채용 공고를 써줘",
+  "cell": "recruiter/write-job-descriptions",
+  "language": "ko"
+ },
+ {
+  "text": "면접관 세 명과 다음 주 최종 면접 시간을 잡아줘",
+  "cell": "recruiter/schedule-interviews",
+  "language": "ko"
+ },
+ {
+  "text": "메일을 열어보고 답이 없는 리드에게 보낼 팔로업을 써줘",
+  "cell": "sales/write-outreach",
+  "language": "ko"
+ },
+ {
+  "text": "50석 연간 계약용 제안서를 만들어줘",
+  "cell": "sales/create-proposals",
+  "language": "ko"
+ },
+ {
+  "text": "고객이 세일즈포스 연동이 되는지 물어봤어, 답변해줘",
+  "cell": "sales/answer-customers",
+  "language": "ko"
+ },
+ {
+  "text": "디스커버리 미팅 전에 Acme라는 회사를 조사해줘",
+  "cell": "sales/research-prospects",
+  "language": "ko"
+ },
+ {
+  "text": "오늘 통화 내용을 CRM에 기록하고 딜 단계를 옮겨줘",
+  "cell": "sales/update-crm",
+  "language": "ko"
+ },
+ {
+  "text": "택배가 파손돼서 왔다는 고객에게 답장해줘",
+  "cell": "small-team/answer-customers",
+  "language": "ko"
+ },
+ {
+  "text": "이번 달 영수증을 분류하고 이익이 얼마인지 알려줘",
+  "cell": "small-team/keep-books",
+  "language": "ko"
+ },
+ {
+  "text": "청구서가 30일 연체된 거래처에 정중하게 독촉해줘",
+  "cell": "small-team/send-invoices",
+  "language": "ko"
+ },
+ {
+  "text": "카페 신메뉴를 알리는 인스타그램 게시물을 만들어줘",
+  "cell": "small-team/create-marketing",
+  "language": "ko"
+ },
+ {
+  "text": "방 세 개짜리 집 도색 견적을 뽑아줘",
+  "cell": "small-team/prepare-quotes",
+  "language": "ko"
+ },
+ {
+  "text": "हमारे न्यूज़लेटर के लिए एक मज़ेदार चित्र बनाओ",
+  "cell": "designer/create-graphics",
+  "language": "hi"
+ },
+ {
+  "text": "क्या यह चेकआउट पेज स्क्रीन रीडर इस्तेमाल करने वालों के लिए सुलभ है?",
+  "cell": "designer/review-usability",
+  "language": "hi"
+ },
+ {
+  "text": "मेरा रिएक्ट कंपोनेंट बार-बार रेंडर हो रहा है, गड़बड़ी कहाँ है?",
+  "cell": "engineer/debug-fix",
+  "language": "hi"
+ },
+ {
+  "text": "इस करेंसी फ़ॉर्मैटर के लिए टेस्ट जोड़ो",
+  "cell": "engineer/write-tests",
+  "language": "hi"
+ },
+ {
+  "text": "सीड निवेशकों के लिए दस स्लाइड का पिच डेक बनाओ",
+  "cell": "founder/raise-funding",
+  "language": "hi"
+ },
+ {
+  "text": "दो और इंजीनियर रखने पर हमारे पास कितने महीने का रनवे बचेगा?",
+  "cell": "founder/plan-finances",
+  "language": "hi"
+ },
+ {
+  "text": "क्या कर्मचारी बची हुई छुट्टियाँ अगले साल ले जा सकते हैं?",
+  "cell": "hr/answer-policy-questions",
+  "language": "hi"
+ },
+ {
+  "text": "अगले महीने जुड़ने वाले मैनेजर के लिए ऑफ़र लेटर तैयार करो",
+  "cell": "hr/prepare-employment-documents",
+  "language": "hi"
+ },
+ {
+  "text": "ईवी चार्जिंग बाज़ार में मुख्य प्रतिस्पर्धी कौन हैं?",
+  "cell": "investor/research-companies",
+  "language": "hi"
+ },
+ {
+  "text": "डेटा रूम के वित्तीय दस्तावेज़ों में गड़बड़ियाँ ढूँढो",
+  "cell": "investor/review-diligence",
+  "language": "hi"
+ },
+ {
+  "text": "रोज़गार अनुबंध में मध्यस्थता खंड पर कोई अदालती फ़ैसला है?",
+  "cell": "lawyer/research",
+  "language": "hi"
+ },
+ {
+  "text": "फ़्रीलांसर और स्टार्टअप के बीच परामर्श अनुबंध का मसौदा लिखो",
+  "cell": "lawyer/draft",
+  "language": "hi"
+ },
+ {
+  "text": "छोटी दुकानों के लिए नई सुविधा पर ब्लॉग पोस्ट लिखो",
+  "cell": "marketer/write-content",
+  "language": "hi"
+ },
+ {
+  "text": "पिछली तिमाही के किस विज्ञापन का प्रदर्शन सबसे अच्छा रहा?",
+  "cell": "marketer/analyze-campaigns",
+  "language": "hi"
+ },
+ {
+  "text": "इन-ऐप सूचनाओं के लिए प्रोडक्ट स्पेक लिखो",
+  "cell": "pm/write-prd",
+  "language": "hi"
+ },
+ {
+  "text": "क्या नए ऑनबोर्डिंग से पहले हफ़्ते का रिटेंशन बढ़ा?",
+  "cell": "pm/analyze-metrics",
+  "language": "hi"
+ },
+ {
+  "text": "बैकएंड पद के आवेदकों को क्रम में लगाओ",
+  "cell": "recruiter/screen-resumes",
+  "language": "hi"
+ },
+ {
+  "text": "पार्ट-टाइम अकाउंटेंट के लिए नौकरी का विज्ञापन लिखो",
+  "cell": "recruiter/write-job-descriptions",
+  "language": "hi"
+ },
+ {
+  "text": "जिस लीड ने ईमेल खोला पर जवाब नहीं दिया उसे फ़ॉलो-अप लिखो",
+  "cell": "sales/write-outreach",
+  "language": "hi"
+ },
+ {
+  "text": "आज की कॉल सीआरएम में दर्ज करो और डील आगे बढ़ाओ",
+  "cell": "sales/update-crm",
+  "language": "hi"
+ },
+ {
+  "text": "जिस ग्राहक का चालान 30 दिन से बकाया है उसे विनम्रता से याद दिलाओ",
+  "cell": "small-team/send-invoices",
+  "language": "hi"
+ },
+ {
+  "text": "हमारे कैफ़े के नए मेन्यू के लिए इंस्टाग्राम पोस्ट बनाओ",
+  "cell": "small-team/create-marketing",
+  "language": "hi"
+ }
+]

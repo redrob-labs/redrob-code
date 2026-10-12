@@ -1,6 +1,6 @@
 import { Database } from "@redrob-code/core/database/database"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
-import { httpClient } from "@redrob-code/core/effect/app-node-platform"
+import { httpClient, llmClient } from "@redrob-code/core/effect/app-node-platform"
 import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
 import { EventV2 } from "@redrob-code/core/event"
 import { Credential } from "@redrob-code/core/credential"
@@ -27,6 +27,7 @@ const applicationServices = LayerNode.group([
   Database.node,
   EventV2.node,
   httpClient,
+  llmClient,
   ToolOutputStore.cleanupNode,
   SessionV2.node,
   PermissionSaved.node,
@@ -51,6 +52,13 @@ export function createEmbeddedRoutes() {
 function makeRoutes<AuthError, AuthServices>(auth: Layer.Layer<ServerAuth.Config, AuthError, AuthServices>) {
   const serviceLayer = AppNodeBuilder.build(applicationServices, [[SessionExecution.node, SessionExecutionLocal.node]])
 
+  // The chat-completion handler takes the LLM client inside the request (its streaming reply reads it after
+  // the handler returns), so LLMClient is a per-request requirement of the API rather than a construction
+  // dependency -- Layer.provide(serviceLayer) does not discharge it. It is a global service, identical for
+  // every request, so provide it once here. This keeps the embedded routes self-contained (no residual
+  // request requirement leaking to callers, cf. PermissionSaved which genuinely varies per request).
+  const llmClientLayer = AppNodeBuilder.build(LayerNode.group([llmClient]))
+
   return HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
     Layer.provide(handlers),
     Layer.provide(sessionLocationLayer),
@@ -59,7 +67,7 @@ function makeRoutes<AuthError, AuthServices>(auth: Layer.Layer<ServerAuth.Config
     Layer.provide(schemaErrorLayer),
     Layer.provide(auth),
     Layer.provide(serviceLayer),
-  )
+  ).pipe(HttpRouter.provideRequest(llmClientLayer))
 }
 
 export const routes = createRoutes()

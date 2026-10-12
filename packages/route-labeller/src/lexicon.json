@@ -1,0 +1,632 @@
+{
+  "version": 1,
+  "edition": "2026-10-06",
+  "default": "small-team/answer-customers",
+  "professionAliases": {
+    "product-manager": "pm",
+    "product": "pm",
+    "salesperson": "sales",
+    "sales-rep": "sales",
+    "small-business": "small-team",
+    "smb": "small-team",
+    "recruiting": "recruiter",
+    "talent": "recruiter",
+    "people": "hr",
+    "legal": "lawyer",
+    "attorney": "lawyer",
+    "developer": "engineer",
+    "software-engineer": "engineer",
+    "ux": "designer",
+    "vc": "investor",
+    "marketing": "marketer"
+  },
+  "professions": {
+    "designer": {
+      "en": ["designer", "design", "figma", "ui", "ux", "mockup", "wireframe", "prototype"],
+      "ko": ["디자이너", "디자인", "피그마", "시안", "와이어프레임", "프로토타입"],
+      "hi": ["डिज़ाइनर", "डिज़ाइन", "मॉकअप", "प्रोटोटाइप"]
+    },
+    "engineer": {
+      "en": ["code", "function", "bug", "api", "repo", "deploy", "typescript", "python", "engineer"],
+      "ko": ["코드", "함수", "버그", "개발", "배포", "엔지니어"],
+      "hi": ["कोड", "फ़ंक्शन", "बग", "डेवलपर", "इंजीनियर"]
+    },
+    "founder": {
+      "en": ["startup", "founder", "investors", "runway", "fundraise", "seed", "series"],
+      "ko": ["스타트업", "창업", "창업자", "투자 유치", "런웨이"],
+      "hi": ["स्टार्टअप", "संस्थापक", "फंडिंग", "निवेश"]
+    },
+    "hr": {
+      "en": ["employee", "hr", "benefits", "policy", "leave", "payroll", "handbook"],
+      "ko": ["직원", "인사", "복리후생", "휴가", "규정", "급여"],
+      "hi": ["कर्मचारी", "एचआर", "छुट्टी", "नीति", "वेतन"]
+    },
+    "investor": {
+      "en": ["deal", "portfolio", "lp", "fund", "valuation", "cap table", "term sheet"],
+      "ko": ["딜", "포트폴리오", "펀드", "밸류에이션", "투자자"],
+      "hi": ["डील", "पोर्टफोलियो", "फंड", "मूल्यांकन", "निवेशक"]
+    },
+    "lawyer": {
+      "en": ["contract", "clause", "legal", "law", "court", "statute", "counsel", "client matter"],
+      "ko": ["계약", "조항", "법률", "법원", "판례", "변호사", "의뢰인"],
+      "hi": ["अनुबंध", "क़ानून", "कानूनी", "अदालत", "वकील", "धारा"]
+    },
+    "marketer": {
+      "en": ["marketing", "campaign", "brand", "audience", "seo", "copy", "launch"],
+      "ko": ["마케팅", "캠페인", "브랜드", "타깃", "카피"],
+      "hi": ["मार्केटिंग", "अभियान", "ब्रांड", "ऑडियंस"]
+    },
+    "pm": {
+      "en": ["product", "roadmap", "prd", "feature", "spec", "users", "stakeholder"],
+      "ko": ["제품", "로드맵", "기능", "명세", "기획"],
+      "hi": ["प्रोडक्ट", "रोडमैप", "फ़ीचर", "स्पेक"]
+    },
+    "recruiter": {
+      "en": ["candidate", "resume", "cv", "interview", "hiring", "recruit", "job"],
+      "ko": ["후보자", "이력서", "면접", "채용", "지원자"],
+      "hi": ["उम्मीदवार", "रिज़्यूमे", "इंटरव्यू", "भर्ती", "नौकरी"]
+    },
+    "sales": {
+      "en": ["prospect", "lead", "deal", "pipeline", "quota", "crm", "account"],
+      "ko": ["잠재 고객", "리드", "영업", "파이프라인", "고객사"],
+      "hi": ["संभावित ग्राहक", "लीड", "बिक्री", "पाइपलाइन"]
+    },
+    "small-team": {
+      "en": ["customer", "invoice", "shop", "store", "bookkeeping", "small business", "order"],
+      "ko": ["고객", "청구서", "가게", "매장", "장부", "주문"],
+      "hi": ["ग्राहक", "चालान", "दुकान", "हिसाब", "ऑर्डर"]
+    }
+  },
+  "tasks": {
+    "designer/design-screens": {
+      "en": ["screen", "app screen", "prototype", "mockup", "wireframe", "layout", "onboarding flow"],
+      "ko": ["화면", "앱 화면", "프로토타입", "시안", "레이아웃"],
+      "hi": ["स्क्रीन", "प्रोटोटाइप", "लेआउट"],
+      "examples": {
+        "en": ["Design the onboarding screens for our mobile banking app", "Make a clickable prototype of the checkout flow"],
+        "ko": ["모바일 앱 온보딩 화면을 디자인해줘"],
+        "hi": ["हमारे ऐप के लॉगिन स्क्रीन का डिज़ाइन बनाओ"]
+      }
+    },
+    "designer/create-graphics": {
+      "en": ["graphic", "banner", "poster", "illustration", "visual", "social post image", "logo"],
+      "ko": ["그래픽", "배너", "포스터", "일러스트", "비주얼", "로고"],
+      "hi": ["ग्राफ़िक", "बैनर", "पोस्टर", "लोगो"],
+      "examples": {
+        "en": ["Create a launch banner for our new product in brand colors", "Draw an illustration for the blog header"],
+        "ko": ["신제품 출시 배너 이미지를 만들어줘"],
+        "hi": ["नए उत्पाद के लिए एक पोस्टर बनाओ"]
+      }
+    },
+    "designer/research-users": {
+      "en": ["user research", "interview notes", "persona", "usability test results", "feedback themes"],
+      "ko": ["사용자 조사", "인터뷰 노트", "페르소나", "피드백 정리"],
+      "hi": ["यूज़र रिसर्च", "पर्सोना", "फ़ीडबैक"],
+      "examples": {
+        "en": ["Summarise these user interview notes into themes and personas"],
+        "ko": ["사용자 인터뷰 내용을 주제별로 정리해줘"],
+        "hi": ["इन यूज़र इंटरव्यू नोट्स से मुख्य बातें निकालो"]
+      }
+    },
+    "designer/handoff-specs": {
+      "en": ["handoff", "spec", "redline", "design tokens", "component specs", "developer handoff"],
+      "ko": ["핸드오프", "디자인 명세", "디자인 토큰", "컴포넌트 명세"],
+      "hi": ["हैंडऑफ़", "डिज़ाइन स्पेक", "टोकन"],
+      "examples": {
+        "en": ["Write the developer handoff spec for this settings page design"],
+        "ko": ["이 디자인을 개발자에게 넘길 명세서를 작성해줘"],
+        "hi": ["इस डिज़ाइन के लिए डेवलपर हैंडऑफ़ स्पेक लिखो"]
+      }
+    },
+    "designer/review-usability": {
+      "en": ["usability", "accessibility", "wcag", "contrast", "heuristic review", "a11y"],
+      "ko": ["사용성", "접근성", "명도 대비", "휴리스틱"],
+      "hi": ["उपयोगिता", "सुलभता", "कंट्रास्ट"],
+      "examples": {
+        "en": ["Review this signup form for accessibility and usability issues"],
+        "ko": ["이 화면의 접근성 문제를 검토해줘"],
+        "hi": ["इस फ़ॉर्म की सुलभता जाँचो"]
+      }
+    },
+    "engineer/build-features": {
+      "en": ["implement", "build", "write a function", "add endpoint", "feature", "component", "script"],
+      "ko": ["구현", "기능 개발", "코드 작성", "엔드포인트"],
+      "hi": ["फ़ीचर बनाओ", "कोड लिखो", "इम्प्लीमेंट"],
+      "examples": {
+        "en": ["Write a Python function that reverses a linked list", "Add a REST endpoint that returns the user's orders"],
+        "ko": ["사용자 목록을 반환하는 API를 구현해줘"],
+        "hi": ["एक फ़ंक्शन लिखो जो सूची को उल्टा करे"]
+      }
+    },
+    "engineer/debug-fix": {
+      "en": ["bug", "error", "stack trace", "traceback", "exception", "crash", "fix", "not working"],
+      "ko": ["버그", "에러", "오류", "예외", "디버그", "고쳐"],
+      "hi": ["बग", "एरर", "त्रुटि", "डिबग", "ठीक करो"],
+      "examples": {
+        "en": ["This throws a TypeError: cannot read properties of undefined, fix it", "Why does my test fail with this stack trace?"],
+        "ko": ["이 코드에서 발생하는 에러를 고쳐줘"],
+        "hi": ["यह कोड क्रैश हो रहा है, बग ठीक करो"]
+      }
+    },
+    "engineer/design-systems": {
+      "en": ["architecture", "system design", "scalability", "technical plan", "rfc", "migration plan", "database schema"],
+      "ko": ["아키텍처", "시스템 설계", "기술 계획", "확장성", "마이그레이션"],
+      "hi": ["आर्किटेक्चर", "सिस्टम डिज़ाइन", "तकनीकी योजना"],
+      "examples": {
+        "en": ["Design the architecture for a multi-tenant event pipeline", "Write an RFC for migrating our monolith to services"],
+        "ko": ["분산 시스템 아키텍처를 설계해줘"],
+        "hi": ["इस सेवा का सिस्टम डिज़ाइन बनाओ"]
+      }
+    },
+    "engineer/write-tests": {
+      "en": ["unit test", "tests", "test coverage", "integration test", "qa", "release checklist"],
+      "ko": ["테스트", "단위 테스트", "통합 테스트", "릴리스 검증"],
+      "hi": ["टेस्ट", "यूनिट टेस्ट", "रिलीज़ जाँच"],
+      "examples": {
+        "en": ["Write unit tests for this date parsing function"],
+        "ko": ["이 함수에 대한 단위 테스트를 작성해줘"],
+        "hi": ["इस फ़ंक्शन के लिए यूनिट टेस्ट लिखो"]
+      }
+    },
+    "engineer/review-code": {
+      "en": ["code review", "pull request", "pr", "diff", "review this code", "refactor"],
+      "ko": ["코드 리뷰", "풀 리퀘스트", "리팩터", "변경 사항"],
+      "hi": ["कोड रिव्यू", "पुल रिक्वेस्ट", "रीफ़ैक्टर"],
+      "examples": {
+        "en": ["Review this pull request diff and point out problems"],
+        "ko": ["이 PR을 리뷰하고 개선점을 알려줘"],
+        "hi": ["इस पुल रिक्वेस्ट की समीक्षा करो"]
+      }
+    },
+    "founder/raise-funding": {
+      "en": ["pitch deck", "fundraising", "investors", "seed round", "series a", "vc pitch"],
+      "ko": ["피치덱", "투자 유치", "시드", "시리즈"],
+      "hi": ["पिच डेक", "फंडरेज़िंग", "निवेशक"],
+      "examples": {
+        "en": ["Build a 12-slide pitch deck for our seed round"],
+        "ko": ["시드 투자 유치용 피치덱을 만들어줘"],
+        "hi": ["सीड राउंड के लिए पिच डेक बनाओ"]
+      }
+    },
+    "founder/plan-finances": {
+      "en": ["budget", "financial model", "runway", "burn rate", "forecast", "p&l"],
+      "ko": ["예산", "재무 모델", "런웨이", "번레이트", "손익"],
+      "hi": ["बजट", "वित्तीय मॉडल", "रनवे", "पूर्वानुमान"],
+      "examples": {
+        "en": ["Build an 18-month financial model with burn rate and runway"],
+        "ko": ["18개월 재무 모델과 런웨이를 계산해줘"],
+        "hi": ["अगले साल का बजट और वित्तीय मॉडल बनाओ"]
+      }
+    },
+    "founder/sell-customers": {
+      "en": ["first customers", "sales email", "customer outreach", "cold email", "pilot"],
+      "ko": ["첫 고객", "영업 메일", "고객 아웃리치", "콜드 메일"],
+      "hi": ["पहले ग्राहक", "सेल्स ईमेल", "आउटरीच"],
+      "examples": {
+        "en": ["Write a cold email to land our first ten pilot customers"],
+        "ko": ["첫 고객을 위한 영업 메일을 써줘"],
+        "hi": ["पहले ग्राहकों के लिए ईमेल लिखो"]
+      }
+    },
+    "founder/hire-team": {
+      "en": ["hire", "first hire", "team", "cofounder", "headcount", "org chart"],
+      "ko": ["채용", "첫 채용", "팀 구성", "조직도"],
+      "hi": ["भर्ती", "टीम बनाना", "पहली भर्ती"],
+      "examples": {
+        "en": ["Plan our first five hires and who to hire first"],
+        "ko": ["첫 다섯 명 채용 계획을 세워줘"],
+        "hi": ["हमारी पहली पाँच भर्तियों की योजना बनाओ"]
+      }
+    },
+    "founder/update-investors": {
+      "en": ["investor update", "board meeting", "board deck", "monthly update", "kpi update"],
+      "ko": ["투자자 업데이트", "이사회", "월간 보고"],
+      "hi": ["निवेशक अपडेट", "बोर्ड मीटिंग"],
+      "examples": {
+        "en": ["Draft this month's investor update with our KPIs"],
+        "ko": ["이번 달 투자자 업데이트 메일을 써줘"],
+        "hi": ["इस महीने का निवेशक अपडेट लिखो"]
+      }
+    },
+    "hr/answer-policy-questions": {
+      "en": ["policy question", "benefits", "pto", "parental leave", "expense policy", "employee asks"],
+      "ko": ["정책 문의", "복리후생", "연차", "육아휴직", "경비 규정"],
+      "hi": ["नीति प्रश्न", "लाभ", "छुट्टी", "मातृत्व अवकाश"],
+      "examples": {
+        "en": ["An employee asks how many days of parental leave they get"],
+        "ko": ["직원이 연차 이월 규정을 물어봐, 답변해줘"],
+        "hi": ["कर्मचारी पूछ रहा है कि छुट्टी कितनी मिलती है"]
+      }
+    },
+    "hr/prepare-employment-documents": {
+      "en": ["offer letter", "employment contract", "onboarding documents", "termination letter"],
+      "ko": ["오퍼레터", "근로계약서", "입사 서류", "퇴사 서류"],
+      "hi": ["ऑफ़र लेटर", "रोज़गार अनुबंध", "जॉइनिंग दस्तावेज़"],
+      "examples": {
+        "en": ["Prepare an offer letter for a senior engineer starting in March"],
+        "ko": ["신규 입사자 오퍼레터를 작성해줘"],
+        "hi": ["नए कर्मचारी के लिए ऑफ़र लेटर तैयार करो"]
+      }
+    },
+    "hr/handle-employee-relations": {
+      "en": ["complaint", "grievance", "misconduct", "investigation", "harassment report", "conflict"],
+      "ko": ["고충", "민원", "징계", "직장 내 괴롭힘", "갈등"],
+      "hi": ["शिकायत", "अनुशासन", "जाँच", "विवाद"],
+      "examples": {
+        "en": ["How should we handle a complaint between two team members?"],
+        "ko": ["직원 간 갈등 사안을 어떻게 처리할지 알려줘"],
+        "hi": ["दो कर्मचारियों के बीच शिकायत कैसे संभालें"]
+      }
+    },
+    "hr/run-performance-reviews": {
+      "en": ["performance review", "self review", "feedback form", "calibration", "rating"],
+      "ko": ["성과 평가", "자기 평가", "평가 면담", "피드백"],
+      "hi": ["प्रदर्शन समीक्षा", "मूल्यांकन", "फ़ीडबैक"],
+      "examples": {
+        "en": ["Write performance review feedback for a mid-level designer"],
+        "ko": ["팀원 성과 평가 코멘트를 작성해줘"],
+        "hi": ["टीम सदस्य की प्रदर्शन समीक्षा लिखो"]
+      }
+    },
+    "hr/write-hr-policies": {
+      "en": ["hr policy", "handbook", "remote work policy", "code of conduct"],
+      "ko": ["인사 규정", "핸드북", "재택근무 규정", "행동 강령"],
+      "hi": ["एचआर नीति", "हैंडबुक", "आचार संहिता"],
+      "examples": {
+        "en": ["Write a remote work policy for our employee handbook"],
+        "ko": ["재택근무 규정을 작성해줘"],
+        "hi": ["वर्क फ़्रॉम होम नीति लिखो"]
+      }
+    },
+    "investor/screen-deals": {
+      "en": ["screen this deal", "inbound deck", "investment thesis fit", "deal flow"],
+      "ko": ["딜 검토", "딜 스크리닝", "투자 적합성"],
+      "hi": ["डील स्क्रीनिंग", "निवेश योग्य"],
+      "examples": {
+        "en": ["Screen this startup's deck against our investment thesis"],
+        "ko": ["이 스타트업이 우리 투자 기준에 맞는지 검토해줘"],
+        "hi": ["इस स्टार्टअप की डील की जाँच करो"]
+      }
+    },
+    "investor/research-companies": {
+      "en": ["market size", "tam", "competitors", "industry research", "company research"],
+      "ko": ["시장 규모", "경쟁사", "산업 조사", "기업 조사"],
+      "hi": ["बाज़ार आकार", "प्रतिस्पर्धी", "उद्योग अनुसंधान"],
+      "examples": {
+        "en": ["Research the market size and competitors for vertical SaaS in logistics"],
+        "ko": ["물류 SaaS 시장 규모와 경쟁사를 조사해줘"],
+        "hi": ["इस उद्योग का बाज़ार आकार बताओ"]
+      }
+    },
+    "investor/write-memos": {
+      "en": ["investment memo", "ic memo", "recommendation", "investment committee"],
+      "ko": ["투자 메모", "투심 보고서", "투자 심의"],
+      "hi": ["निवेश मेमो", "निवेश समिति"],
+      "examples": {
+        "en": ["Write the investment committee memo for this Series A"],
+        "ko": ["이 시리즈 A 투자 메모를 작성해줘"],
+        "hi": ["इस निवेश के लिए मेमो लिखो"]
+      }
+    },
+    "investor/review-diligence": {
+      "en": ["due diligence", "data room", "financial statements", "diligence checklist"],
+      "ko": ["실사", "데이터룸", "재무제표"],
+      "hi": ["ड्यू डिलिजेंस", "डेटा रूम", "वित्तीय विवरण"],
+      "examples": {
+        "en": ["Review the data room financials and flag diligence risks"],
+        "ko": ["데이터룸 재무 자료를 실사 관점에서 검토해줘"],
+        "hi": ["डेटा रूम के दस्तावेज़ों की ड्यू डिलिजेंस करो"]
+      }
+    },
+    "investor/report-portfolio": {
+      "en": ["lp report", "quarterly letter", "portfolio update", "fund performance", "irr"],
+      "ko": ["LP 보고", "분기 보고서", "포트폴리오 현황", "펀드 수익률"],
+      "hi": ["एलपी रिपोर्ट", "तिमाही पत्र", "पोर्टफोलियो"],
+      "examples": {
+        "en": ["Draft the quarterly LP letter on fund performance"],
+        "ko": ["분기 LP 보고서를 작성해줘"],
+        "hi": ["तिमाही एलपी रिपोर्ट लिखो"]
+      }
+    },
+    "lawyer/client": {
+      "en": ["client update", "advise the client", "matter status", "client email", "engagement"],
+      "ko": ["의뢰인", "자문", "사건 진행", "고객 안내"],
+      "hi": ["मुवक्किल", "क्लाइंट को सलाह", "मामले की स्थिति"],
+      "examples": {
+        "en": ["Write the client an update on where their lease dispute stands"],
+        "ko": ["의뢰인에게 소송 진행 상황을 안내하는 메일을 써줘"],
+        "hi": ["मुवक्किल को मामले की प्रगति बताओ"]
+      }
+    },
+    "lawyer/research": {
+      "en": ["case law", "precedent", "statute", "jurisdiction", "legal research", "regulation"],
+      "ko": ["판례", "법령", "관할", "법률 리서치", "규제"],
+      "hi": ["नज़ीर", "क़ानून", "क्षेत्राधिकार", "क़ानूनी शोध"],
+      "examples": {
+        "en": ["Find case law on non-compete enforceability in California"],
+        "ko": ["경업금지 약정 관련 판례를 찾아줘"],
+        "hi": ["इस विषय पर अदालत के फ़ैसले खोजो"]
+      }
+    },
+    "lawyer/review": {
+      "en": ["review this contract", "review", "redline", "clause", "indemnity", "nda review", "one-sided", "risk in agreement"],
+      "ko": ["계약서 검토", "조항", "손해배상", "비밀유지계약 검토"],
+      "hi": ["अनुबंध समीक्षा", "धारा", "क्षतिपूर्ति"],
+      "examples": {
+        "en": ["Review this NDA and flag any one-sided clauses"],
+        "ko": ["이 계약서의 불리한 조항을 검토해줘"],
+        "hi": ["इस अनुबंध की जोखिम भरी धाराएँ बताओ"]
+      }
+    },
+    "lawyer/memo": {
+      "en": ["legal memo", "brief", "memorandum", "argument", "motion"],
+      "ko": ["법률 메모", "의견서", "준비서면", "서면"],
+      "hi": ["क़ानूनी मेमो", "ब्रीफ़", "तर्क"],
+      "examples": {
+        "en": ["Write a legal memo on whether the arbitration clause applies"],
+        "ko": ["중재 조항 적용 여부에 대한 법률 의견서를 써줘"],
+        "hi": ["इस मुद्दे पर क़ानूनी मेमो लिखो"]
+      }
+    },
+    "lawyer/draft": {
+      "en": ["draft a contract", "agreement", "nda", "terms of service", "msa", "lease"],
+      "ko": ["계약서 초안", "약관", "용역계약", "임대차 계약"],
+      "hi": ["अनुबंध का मसौदा", "समझौता", "शर्तें"],
+      "examples": {
+        "en": ["Draft a mutual NDA between two software companies"],
+        "ko": ["용역 계약서 초안을 작성해줘"],
+        "hi": ["एक सेवा अनुबंध का मसौदा तैयार करो"]
+      }
+    },
+    "marketer/write-content": {
+      "en": ["blog post", "landing page copy", "tagline", "social post", "newsletter", "ad copy"],
+      "ko": ["블로그 글", "랜딩 페이지 카피", "슬로건", "SNS 게시물"],
+      "hi": ["ब्लॉग पोस्ट", "विज्ञापन कॉपी", "टैगलाइन"],
+      "examples": {
+        "en": ["Write landing page copy for our new analytics product"],
+        "ko": ["신제품 랜딩 페이지 카피를 써줘"],
+        "hi": ["हमारे उत्पाद के लिए ब्लॉग पोस्ट लिखो"]
+      }
+    },
+    "marketer/plan-campaigns": {
+      "en": ["marketing plan", "campaign strategy", "go to market", "launch plan", "channel mix"],
+      "ko": ["마케팅 계획", "캠페인 전략", "출시 계획", "채널 전략"],
+      "hi": ["मार्केटिंग योजना", "अभियान रणनीति", "लॉन्च योजना"],
+      "examples": {
+        "en": ["Plan a go-to-market campaign for our Q4 launch"],
+        "ko": ["4분기 출시 마케팅 캠페인 전략을 세워줘"],
+        "hi": ["नए लॉन्च के लिए मार्केटिंग योजना बनाओ"]
+      }
+    },
+    "marketer/run-messaging-campaigns": {
+      "en": ["email campaign", "drip sequence", "newsletter send", "push notification", "sms campaign"],
+      "ko": ["이메일 캠페인", "뉴스레터 발송", "푸시 알림", "문자 캠페인"],
+      "hi": ["ईमेल अभियान", "न्यूज़लेटर", "एसएमएस अभियान"],
+      "examples": {
+        "en": ["Write a three-email onboarding drip sequence"],
+        "ko": ["신규 가입자용 이메일 캠페인 3편을 작성해줘"],
+        "hi": ["नए ग्राहकों के लिए ईमेल अभियान लिखो"]
+      }
+    },
+    "marketer/analyze-campaigns": {
+      "en": ["campaign results", "ctr", "conversion rate", "roas", "attribution", "marketing report"],
+      "ko": ["캠페인 성과", "클릭률", "전환율", "광고 효율"],
+      "hi": ["अभियान परिणाम", "कन्वर्ज़न दर", "रिपोर्ट"],
+      "examples": {
+        "en": ["Analyze last month's campaign results and report CTR and conversion"],
+        "ko": ["지난달 캠페인 성과를 분석해줘"],
+        "hi": ["पिछले अभियान के परिणामों का विश्लेषण करो"]
+      }
+    },
+    "marketer/optimize-search": {
+      "en": ["seo", "keywords", "search ranking", "meta description", "ai answers", "geo"],
+      "ko": ["검색 최적화", "키워드", "검색 순위", "메타 설명"],
+      "hi": ["एसईओ", "कीवर्ड", "सर्च रैंकिंग"],
+      "examples": {
+        "en": ["Optimize this article for SEO and AI search answers"],
+        "ko": ["이 글을 검색 최적화해줘"],
+        "hi": ["इस लेख का एसईओ सुधारो"]
+      }
+    },
+    "pm/plan-roadmap": {
+      "en": ["roadmap", "prioritize", "rice", "backlog", "quarterly plan", "okrs"],
+      "ko": ["로드맵", "우선순위", "백로그", "분기 계획"],
+      "hi": ["रोडमैप", "प्राथमिकता", "बैकलॉग"],
+      "examples": {
+        "en": ["Prioritize this backlog into a Q1 roadmap"],
+        "ko": ["다음 분기 로드맵과 기능 우선순위를 정해줘"],
+        "hi": ["अगली तिमाही का रोडमैप बनाओ"]
+      }
+    },
+    "pm/write-prd": {
+      "en": ["prd", "product spec", "requirements", "user stories", "acceptance criteria"],
+      "ko": ["PRD", "제품 명세", "요구사항", "사용자 스토리"],
+      "hi": ["पीआरडी", "प्रोडक्ट स्पेक", "आवश्यकताएँ"],
+      "examples": {
+        "en": ["Write a PRD for saved searches with user stories"],
+        "ko": ["저장된 검색 기능의 PRD를 작성해줘"],
+        "hi": ["इस फ़ीचर का पीआरडी लिखो"]
+      }
+    },
+    "pm/synthesize-feedback": {
+      "en": ["customer feedback", "feature requests", "nps comments", "support tickets themes"],
+      "ko": ["고객 피드백", "기능 요청", "NPS 의견"],
+      "hi": ["ग्राहक फ़ीडबैक", "फ़ीचर अनुरोध"],
+      "examples": {
+        "en": ["Group these feature requests and NPS comments into themes"],
+        "ko": ["고객 피드백을 주제별로 정리해줘"],
+        "hi": ["ग्राहकों के फ़ीडबैक को विषयों में बाँटो"]
+      }
+    },
+    "pm/stakeholder-updates": {
+      "en": ["stakeholder update", "status update", "launch review deck", "exec summary"],
+      "ko": ["이해관계자 업데이트", "진행 보고", "발표 자료", "요약 보고"],
+      "hi": ["हितधारक अपडेट", "स्टेटस अपडेट", "प्रेज़ेंटेशन"],
+      "examples": {
+        "en": ["Write a weekly status update for leadership on the launch"],
+        "ko": ["경영진에게 보낼 주간 진행 보고를 써줘"],
+        "hi": ["प्रबंधन के लिए साप्ताहिक अपडेट लिखो"]
+      }
+    },
+    "pm/analyze-metrics": {
+      "en": ["a/b test", "experiment", "retention", "funnel", "dau", "product metrics", "cohort"],
+      "ko": ["A/B 테스트", "실험", "리텐션", "퍼널", "지표"],
+      "hi": ["ए/बी टेस्ट", "प्रयोग", "रिटेंशन", "मेट्रिक्स"],
+      "examples": {
+        "en": ["Analyze this A/B test and tell me if the lift is significant"],
+        "ko": ["이 A/B 테스트 결과를 분석해줘"],
+        "hi": ["इस प्रयोग के परिणामों का विश्लेषण करो"]
+      }
+    },
+    "recruiter/find-contact-candidates": {
+      "en": ["source candidates", "sourcing", "linkedin", "reach out to candidate", "boolean search"],
+      "ko": ["후보자 발굴", "소싱", "링크드인", "후보자 연락"],
+      "hi": ["उम्मीदवार खोजो", "सोर्सिंग", "लिंक्डइन"],
+      "examples": {
+        "en": ["Find senior backend engineers in Bangalore and write an outreach message"],
+        "ko": ["백엔드 개발자 후보를 찾아 연락 메시지를 써줘"],
+        "hi": ["बेंगलुरु में बैकएंड इंजीनियर खोजो"]
+      }
+    },
+    "recruiter/screen-resumes": {
+      "en": ["resume", "cv", "shortlist", "screen candidates", "applicants"],
+      "ko": ["이력서", "서류 심사", "후보 선별", "지원자"],
+      "hi": ["रिज़्यूमे", "सीवी", "शॉर्टलिस्ट", "आवेदक"],
+      "examples": {
+        "en": ["Screen these resumes against the job description and shortlist five"],
+        "ko": ["이 이력서들을 검토해서 후보를 추려줘"],
+        "hi": ["इन रिज़्यूमे में से पाँच उम्मीदवार चुनो"]
+      }
+    },
+    "recruiter/prepare-interviews": {
+      "en": ["interview questions", "scorecard", "interview feedback", "interview kit"],
+      "ko": ["면접 질문", "평가표", "면접 피드백"],
+      "hi": ["इंटरव्यू प्रश्न", "स्कोरकार्ड", "इंटरव्यू फ़ीडबैक"],
+      "examples": {
+        "en": ["Prepare interview questions and a scorecard for a product designer"],
+        "ko": ["프로덕트 디자이너 면접 질문을 준비해줘"],
+        "hi": ["इस भूमिका के लिए इंटरव्यू प्रश्न बनाओ"]
+      }
+    },
+    "recruiter/write-job-descriptions": {
+      "en": ["job description", "job posting", "jd", "role description", "careers page"],
+      "ko": ["채용 공고", "직무 기술서", "JD"],
+      "hi": ["जॉब डिस्क्रिप्शन", "नौकरी विज्ञापन"],
+      "examples": {
+        "en": ["Write a job description for a senior data analyst"],
+        "ko": ["데이터 분석가 채용 공고를 작성해줘"],
+        "hi": ["डेटा एनालिस्ट के लिए जॉब डिस्क्रिप्शन लिखो"]
+      }
+    },
+    "recruiter/schedule-interviews": {
+      "en": ["schedule interview", "availability", "calendar invite", "reschedule", "candidate update"],
+      "ko": ["면접 일정", "일정 조율", "캘린더 초대"],
+      "hi": ["इंटरव्यू शेड्यूल", "समय तय करो", "कैलेंडर"],
+      "examples": {
+        "en": ["Schedule second-round interviews for three candidates next week"],
+        "ko": ["다음 주 2차 면접 일정을 조율해줘"],
+        "hi": ["अगले हफ़्ते इंटरव्यू शेड्यूल करो"]
+      }
+    },
+    "sales/write-outreach": {
+      "en": ["outreach email", "follow up", "cold email", "sequence", "prospecting email"],
+      "ko": ["아웃리치 메일", "팔로업", "콜드 메일"],
+      "hi": ["आउटरीच ईमेल", "फ़ॉलो-अप", "कोल्ड ईमेल"],
+      "examples": {
+        "en": ["Write a follow-up email to a prospect who went quiet after the demo"],
+        "ko": ["데모 후 연락이 없는 고객에게 팔로업 메일을 써줘"],
+        "hi": ["डेमो के बाद ग्राहक को फ़ॉलो-अप ईमेल लिखो"]
+      }
+    },
+    "sales/create-proposals": {
+      "en": ["proposal", "sales deck", "pricing proposal", "rfp response", "business case"],
+      "ko": ["제안서", "영업 자료", "견적 제안", "RFP"],
+      "hi": ["प्रस्ताव", "सेल्स डेक", "आरएफ़पी"],
+      "examples": {
+        "en": ["Create a proposal and sales deck for a 200-seat enterprise deal"],
+        "ko": ["기업 고객용 제안서를 만들어줘"],
+        "hi": ["इस ग्राहक के लिए प्रस्ताव बनाओ"]
+      }
+    },
+    "sales/answer-customers": {
+      "en": ["customer question", "pricing question", "objection", "product question", "how does it work"],
+      "ko": ["고객 문의", "가격 문의", "반론 대응"],
+      "hi": ["ग्राहक का प्रश्न", "कीमत प्रश्न", "आपत्ति"],
+      "examples": {
+        "en": ["A prospect asks whether we support SSO; answer them"],
+        "ko": ["고객이 SSO 지원 여부를 물어봐, 답변해줘"],
+        "hi": ["ग्राहक पूछ रहा है कि कीमत क्या है, जवाब दो"]
+      }
+    },
+    "sales/research-prospects": {
+      "en": ["account research", "prospect research", "decision maker", "company background", "icp"],
+      "ko": ["계정 조사", "잠재 고객 조사", "의사결정자"],
+      "hi": ["संभावित ग्राहक शोध", "निर्णयकर्ता", "कंपनी पृष्ठभूमि"],
+      "examples": {
+        "en": ["Research this account and find the decision makers before my call"],
+        "ko": ["미팅 전에 이 고객사를 조사해줘"],
+        "hi": ["कॉल से पहले इस कंपनी के बारे में पता करो"]
+      }
+    },
+    "sales/update-crm": {
+      "en": ["crm", "salesforce", "hubspot", "pipeline", "deal stage", "log the call"],
+      "ko": ["CRM", "파이프라인", "딜 단계", "영업 기록"],
+      "hi": ["सीआरएम", "पाइपलाइन", "डील स्टेज"],
+      "examples": {
+        "en": ["Update the CRM with notes from today's calls and move the deal stages"],
+        "ko": ["오늘 미팅 내용을 CRM에 정리해줘"],
+        "hi": ["आज की कॉल के नोट्स सीआरएम में डालो"]
+      }
+    },
+    "small-team/answer-customers": {
+      "en": ["reply to customer", "customer message", "refund", "order status", "support email", "complaint"],
+      "ko": ["고객 답장", "고객 메시지", "환불", "배송 문의"],
+      "hi": ["ग्राहक को जवाब", "रिफ़ंड", "ऑर्डर स्थिति"],
+      "examples": {
+        "en": ["Reply to a customer asking where their order is", "Answer this email from a customer who wants a refund"],
+        "ko": ["배송이 늦다는 고객 문의에 답장해줘"],
+        "hi": ["ग्राहक के रिफ़ंड वाले ईमेल का जवाब दो"]
+      }
+    },
+    "small-team/keep-books": {
+      "en": ["bookkeeping", "expenses", "cash flow", "reconcile", "ledger", "receipts"],
+      "ko": ["장부", "지출", "현금 흐름", "정산", "영수증"],
+      "hi": ["हिसाब-किताब", "खर्च", "नकदी प्रवाह", "रसीद"],
+      "examples": {
+        "en": ["Categorise these expenses and track this month's cash flow"],
+        "ko": ["이번 달 지출을 정리하고 현금 흐름을 계산해줘"],
+        "hi": ["इस महीने के खर्च का हिसाब बनाओ"]
+      }
+    },
+    "small-team/send-invoices": {
+      "en": ["invoice", "payment reminder", "overdue", "chase payment", "billing"],
+      "ko": ["청구서", "인보이스", "미수금", "결제 독촉"],
+      "hi": ["चालान", "भुगतान अनुस्मारक", "बकाया"],
+      "examples": {
+        "en": ["Send an invoice and a polite reminder for the overdue payment"],
+        "ko": ["미수금 독촉 메일과 청구서를 보내줘"],
+        "hi": ["बकाया भुगतान के लिए याद दिलाने वाला संदेश लिखो"]
+      }
+    },
+    "small-team/create-marketing": {
+      "en": ["flyer", "instagram post", "promotion", "sale poster", "menu", "local ad"],
+      "ko": ["전단지", "인스타그램 게시물", "할인 홍보", "포스터"],
+      "hi": ["पर्चा", "इंस्टाग्राम पोस्ट", "प्रचार"],
+      "examples": {
+        "en": ["Make a flyer for our weekend bakery sale"],
+        "ko": ["주말 할인 행사 전단지를 만들어줘"],
+        "hi": ["दुकान की सेल के लिए पर्चा बनाओ"]
+      }
+    },
+    "small-team/prepare-quotes": {
+      "en": ["quote", "estimate", "price quote", "proposal for job", "bid"],
+      "ko": ["견적서", "견적", "단가"],
+      "hi": ["कोटेशन", "अनुमान", "बोली"],
+      "examples": {
+        "en": ["Prepare a quote for renovating a two-bedroom flat"],
+        "ko": ["인테리어 공사 견적서를 준비해줘"],
+        "hi": ["इस काम के लिए कोटेशन तैयार करो"]
+      }
+    }
+  }
+}

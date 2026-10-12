@@ -4,7 +4,7 @@ export * as SkillPlugin from "./skill"
 
 import { define } from "./internal"
 import { Effect } from "effect"
-import { AbsolutePath } from "../schema"
+import { AbsolutePath, type DeepMutable } from "../schema"
 import { SkillV2 } from "../skill"
 import customizeRedrobContent from "./skill/customize-redrob.md" with { type: "text" }
 import documentToolchainContent from "./skill/document-toolchain.md" with { type: "text" }
@@ -62,16 +62,7 @@ export const BuiltinSkills: ReadonlyArray<SkillV2.Info> = [
       "Use when the task is about the page the user is looking at: reading its text, finding nodes by selector, filling a field, clicking, or navigating. Covers the six `page` calls in code mode, what a refusal means, and the round-trip cost. Do not use for fetching a URL the user is not on, which is a plain HTTP request.",
     location: AbsolutePath.make("/builtin/page-control.md"),
     autoInject: SkillV2.AutoInject.make({
-      keywords: [
-        "this page",
-        "current page",
-        "on screen",
-        "the tab",
-        "click the",
-        "fill in",
-        "selector",
-        "scrape",
-      ],
+      keywords: ["this page", "current page", "on screen", "the tab", "click the", "fill in", "selector", "scrape"],
     }),
     content: PageControlContent,
   }),
@@ -91,7 +82,8 @@ export const Plugin = define({
   effect: Effect.fn(function* (ctx) {
     yield* ctx.skill.transform((draft) => {
       for (const skill of BuiltinSkills) {
-        draft.source(SkillV2.EmbeddedSource.make({ type: "embedded", skill }))
+        // The plugin API takes the SDK's generated type, which spells arrays mutable; the host decodes it.
+        draft.source(SkillV2.EmbeddedSource.make({ type: "embedded", skill }) as DeepMutable<SkillV2.EmbeddedSource>)
       }
     })
   }),

@@ -2135,6 +2135,16 @@ export type ServerVariantCompareOutput = {
   readonly totalCostUsd: number
 }
 
+export type ServerInsightsSessionsInput = {
+  readonly sessions: { readonly sessions: ReadonlyArray<{ readonly [x: string]: unknown }> }["sessions"]
+}
+
+export type ServerInsightsSessionsOutput = {
+  readonly accepted: number
+  readonly updated: number
+  readonly rejected: ReadonlyArray<{ readonly externalId: string; readonly reason: string }>
+}
+
 export type IntegrationsListInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined

@@ -1,0 +1,22 @@
+{
+  "id": "sentence-transformers/distiluse-base-multilingual-cased-v2",
+  "revision": "bfe45d0732ca50787611c0fe107ba278c7f3f889",
+  "license": "Apache-2.0",
+  "dimensions": 512,
+  "maxTokens": 128,
+  "model": {
+    "file": "model_int8.onnx",
+    "sha256": "d21142a1421d3cda61b7d016d1170e5d7ab682c62ce4f0609c1ce3d579676186",
+    "url": "https://huggingface.co/Xenova/distiluse-base-multilingual-cased-v2/resolve/cad454171d918d9873a2701ba245054b6c1760dd/onnx/model_int8.onnx"
+  },
+  "tokenizer": {
+    "file": "tokenizer.json",
+    "sha256": "bf1b59b7b11c95f194f51708d918eea378e09d05f84c0e1656dc5180e8117088",
+    "url": "https://huggingface.co/Xenova/distiluse-base-multilingual-cased-v2/resolve/cad454171d918d9873a2701ba245054b6c1760dd/tokenizer.json"
+  },
+  "dense": {
+    "file": "dense.safetensors",
+    "sha256": "0a21b1ce908e772ebf09f93c20ca09524c32706e9918d9c0169a3f0663b191ed",
+    "url": "https://huggingface.co/sentence-transformers/distiluse-base-multilingual-cased-v2/resolve/bfe45d0732ca50787611c0fe107ba278c7f3f889/2_Dense/model.safetensors"
+  }
+}

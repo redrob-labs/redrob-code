@@ -1,0 +1,84 @@
+{
+  "name": "@redrob-labs/route-labeller",
+  "version": "0.0.0",
+  "description": "Labels a request with its ModelGuide profession and task on the person's machine, for Redrob Auto to route on.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redrob-labs/redrob-code.git",
+    "directory": "packages/route-labeller"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "development": "./src/node.ts",
+      "default": "./dist/node.js"
+    },
+    "./lexicon.json": "./src/lexicon.json",
+    "./manifest.json": "./src/manifest.json",
+    "./wordpiece": {
+      "types": "./src/wordpiece.ts",
+      "development": "./src/wordpiece.ts",
+      "default": "./dist/wordpiece.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "eval",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsgo --noEmit",
+    "model": "bun scripts/prepare-model.ts",
+    "prototypes": "bun scripts/build-prototypes.ts",
+    "eval": "bun scripts/evaluate.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "onnxruntime-node": ">=1.20.0",
+    "onnxruntime-web": ">=1.20.0"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-node": {
+      "optional": true
+    },
+    "onnxruntime-web": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "onnxruntime-node": "1.23.0",
+    "tsup": "^8.5.0",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "default": "./dist/node.js"
+      },
+      "./wordpiece": {
+        "types": "./dist/wordpiece.d.ts",
+        "default": "./dist/wordpiece.js"
+      },
+      "./lexicon.json": "./src/lexicon.json",
+      "./manifest.json": "./src/manifest.json"
+    }
+  }
+}
