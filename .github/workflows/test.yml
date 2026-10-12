@@ -157,9 +157,42 @@ jobs:
         working-directory: packages/redrob
         run: bun run test:httpapi
 
+  labellers:
+    name: labellers (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+
+      # The shared on-device labellers (route-labeller, work-labeller) live here as source
+      # and are consumed by Cowork, Office and Design downstream, so their suites gate here.
+      # Tests resolve the package `src` via the `development` export condition. route-labeller
+      # ships no unit suite (its checks are the `eval` + prototype scripts); work-labeller
+      # carries the 77-test classifier/tokeniser/dataset suite under test/ and model/.
+      - name: Run work-labeller tests
+        working-directory: packages/work-labeller
+        run: bun --conditions=development test test model
+
   unit:
     name: unit (linux)
-    needs: [engine, core, httpapi]
+    needs: [engine, core, httpapi, labellers]
     # `always()` so a failing dependency still reports here rather than leaving the required
     # check permanently "expected" — a skipped required check never resolves and blocks the
     # pull request with no visible failure to fix.
@@ -169,11 +202,11 @@ jobs:
       - name: Report
         run: |
           set -euo pipefail
-          printf 'engine  %s\ncore    %s\nhttpapi %s\n' \
-            "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"
+          printf 'engine     %s\ncore       %s\nhttpapi    %s\nlabellers  %s\n' \
+            "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}" "${{ needs.labellers.result }}"
           # A matrix dependency reports one aggregated result, so a single red shard makes
           # `needs.engine.result` a failure.
-          for result in "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"; do
+          for result in "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}" "${{ needs.labellers.result }}"; do
             if [ "$result" != "success" ]; then
               echo "::error::a linux test job did not succeed"
               exit 1

@@ -67,6 +67,9 @@ export type Event =
   | EventQuestionV2Asked
   | EventQuestionV2Replied
   | EventQuestionV2Rejected
+  | EventBrowserRequestAsked
+  | EventBrowserRequestAnswered
+  | EventBrowserRequestRefused
   | EventTodoUpdated
   | EventLspUpdated
   | EventPermissionAsked
@@ -1399,6 +1402,32 @@ export type GlobalEvent = {
         properties: {
           sessionID: string
           requestID: string
+        }
+      }
+    | {
+        id: string
+        type: "browser.request.asked"
+        properties: {
+          id: string
+          sessionID: string
+          command: BrowserRequestCommand
+        }
+      }
+    | {
+        id: string
+        type: "browser.request.answered"
+        properties: {
+          sessionID: string
+          requestID: string
+        }
+      }
+    | {
+        id: string
+        type: "browser.request.refused"
+        properties: {
+          sessionID: string
+          requestID: string
+          reason: string
         }
       }
     | {
@@ -2967,6 +2996,9 @@ export type V2Event =
   | QuestionV2Asked
   | QuestionV2Replied
   | QuestionV2Rejected
+  | BrowserRequestAsked
+  | BrowserRequestAnswered
+  | BrowserRequestRefused
   | TodoUpdated
   | LspUpdated
   | PermissionAsked
@@ -2998,6 +3030,12 @@ export type V2EventStream = string
 
 export type ForbiddenError = {
   _tag: "ForbiddenError"
+  message: string
+}
+
+export type BrowserRequestNotFoundError = {
+  _tag: "BrowserRequestNotFoundError"
+  requestID: string
   message: string
 }
 
@@ -3295,6 +3333,33 @@ export type QuestionV2Tool = {
 }
 
 export type QuestionV2Answer = Array<string>
+
+export type BrowserRequestCommand =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
 
 export type ProjectVcs = "git"
 
@@ -3976,6 +4041,11 @@ export type ConfigV2ExperimentalPolicy = {
   action: "provider.use"
   effect: PolicyEffect
   resource: string
+}
+
+export type SkillV2AutoInject = {
+  keywords?: Array<string>
+  url?: Array<string>
 }
 
 export type ProjectDirectories = Array<{
@@ -5196,6 +5266,8 @@ export type SkillV2Info = {
   name: string
   description?: string
   slash?: boolean
+  icon?: string
+  autoInject?: SkillV2AutoInject
   location: string
   content: string
 }
@@ -5837,6 +5909,89 @@ export type QuestionV2Rejected = {
   }
 }
 
+export type BrowserRequestCommand1 =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
+
+export type BrowserRequestAsked = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.asked"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    id: string
+    sessionID: string
+    command: BrowserRequestCommand1
+  }
+}
+
+export type BrowserRequestAnswered = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.answered"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type BrowserRequestRefused = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.refused"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    requestID: string
+    reason: string
+  }
+}
+
 export type TodoUpdated = {
   id: string
   metadata?: {
@@ -6299,6 +6454,44 @@ export type QuestionV2Reply = {
    * User answers in order of questions (each answer is an array of selected labels)
    */
   answers: Array<QuestionV2Answer>
+}
+
+export type BrowserRequestRequest = {
+  id: string
+  sessionID: string
+  command: BrowserRequestCommand
+}
+
+export type BrowserRequestNode = {
+  selector: string
+  text: string
+  attributes: {
+    [key: string]: string
+  }
+}
+
+export type BrowserRequestValue =
+  | {
+      type: "string"
+      value: string
+    }
+  | {
+      type: "nodes"
+      value: Array<BrowserRequestNode>
+    }
+  | {
+      type: "void"
+    }
+
+export type BrowserRequestReply = {
+  value: BrowserRequestValue
+}
+
+export type BrowserRequestRefusal = {
+  /**
+   * Why the action could not be performed, in one sentence.
+   */
+  reason: string
 }
 
 export type ReferenceLocalSource = {
@@ -7015,6 +7208,62 @@ export type EventQuestionV2Rejected = {
   properties: {
     sessionID: string
     requestID: string
+  }
+}
+
+export type BrowserRequestCommand2 =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
+
+export type EventBrowserRequestAsked = {
+  id: string
+  type: "browser.request.asked"
+  properties: {
+    id: string
+    sessionID: string
+    command: BrowserRequestCommand2
+  }
+}
+
+export type EventBrowserRequestAnswered = {
+  id: string
+  type: "browser.request.answered"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type EventBrowserRequestRefused = {
+  id: string
+  type: "browser.request.refused"
+  properties: {
+    sessionID: string
+    requestID: string
+    reason: string
   }
 }
 
@@ -8546,6 +8795,7 @@ export type AppSkillsResponses = {
     description?: string
     location: string
     content: string
+    autoInject?: SkillV2AutoInject
   }>
 }
 
@@ -13697,6 +13947,152 @@ export type V2SessionQuestionRejectResponses = {
 }
 
 export type V2SessionQuestionRejectResponse = V2SessionQuestionRejectResponses[keyof V2SessionQuestionRejectResponses]
+
+export type V1BrowserRequestListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/browser/request"
+}
+
+export type V1BrowserRequestListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V1BrowserRequestListError = V1BrowserRequestListErrors[keyof V1BrowserRequestListErrors]
+
+export type V1BrowserRequestListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<BrowserRequestRequest>
+  }
+}
+
+export type V1BrowserRequestListResponse = V1BrowserRequestListResponses[keyof V1BrowserRequestListResponses]
+
+export type V1SessionBrowserListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser"
+}
+
+export type V1SessionBrowserListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V1SessionBrowserListError = V1SessionBrowserListErrors[keyof V1SessionBrowserListErrors]
+
+export type V1SessionBrowserListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: Array<BrowserRequestRequest>
+  }
+}
+
+export type V1SessionBrowserListResponse = V1SessionBrowserListResponses[keyof V1SessionBrowserListResponses]
+
+export type V1SessionBrowserReplyData = {
+  body: BrowserRequestReply
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser/{requestID}/reply"
+}
+
+export type V1SessionBrowserReplyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | BrowserRequestNotFoundError
+   */
+  404: BrowserRequestNotFoundError | SessionNotFoundError
+}
+
+export type V1SessionBrowserReplyError = V1SessionBrowserReplyErrors[keyof V1SessionBrowserReplyErrors]
+
+export type V1SessionBrowserReplyResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V1SessionBrowserReplyResponse = V1SessionBrowserReplyResponses[keyof V1SessionBrowserReplyResponses]
+
+export type V1SessionBrowserRefuseData = {
+  body: BrowserRequestRefusal
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser/{requestID}/refuse"
+}
+
+export type V1SessionBrowserRefuseErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | BrowserRequestNotFoundError
+   */
+  404: BrowserRequestNotFoundError | SessionNotFoundError
+}
+
+export type V1SessionBrowserRefuseError = V1SessionBrowserRefuseErrors[keyof V1SessionBrowserRefuseErrors]
+
+export type V1SessionBrowserRefuseResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V1SessionBrowserRefuseResponse = V1SessionBrowserRefuseResponses[keyof V1SessionBrowserRefuseResponses]
 
 export type V2ReferenceListData = {
   body?: never

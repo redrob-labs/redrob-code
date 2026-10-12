@@ -119,6 +119,51 @@ on the message text, which is localized. A client that offers sign-in on any fai
 reports a network timeout as "please log in" — that shipped, and it is what this code
 exists to prevent.
 
+## 1b. `POST /api/insights/sessions`
+
+Labeled AI work sessions, sent to the Console's insights for a product that holds no key. It carries the same rule as the completions route: the product hands over labels, and the engine posts them with its own Console credential, resolved the same way. Office is the first caller, because its rule is that it never holds a provider key.
+
+- **Request:** `{ sessions: [...] }`, 1 to 500 sessions. A session is passed through as the product's object; the Console owns that shape and refuses any field that is not a label (`POST /v1/insights/sessions` in redrob-console).
+- **Destination:** fixed at `${CONSOLE_URL}/insights/sessions`. The route takes no URL, and the key is never in a reply, so it cannot be used to read the key or send it anywhere else.
+- **Reply:** the Console's `{ accepted, updated, rejected: [{ externalId, reason }] }`.
+- **Errors:**
+  - `404 ProviderNotFoundError` when the engine has no Redrob key.
+  - `401` for a refused or over-budget key.
+  - `400` for a refused batch, carrying the Console's message.
+  - `503` when the Console is unreachable, or for 429 and 5xx.
+- **No retries:** the product keeps a batch that got no answer for its next sync.
+
+## 1c. `POST /redrob/speech`
+
+Text to spoken mp3, on the engine's own Redrob credential, for a product that must
+play audio and must not hold the key — Redrob Cowork's read-aloud is the first caller.
+Same rule as the other credentialed routes: the product sends the text, the engine
+calls the gateway with its own key, and the key never leaves this process.
+
+- **Request:** `{ text, model? }`. `text` is at most 4096 characters (counted as code
+  points, so the limit here matches the gateway's). `model` is a gateway speech model
+  id, defaulting to `elevenlabs/eleven-flash-v2.5` for playback.
+- **Reply:** the raw mp3 as `audio/mpeg` — the bytes, not a JSON wrapper or a data URL.
+- **Destination:** fixed at `${CONSOLE_URL}/audio/speech`. The route takes no URL.
+- **Errors:** the shared control-group set — `400` invalid request (empty or over-long
+  text), `502` upstream (the gateway refused or returned a non-audio body), `503` the
+  gateway is unreachable, and a timeout error. No `engine_not_authenticated` body here:
+  a missing key surfaces as the upstream/service error of this group, not the OpenAI
+  envelope that only `/v1/chat/completions` speaks.
+
+## 1d. `POST /redrob/transcribe`
+
+The inverse: recorded speech to text, same credential model, billed to the connected
+Redrob account.
+
+- **Request:** `{ audio, format? }`. `audio` is base64 of the raw bytes (NOT a data
+  URL), at most 10 MB. `format` is one of `TRANSCRIPTION_FORMATS`
+  (`packages/redrob/src/redrob/transcription.ts`).
+- **Reply:** `{ text }` — the transcript, trimmed, and empty when nothing was said.
+- **Destination:** fixed at the gateway's transcription endpoint; the route takes no URL.
+- **Errors:** the same control-group set as speech — `400` invalid request (missing or
+  over-size audio), `502` upstream, `503` unreachable, timeout.
+
 ## 2. Promoting `/experimental`
 
 Every `/experimental/*` route is promoted out of the experimental namespace and

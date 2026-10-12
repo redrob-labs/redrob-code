@@ -5,6 +5,7 @@ import { MessageGroup } from "./groups/message"
 import { ModelGroup } from "./groups/model"
 import { ProviderGroup } from "./groups/provider"
 import { VariantGroup } from "./groups/variant"
+import { InsightsGroup } from "./groups/insights"
 import { makeSessionGroup } from "./groups/session"
 import { makePermissionGroup } from "./groups/permission"
 import { FileSystemGroup } from "./groups/fs"
@@ -46,6 +47,7 @@ const makeApiFromGroup = <
     .add(ModelGroup.middleware(locationMiddleware))
     .add(ProviderGroup.middleware(locationMiddleware))
     .add(VariantGroup.middleware(locationMiddleware))
+    .add(InsightsGroup.middleware(locationMiddleware))
     .add(IntegrationGroup.middleware(locationMiddleware))
     .add(CredentialGroup.middleware(locationMiddleware))
     .add(makePermissionGroup(locationMiddleware, sessionLocationMiddleware))

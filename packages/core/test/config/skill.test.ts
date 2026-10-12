@@ -10,6 +10,8 @@ import { SkillV2 } from "@redrob-code/core/skill"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 import { host } from "../plugin/host"
+import type { PluginContext } from "@redrob-code/plugin/v2/effect"
+import type { SkillV2Source } from "@redrob-labs/sdk/v2/types"
 
 const it = testEffect(Layer.empty)
 const decode = Schema.decodeUnknownSync(Config.Info)
@@ -18,8 +20,9 @@ describe("ConfigSkillPlugin.Plugin", () => {
   it.effect("registers configured skill directories and URLs", () =>
     Effect.gen(function* () {
       const directory = AbsolutePath.make("/repo/packages/app")
-      const sources: SkillV2.Source[] = []
-      const transform = Effect.fnUntraced(function* (update: (draft: SkillV2.Draft) => void | Effect.Effect<void>) {
+      // Typed as the plugin API sees them (the SDK's generated types), not as core's schema does.
+      const sources: SkillV2Source[] = []
+      const transform = Effect.fnUntraced(function* (update: Parameters<PluginContext["skill"]["transform"]>[0]) {
         const result = update({
           source: (source) => {
             sources.push(source)

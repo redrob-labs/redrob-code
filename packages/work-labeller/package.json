@@ -1,0 +1,73 @@
+{
+  "name": "@redrob-labs/work-labeller",
+  "version": "0.0.0",
+  "description": "Labels an AI work session on the person's machine (kind of work, family, mode and outcome) for the Redrob Console's insights. Only labels leave the machine.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redrob-labs/redrob-code.git",
+    "directory": "packages/work-labeller"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "development": "./src/node.ts",
+      "default": "./dist/node.js"
+    },
+    "./manifest.json": "./src/manifest.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun --conditions=development test test model",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "onnxruntime-node": ">=1.20.0",
+    "onnxruntime-web": ">=1.20.0"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-node": {
+      "optional": true
+    },
+    "onnxruntime-web": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "onnxruntime-node": "1.23.0",
+    "tsup": "^8.5.0",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "default": "./dist/node.js"
+      },
+      "./manifest.json": "./src/manifest.json"
+    }
+  }
+}
