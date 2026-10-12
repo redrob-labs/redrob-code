@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@redrob-code/desktop",
+  "productName": "Redrob Code",
+  "description": "Redrob Code desktop app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Redrob",
+    "email": "support@redrob.ai"
+  },
+  "homepage": "https://console.redrob.ai/code",
+  "main": "out/main.js",
+  "exports": {
+    "./bridge": "./src/shared/bridge.ts"
+  },
+  "scripts": {
+    "build": "bun run script/build.ts",
+    "dev": "bun run script/dev.ts",
+    "electron:install": "node node_modules/electron/install.js",
+    "prepare-engine": "bun run script/prepare-engine.ts",
+    "package": "bun run script/package.ts",
+    "smoke": "bun run script/smoke.ts",
+    "test": "bun test",
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "electron": "43.7.9",
+    "electron-builder": "26.17.0",
+    "electron-updater": "6.8.10"
+  }
+}
