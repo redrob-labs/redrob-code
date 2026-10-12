@@ -8,7 +8,12 @@ import { ProviderV2 } from "@redrob-code/core/provider"
 import type { IntegrationEnvMethod, IntegrationKeyMethod, IntegrationOAuthMethod } from "@redrob-labs/sdk/v2/types"
 import { Effect } from "effect"
 
-type Overrides = Partial<Omit<PluginContext, "options">>
+/**
+ * `skill` is widened because tests hand in the core SkillV2 service directly, whose arrays are
+ * readonly, while the plugin API is typed from the generated SDK, which has no readonly arrays.
+ * The real host converts at the boundary (plugin/host.ts `mutable`); here a cast is enough.
+ */
+type Overrides = Partial<Omit<PluginContext, "options" | "skill">> & { skill?: unknown }
 
 export function host(overrides: Overrides = {}): PluginContext {
   return {
@@ -45,7 +50,7 @@ export function host(overrides: Overrides = {}): PluginContext {
       transform: () => Effect.die("unused reference.transform"),
       reload: () => Effect.die("unused reference.reload"),
     },
-    skill: overrides.skill ?? {
+    skill: (overrides.skill as PluginContext["skill"] | undefined) ?? {
       transform: () => Effect.die("unused skill.transform"),
       reload: () => Effect.die("unused skill.reload"),
     },

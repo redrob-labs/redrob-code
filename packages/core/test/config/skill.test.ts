@@ -10,6 +10,7 @@ import { SkillV2 } from "@redrob-code/core/skill"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 import { host } from "../plugin/host"
+import { CONSOLE_SKILLS_URL } from "@redrob-code/core/plugin/provider/redrob-constants"
 
 const it = testEffect(Layer.empty)
 const decode = Schema.decodeUnknownSync(Config.Info)
@@ -67,6 +68,8 @@ describe("ConfigSkillPlugin.Plugin", () => {
           type: "directory",
           path: AbsolutePath.make(path.join("/repo/.opencode", "skills")),
         }),
+        // The Console's library comes first, before anything the user configured.
+        SkillV2.UrlSource.make({ type: "url", url: CONSOLE_SKILLS_URL }),
         SkillV2.DirectorySource.make({ type: "directory", path: AbsolutePath.make(path.join(directory, "skills")) }),
         SkillV2.DirectorySource.make({
           type: "directory",

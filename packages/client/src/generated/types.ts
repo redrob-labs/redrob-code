@@ -2372,6 +2372,24 @@ export type CredentialsRemoveInput = {
 
 export type CredentialsRemoveOutput = void
 
+export type PrivacyGetInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type PrivacyGetOutput = { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }
+
+export type PrivacySetInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly mode: { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }["mode"]
+  readonly model?: { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }["model"]
+}
+
+export type PrivacySetOutput = { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }
+
 export type PermissionsListRequestsInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined

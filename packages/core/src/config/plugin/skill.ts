@@ -8,6 +8,7 @@ import { AbsolutePath } from "../../schema"
 import { SkillV2 } from "../../skill"
 import { Global } from "../../global"
 import { Location } from "../../location"
+import { CONSOLE_SKILLS_URL } from "../../plugin/provider/redrob-constants"
 
 export const Plugin = define({
   id: "config-skill",
@@ -19,7 +20,10 @@ export const Plugin = define({
       Effect.fn(function* (draft) {
         const entries = yield* config.entries()
         const directories = entries.flatMap((entry) => (entry.type === "directory" ? [entry.path] : []))
-        const items = entries.flatMap((entry) => (entry.type === "document" ? (entry.info.skills ?? []) : []))
+        const items = [
+          CONSOLE_SKILLS_URL,
+          ...entries.flatMap((entry) => (entry.type === "document" ? (entry.info.skills ?? []) : [])),
+        ]
         for (const directory of directories) {
           draft.source(
             SkillV2.DirectorySource.make({ type: "directory", path: AbsolutePath.make(path.join(directory, "skill")) }),
