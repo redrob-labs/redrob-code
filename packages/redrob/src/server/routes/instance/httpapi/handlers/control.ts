@@ -5,7 +5,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
 import { LogInput, SpeechInput } from "../groups/control"
 import { InvalidRequestError, ServiceUnavailableError, TimeoutError, UpstreamError } from "../errors"
-import { prepareSpeech, requestSpeech, speechKey, type SpeechError } from "@/tool/speech_generate"
+import { PLAYBACK_DEFAULTS, prepareSpeech, requestSpeech, speechKey, type SpeechError } from "@/tool/speech_generate"
 import { HttpClient } from "effect/unstable/http"
 import { ProviderV2 } from "@redrob-code/core/provider"
 
@@ -29,7 +29,8 @@ export const controlHandlers = HttpApiBuilder.group(RootHttpApi, "control", (han
               })
 
     const speech = Effect.fn("ControlHttpApi.speech")(function* (ctx: { payload: typeof SpeechInput.Type }) {
-      const prepared = yield* prepareSpeech(ctx.payload)
+      // This route is for audio that is played at once, so it defaults to the fast playback model.
+      const prepared = yield* prepareSpeech(ctx.payload, PLAYBACK_DEFAULTS)
       const key = yield* speechKey(auth)
       return (yield* requestSpeech(http, key, prepared)).audio
     }, Effect.mapError(speechFailure))

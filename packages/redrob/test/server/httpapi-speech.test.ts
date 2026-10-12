@@ -13,7 +13,7 @@ import * as Socket from "effect/unstable/socket/Socket"
 import * as Http from "node:http"
 import { ControlPaths } from "../../src/server/routes/instance/httpapi/groups/control"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
-import { DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_VOICE } from "../../src/tool/speech_generate"
+import { DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_VOICE, PLAYBACK_SPEECH_MODEL } from "../../src/tool/speech_generate"
 import { testEffect } from "../lib/effect"
 
 /**
@@ -121,12 +121,27 @@ describe("redrob speech HttpApi", () => {
         {
           authorization: "Bearer rk_engine_key",
           body: {
-            model: DEFAULT_SPEECH_MODEL,
+            model: PLAYBACK_SPEECH_MODEL,
             input: "안녕하세요",
             response_format: "mp3",
             voice: DEFAULT_SPEECH_VOICE,
           },
         },
+      ])
+    }),
+  )
+
+  it.live("plays with the fast model by default, and a chosen model keeps the voice it was given", () =>
+    Effect.gen(function* () {
+      const { seen } = yield* gateway(() => ({ status: 200, type: "audio/mpeg", body: MP3 }))
+      expect((yield* speak({ text: "One" })).status).toBe(200)
+      expect((yield* speak({ text: "Two", model: DEFAULT_SPEECH_MODEL })).status).toBe(200)
+      expect((yield* speak({ text: "Three", model: DEFAULT_SPEECH_MODEL, voice: "george" })).status).toBe(200)
+      expect(seen.map((call) => call.body)).toEqual([
+        { model: PLAYBACK_SPEECH_MODEL, input: "One", response_format: "mp3", voice: DEFAULT_SPEECH_VOICE },
+        // Another model's voices are its own, so none is assumed for it.
+        { model: DEFAULT_SPEECH_MODEL, input: "Two", response_format: "mp3" },
+        { model: DEFAULT_SPEECH_MODEL, input: "Three", response_format: "mp3", voice: "george" },
       ])
     }),
   )
