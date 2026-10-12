@@ -186,6 +186,16 @@ jobs:
       # Tests resolve the package `src` via the `development` export condition. route-labeller
       # ships no unit suite (its checks are the `eval` + prototype scripts); work-labeller
       # carries the 77-test classifier/tokeniser/dataset suite under test/ and model/.
+      #
+      # These suites are MODEL-FREE on purpose, which is why they run here with nothing
+      # downloaded: classifier.test.ts uses a stub ONNX runtime and a synthetic tokenizer,
+      # download.test.ts stands up a local fake release server with a tiny synthetic model,
+      # and the model/ tests check training-DATA invariants against the committed JSON. The
+      # real ~140MB / ~278MB encoders are needed ONLY by the opt-in developer commands
+      # (`bun run model`, route-labeller's `bun run eval`), which are deliberately NOT on the
+      # PR path -- a per-run multi-hundred-MB download is not worth gating merges on. If
+      # accuracy-in-CI is ever wanted, add a MANUAL/scheduled job restoring a cached model
+      # artifact; do not put the model fetch here. See docs/ON-DEVICE-LABELLING.md.
       - name: Run work-labeller tests
         working-directory: packages/work-labeller
         run: bun --conditions=development test test model

@@ -144,4 +144,55 @@ describe("POST /v1/chat/completions", () => {
       expect(message.toLowerCase()).not.toContain("is missing")
     }),
   )
+
+  // v1 CONTRACT, the newer-but-promised fields. `max_completion_tokens`,
+  // `reasoning_effort` and `user` are in the documented request and must stay
+  // ACCEPTED; same 400-for-the-model, not-a-decode-error technique as above.
+  it.instance("accepts the newer optional fields (max_completion_tokens, reasoning_effort, user)", () =>
+    Effect.gen(function* () {
+      const tmp = yield* TestInstance
+      const response = yield* post(tmp.directory, {
+        model: "no-such-provider/no-such-model",
+        messages: [{ role: "user", content: "ping" }],
+        max_completion_tokens: 64,
+        reasoning_effort: "low",
+        user: "someone",
+      })
+
+      expect(response.status).toBe(400)
+      const body = yield* json<ErrorEnvelope>(response)
+      const message = String(body.error?.message ?? "")
+      expect(message.toLowerCase()).not.toContain("expected")
+      expect(message.toLowerCase()).not.toContain("is missing")
+    }),
+  )
+
+  // BACKWARDS / FORWARD COMPATIBILITY. The engine's request is an OpenAI subset;
+  // unknown fields are ignored, not rejected, so a stock OpenAI SDK and a newer
+  // client both talk to it without a version check. This pins that promise: a
+  // request carrying fields the schema does not name (a Console-style `redrob`
+  // block a client may add, and an outright bogus key) is still ACCEPTED — the
+  // failure is the unknown model, never a decode rejection of the extra fields.
+  // If someone makes the schema reject excess properties, this fails and names
+  // the regression. (See docs/LOCAL-ENGINE-API.md and docs/ON-DEVICE-LABELLING.md.)
+  it.instance("ignores unknown request fields rather than rejecting them", () =>
+    Effect.gen(function* () {
+      const tmp = yield* TestInstance
+      const response = yield* post(tmp.directory, {
+        model: "no-such-provider/no-such-model",
+        messages: [{ role: "user", content: "ping" }],
+        redrob: { route: { profession: "lawyer", task: "review" } },
+        not_a_real_field: 123,
+      })
+
+      // Accepted and decoded (unknown fields dropped), so we reach the model and
+      // get the unknown-model 400 — NOT a 400 complaining about the extra fields.
+      expect(response.status).toBe(400)
+      const body = yield* json<ErrorEnvelope>(response)
+      const message = String(body.error?.message ?? "")
+      expect(message.toLowerCase()).not.toContain("redrob")
+      expect(message.toLowerCase()).not.toContain("not_a_real_field")
+      expect(message.toLowerCase()).not.toContain("unexpected")
+    }),
+  )
 })
