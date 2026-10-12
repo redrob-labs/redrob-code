@@ -34,9 +34,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* Config.Service
     const global = yield* Global.Service
-    const documents = (yield* config.entries()).filter(
-      (entry): entry is Config.Document => entry.type === "document",
-    )
+    const documents = (yield* config.entries()).filter((entry): entry is Config.Document => entry.type === "document")
     const current = yield* Ref.make(Mask.settings(documents))
     const file = path.join(global.config, "redrob.json")
 
@@ -49,7 +47,8 @@ const layer = Layer.effect(
           await fs.mkdir(path.dirname(file), { recursive: true })
           await fs.writeFile(file, applyEdits(text, edits))
         },
-        catch: (cause) => new Error(`Could not write ${file}: ${cause instanceof globalThis.Error ? cause.message : String(cause)}`),
+        catch: (cause) =>
+          new Error(`Could not write ${file}: ${cause instanceof globalThis.Error ? cause.message : String(cause)}`),
       })
 
     return Service.of({
@@ -63,5 +62,9 @@ const layer = Layer.effect(
     })
   }),
 )
+
+/** Test seam: a fixed setting, no file. */
+export const layerWith = (settings: Mask.Settings) =>
+  Layer.succeed(Service, Service.of({ get: () => Effect.succeed(settings), set: (next) => Effect.succeed(next) }))
 
 export const node = makeLocationNode({ service: Service, layer, deps: () => [Config.node, Global.node] })

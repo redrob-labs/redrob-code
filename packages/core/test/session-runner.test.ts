@@ -34,6 +34,7 @@ import { SessionExecution } from "@redrob-code/core/session/execution"
 import { SessionRunCoordinator } from "@redrob-code/core/session/run-coordinator"
 import { SessionRunner } from "@redrob-code/core/session/runner"
 import * as SessionRunnerLLM from "@redrob-code/core/session/runner/llm"
+import { Privacy } from "@redrob-code/core/privacy/service"
 import { SessionRunnerModel } from "@redrob-code/core/session/runner/model"
 import { ToolRegistry } from "@redrob-code/core/tool/registry"
 import { ApplicationTools } from "@redrob-code/core/tool/application-tools"
@@ -251,42 +252,43 @@ const execution = Layer.effect(
     })
   }),
 ).pipe(Layer.provide(runnerLayer))
-const it = testEffect(
-  AppNodeBuilder.build(
-    LayerNode.group([
-      Database.node,
-      EventV2.node,
-      QuestionV2.node,
-      SessionProjector.node,
-      SessionStore.node,
-      ApplicationTools.node,
-      AgentV2.node,
-      ToolRegistry.node,
-      ToolRegistry.toolsNode,
-      echoNode,
-      SessionRunnerModel.node,
-      SystemContextRegistry.node,
-      SkillGuidance.node,
-      ReferenceGuidance.node,
-      Config.node,
-      Snapshot.node,
-      SessionRunnerLLM.node,
-      SessionExecution.node,
-      SessionV2.node,
-    ]),
-    [
-      [LayerNodePlatform.llmClient, client],
-      [PermissionV2.node, permission],
-      [SessionRunnerModel.node, models],
-      [SystemContextRegistry.node, systemContext],
-      [Location.node, Location.boundNode({ directory: AbsolutePath.make("/project") })],
-      [SkillGuidance.node, skillGuidance],
-      [ReferenceGuidance.node, referenceGuidance],
-      [Snapshot.node, Snapshot.noopLayer],
-      [SessionExecution.node, execution],
-      [Config.node, config],
-    ],
-  ),
+const sessionGroup = LayerNode.group([
+  Database.node,
+  EventV2.node,
+  QuestionV2.node,
+  SessionProjector.node,
+  SessionStore.node,
+  ApplicationTools.node,
+  AgentV2.node,
+  ToolRegistry.node,
+  ToolRegistry.toolsNode,
+  echoNode,
+  SessionRunnerModel.node,
+  SystemContextRegistry.node,
+  SkillGuidance.node,
+  ReferenceGuidance.node,
+  Config.node,
+  Snapshot.node,
+  SessionRunnerLLM.node,
+  SessionExecution.node,
+  SessionV2.node,
+])
+const sessionReplacements: LayerNode.Replacements = [
+  [LayerNodePlatform.llmClient, client],
+  [PermissionV2.node, permission],
+  [SessionRunnerModel.node, models],
+  [SystemContextRegistry.node, systemContext],
+  [Location.node, Location.boundNode({ directory: AbsolutePath.make("/project") })],
+  [SkillGuidance.node, skillGuidance],
+  [ReferenceGuidance.node, referenceGuidance],
+  [Snapshot.node, Snapshot.noopLayer],
+  [SessionExecution.node, execution],
+  [Config.node, config],
+]
+const it = testEffect(AppNodeBuilder.build(sessionGroup, sessionReplacements))
+/** The same runner with PII masking switched to `regex`; the default (`off`) is what `it` runs under. */
+const itMasked = testEffect(
+  AppNodeBuilder.build(sessionGroup, [...sessionReplacements, [Privacy.node, Privacy.layerWith({ mode: "regex" })]]),
 )
 const sessionID = SessionV2.ID.make("ses_runner_test")
 const otherSessionID = SessionV2.ID.make("ses_runner_other")
@@ -2531,6 +2533,42 @@ describe("SessionRunnerLLM", () => {
         "x-session-affinity": sessionID,
         "X-Session-Id": sessionID,
       })
+    }),
+  )
+
+  it.effect("sends the person's text as written while masking is off (the default)", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Mail hong@example.com today" }), resume: false })
+      requests.length = 0
+      yield* session.resume(sessionID)
+      expect(JSON.stringify(requests[0]?.messages)).toContain("hong@example.com")
+    }),
+  )
+
+  itMasked.effect("with masking on, the provider sees a placeholder and the person reads the real value", () =>
+    Effect.gen(function* () {
+      yield* setup
+      response = [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "text-masked" }),
+        LLMEvent.textDelta({ id: "text-masked", text: "Sent to [EMA" }),
+        LLMEvent.textDelta({ id: "text-masked", text: "IL_1]." }),
+        LLMEvent.textEnd({ id: "text-masked" }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Mail hong@example.com today" }), resume: false })
+      requests.length = 0
+      yield* session.resume(sessionID)
+      const sent = JSON.stringify(requests[0]?.messages)
+      expect(sent).not.toContain("hong@example.com")
+      expect(sent).toContain("[EMAIL_1]")
+      const stored = JSON.stringify(yield* session.messages({ sessionID }))
+      expect(stored).toContain("Sent to hong@example.com.")
+      expect(stored).not.toContain("[EMAIL_1]")
     }),
   )
 
