@@ -67,6 +67,10 @@ import type {
   CredentialsUpdateOutput,
   CredentialsRemoveInput,
   CredentialsRemoveOutput,
+  PrivacyGetInput,
+  PrivacyGetOutput,
+  PrivacySetInput,
+  PrivacySetOutput,
   PermissionsListRequestsInput,
   PermissionsListRequestsOutput,
   PermissionsListSavedInput,
@@ -699,6 +703,33 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [401, 400],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    privacy: {
+      get: (input?: PrivacyGetInput, requestOptions?: RequestOptions) =>
+        request<PrivacyGetOutput>(
+          {
+            method: "GET",
+            path: `/api/privacy`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      set: (input: PrivacySetInput, requestOptions?: RequestOptions) =>
+        request<PrivacySetOutput>(
+          {
+            method: "PUT",
+            path: `/api/privacy`,
+            query: { location: input["location"] },
+            body: { mode: input["mode"], model: input["model"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
           },
           requestOptions,
         ),
