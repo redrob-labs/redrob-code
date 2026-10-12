@@ -112,11 +112,10 @@ describe("tool.speech_generate", () => {
         expect(new Uint8Array(yield* Effect.promise(() => fs.readFile(filepath)))).toEqual(MP3)
         expect(result.output).toContain("artifacts")
         expect(result.output).toContain("quarterly-update.mp3")
-        // 24 code points: five Hangul syllables, ", ", "quarterly", " ", "update." (how the gateway bills).
+        // 24 code points: five Hangul syllables, ", ", "quarterly", " ", "update." (as the gateway bills).
         expect(result.metadata).toMatchObject({
           filepath,
-          // 24 code points: five Hangul syllables, ", ", "quarterly", " ", "update." (as the gateway bills).
-          characters: 24,
+          model: DEFAULT_SPEECH_MODEL,
           characters: 24,
           costUsd: 0.000042,
         })
