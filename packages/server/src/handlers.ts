@@ -18,6 +18,7 @@ import { ReferenceHandler } from "./handlers/reference"
 import { LocationHandler } from "./handlers/location"
 import { IntegrationHandler } from "./handlers/integration"
 import { CredentialHandler } from "./handlers/credential"
+import { PrivacyHandler } from "./handlers/privacy"
 import { ProjectCopyHandler } from "./handlers/project-copy"
 import { ChatCompletionHandler } from "./handlers/chat-completion"
 
@@ -32,6 +33,7 @@ export const handlers = Layer.mergeAll(
   VariantHandler,
   IntegrationHandler,
   CredentialHandler,
+  PrivacyHandler,
   PermissionHandler,
   FileSystemHandler,
   CommandHandler,

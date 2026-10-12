@@ -22,6 +22,7 @@ import { Authorization } from "./middleware/authorization"
 import { LocationGroup } from "./groups/location"
 import { IntegrationGroup } from "./groups/integration"
 import { CredentialGroup } from "./groups/credential"
+import { PrivacyGroup } from "./groups/privacy"
 import { ProjectCopyGroup } from "./groups/project-copy"
 import { ChatCompletionGroup } from "./groups/chat-completion"
 
@@ -48,6 +49,7 @@ const makeApiFromGroup = <
     .add(VariantGroup.middleware(locationMiddleware))
     .add(IntegrationGroup.middleware(locationMiddleware))
     .add(CredentialGroup.middleware(locationMiddleware))
+    .add(PrivacyGroup.middleware(locationMiddleware))
     .add(makePermissionGroup(locationMiddleware, sessionLocationMiddleware))
     .add(FileSystemGroup.middleware(locationMiddleware))
     .add(CommandGroup.middleware(locationMiddleware))
