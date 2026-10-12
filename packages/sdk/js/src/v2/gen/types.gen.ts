@@ -174,6 +174,25 @@ export type InvalidRequestError = {
   field?: string
 }
 
+export type ServiceUnavailableError = {
+  _tag: "ServiceUnavailableError"
+  message: string
+  service?: string
+}
+
+export type UpstreamError = {
+  _tag: "UpstreamError"
+  message: string
+  service?: string
+  status?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type TimeoutError = {
+  _tag: "TimeoutError"
+  message: string
+  operation?: string
+}
+
 export type MoveSessionError = {
   name: "MoveSessionError"
   data: {
@@ -2796,12 +2815,6 @@ export type ConflictError = {
   _tag: "ConflictError"
   message: string
   resource?: string
-}
-
-export type ServiceUnavailableError = {
-  _tag: "ServiceUnavailableError"
-  message: string
-  service?: string
 }
 
 export type MessageNotFoundError = {
@@ -7580,6 +7593,111 @@ export type AuthSetResponses = {
 }
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
+
+export type RedrobSpeechData = {
+  body?: {
+    /**
+     * The words to speak, at most 4096 characters
+     */
+    text: string
+    voice?: string
+    model?: string
+  }
+  path?: never
+  query?: never
+  url: "/redrob/speech"
+}
+
+export type RedrobSpeechErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+  /**
+   * TimeoutError
+   */
+  504: TimeoutError
+}
+
+export type RedrobSpeechError = RedrobSpeechErrors[keyof RedrobSpeechErrors]
+
+export type RedrobSpeechResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type RedrobSpeechResponse = RedrobSpeechResponses[keyof RedrobSpeechResponses]
+
+export type RedrobTranscribeData = {
+  body?: {
+    /**
+     * Base64-encoded audio, the raw bytes rather than a data URL, at most 10 MB
+     */
+    audio: string
+    /**
+     * The audio's container format
+     */
+    format: "wav" | "mp3" | "flac" | "m4a" | "ogg" | "webm" | "aac"
+    language?: string
+    model?: string
+  }
+  path?: never
+  query?: never
+  url: "/redrob/transcribe"
+}
+
+export type RedrobTranscribeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+  /**
+   * TimeoutError
+   */
+  504: TimeoutError
+}
+
+export type RedrobTranscribeError = RedrobTranscribeErrors[keyof RedrobTranscribeErrors]
+
+export type RedrobTranscribeResponses = {
+  /**
+   * The transcript
+   */
+  200: {
+    /**
+     * The transcript, trimmed; empty when nothing was said
+     */
+    text: string
+    /**
+     * Seconds of audio billed
+     */
+    seconds?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    /**
+     * What the request cost, in USD
+     */
+    costUsd?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type RedrobTranscribeResponse = RedrobTranscribeResponses[keyof RedrobTranscribeResponses]
 
 export type AppLogData = {
   body?: {

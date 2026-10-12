@@ -1,9 +1,11 @@
 import { Auth } from "@/auth"
 
 import { Schema } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
+import { InvalidRequestError, ServiceUnavailableError, TimeoutError, UpstreamError } from "../errors"
 import { described } from "./metadata"
 import { ProviderV2 } from "@redrob-code/core/provider"
+import { TRANSCRIPTION_FORMATS } from "@/redrob/transcription"
 
 const AuthParams = Schema.Struct({
   providerID: ProviderV2.ID,
@@ -28,9 +30,36 @@ export const LogInput = Schema.Struct({
   }),
 })
 
+export const SpeechInput = Schema.Struct({
+  text: Schema.String.annotate({ description: "The words to speak, at most 4096 characters" }),
+  voice: Schema.optional(Schema.String).annotate({ description: "A voice of the chosen model" }),
+  model: Schema.optional(Schema.String).annotate({
+    description: "A speech model id served by the Redrob gateway. Defaults to elevenlabs/eleven-flash-v2.5, for playback.",
+  }),
+})
+
+export const TranscribeInput = Schema.Struct({
+  audio: Schema.String.annotate({ description: "Base64-encoded audio, the raw bytes rather than a data URL, at most 10 MB" }),
+  format: Schema.Literals(TRANSCRIPTION_FORMATS).annotate({ description: "The audio's container format" }),
+  language: Schema.optional(Schema.String).annotate({
+    description: 'ISO-639-1 language, e.g. "ko". Detected when omitted.',
+  }),
+  model: Schema.optional(Schema.String).annotate({
+    description: "A transcription model id served by the Redrob gateway",
+  }),
+})
+
+export const TranscribeOutput = Schema.Struct({
+  text: Schema.String.annotate({ description: "The transcript, trimmed; empty when nothing was said" }),
+  seconds: Schema.optional(Schema.Number).annotate({ description: "Seconds of audio billed" }),
+  costUsd: Schema.optional(Schema.Number).annotate({ description: "What the request cost, in USD" }),
+})
+
 export const ControlPaths = {
   auth: "/auth/:providerID",
   log: "/log",
+  speech: "/redrob/speech",
+  transcribe: "/redrob/transcribe",
 } as const
 
 export const ControlApi = HttpApi.make("control").add(
@@ -57,6 +86,33 @@ export const ControlApi = HttpApi.make("control").add(
           identifier: "auth.remove",
           summary: "Remove auth credentials",
           description: "Remove authentication credentials",
+        }),
+      ),
+      /*
+       * Speech on the engine's own Redrob credential, for a client that has to play audio and must
+       * not hold the key: Redrob Cowork's read-aloud. The key never leaves this process.
+       */
+      HttpApiEndpoint.post("speech", ControlPaths.speech, {
+        payload: SpeechInput,
+        success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array({ contentType: "audio/mpeg" })),
+        error: [InvalidRequestError, ServiceUnavailableError, UpstreamError, TimeoutError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "redrob.speech",
+          summary: "Speak text",
+          description: "Turn text into mp3 speech through the Redrob gateway, billed to the connected Redrob account.",
+        }),
+      ),
+      /* Transcription on the same credential, for Redrob Cowork's push-to-talk, for the same reason. */
+      HttpApiEndpoint.post("transcribe", ControlPaths.transcribe, {
+        payload: TranscribeInput,
+        success: described(TranscribeOutput, "The transcript"),
+        error: [InvalidRequestError, ServiceUnavailableError, UpstreamError, TimeoutError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "redrob.transcribe",
+          summary: "Transcribe speech",
+          description: "Turn recorded speech into text through the Redrob gateway, billed to the connected Redrob account.",
         }),
       ),
       HttpApiEndpoint.post("log", ControlPaths.log, {
