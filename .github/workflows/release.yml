@@ -860,3 +860,130 @@ jobs:
             echo "[Open the promotion pull request]($url)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice::release published; promote develop to main at $url"
+
+  # Redrob Code Desktop for Windows, added to the release the CLI was just published in.
+  #
+  # It runs AFTER `publish` and nothing depends on it, so a desktop failure can never hold back or
+  # roll back the CLI: the archives, the CLI installer, SHA256SUMS and VERSION are already out by the
+  # time this starts. Every file it uploads starts `redrob-code-desktop-` (plus electron-updater's
+  # `latest.yml` feed), and `install` only ever downloads `redrob-<target>.<ext>`, so the two cannot
+  # be confused. See docs/DESKTOP.md.
+  #
+  # The engine inside the app is the SIGNED `redrob.exe` from `sign-windows`, unpacked from the very
+  # archive the CLI users download, so app and CLI run byte-identical engines.
+  desktop-windows:
+    needs: [version, sign-windows, publish]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+      AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+      AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cli-windows-signed
+          path: cli
+
+      - name: Put the signed engine in the app
+        run: |
+          set -euo pipefail
+          mkdir -p engine
+          7z x -y -oengine cli/redrob-windows-x64.zip >/dev/null
+          bun run --cwd apps/desktop prepare-engine --platform win32 --arch x64 --from "$GITHUB_WORKSPACE/engine/redrob.exe"
+
+      # The organisation PFX first, because it is what this repository actually signs with (see the
+      # `method` note on `sign-windows`) and electron-builder signs with it natively, including the
+      # app exe INSIDE the installer before latest.yml records the installer's hash. Azure Trusted
+      # Signing through electron-builder's azureSignOptions is the fallback and is not yet proven in
+      # this workflow. Otherwise unsigned, and said so.
+      - name: Choose the signing method
+        id: config
+        run: |
+          set -euo pipefail
+          if [ -n "${WIN_CSC_LINK:-}" ] && [ -n "${WIN_CSC_KEY_PASSWORD:-}" ]; then
+            echo "method=pfx" >> "$GITHUB_OUTPUT"
+          elif [ -n "${AZURE_ARTIFACT_SIGNING_ENDPOINT:-}" ] && [ -n "${AZURE_ARTIFACT_SIGNING_ACCOUNT:-}" ] \
+            && [ -n "${AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE:-}" ] && [ -n "${AZURE_CLIENT_ID:-}" ]; then
+            echo "method=azure" >> "$GITHUB_OUTPUT"
+            echo "::warning::signing the desktop installer through Azure Trusted Signing, which is not yet verified here"
+          else
+            echo "method=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::no Windows signing method is configured; the desktop installer will be unsigned"
+          fi
+
+      - name: Azure login
+        if: steps.config.outputs.method == 'azure'
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Package and smoke-test
+        env:
+          REDROB_VERSION: ${{ needs.version.outputs.version }}
+          METHOD: ${{ steps.config.outputs.method }}
+        run: |
+          set -euo pipefail
+          cd apps/desktop
+          if [ "$METHOD" = "pfx" ]; then
+            export CSC_LINK="$WIN_CSC_LINK" CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD"
+            # The config only enables azureSignOptions when these are set; PFX must not race it.
+            unset AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE
+          else
+            # Without this electron-builder goes looking for a certificate on its own.
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            if [ "$METHOD" = "none" ]; then
+              unset AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE
+            fi
+          fi
+          bun run package
+          bun run smoke
+          ls dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-windows
+          path: |
+            apps/desktop/dist/redrob-code-desktop-*.exe
+            apps/desktop/dist/redrob-code-desktop-*.exe.blockmap
+            apps/desktop/dist/latest.yml
+
+      - name: Add the desktop installer to the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(apps/desktop/dist/redrob-code-desktop-*.exe apps/desktop/dist/redrob-code-desktop-*.exe.blockmap apps/desktop/dist/latest.yml)
+          if [ "${#files[@]}" -lt 3 ]; then
+            echo "::error::expected the installer, its blockmap and latest.yml; found ${#files[@]} file(s)"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            for attempt in 1 2 3; do
+              gh release upload "$TAG" "$file" --clobber && break
+              echo "::warning::upload of $(basename "$file") failed on attempt $attempt"
+              sleep $((attempt * 10))
+              [ "$attempt" = 3 ] && exit 1
+            done
+          done
+          echo "::notice::desktop installer added to $TAG (signing: ${{ steps.config.outputs.method }})"

@@ -1,0 +1,114 @@
+name: desktop
+
+# Redrob Code Desktop (apps/desktop + apps/studio), and the vanilla CLI install beside it.
+#
+# Three things are proven on every pull request:
+#
+#   1. The app's own code typechecks and its tests pass.
+#   2. A PACKAGED app starts its bundled engine: `--smoke-test` launches the unpacked build, waits for
+#      the engine handshake, proves an authenticated health check succeeds and an unauthenticated one
+#      gets 401, then exits. Windows first, because Windows ships first.
+#   3. The CLI still installs the vanilla way. Adding a desktop app must never take the curl / script
+#      install away, so the official `install` script is run against this commit's own build and the
+#      installed `redrob` must answer `--version`.
+#
+# Not yet required checks: add `desktop (windows)`, `desktop (linux)` and `cli install (*)` to branch
+# protection once they have been green on develop for a while, as was done for the Windows unit jobs.
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+          - name: linux
+            os: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Typecheck
+        run: |
+          set -euo pipefail
+          (cd apps/desktop && bun run typecheck)
+          (cd apps/studio && bun run typecheck)
+
+      - name: Unit tests
+        run: |
+          set -euo pipefail
+          (cd apps/desktop && bun test)
+          (cd apps/studio && bun test)
+
+      # The same build the release makes, for this runner's platform only.
+      - name: Build the engine
+        run: bun run --cwd packages/redrob build --single --skip-install
+        env:
+          REDROB_VERSION: 0.0.0-ci
+
+      - name: Package the app (unpacked)
+        run: |
+          set -euo pipefail
+          cd apps/desktop
+          bun run prepare-engine
+          bun run package --dir
+
+      - name: Smoke test the packaged app
+        run: bun run --cwd apps/desktop smoke
+
+  cli-install:
+    name: cli install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build the engine
+        run: bun run --cwd packages/redrob build --single --skip-install
+        env:
+          REDROB_VERSION: 0.0.0-ci
+
+      # The official installer, unchanged, pointed at this commit's binary. A temporary directory keeps
+      # it off the runner's PATH and proves REDROB_INSTALL_DIR is still honoured.
+      - name: Install with the vanilla script
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m)"
+          case "$arch" in x86_64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; esac
+          binary="packages/redrob/dist/redrob-${os}-${arch}/bin/redrob"
+          dir="$RUNNER_TEMP/redrob-bin"
+          REDROB_INSTALL_DIR="$dir" ./install --binary "$binary" --no-modify-path
+          "$dir/redrob" --version
+          # The desktop app must never have put anything here.
+          if ls "$dir" | grep -q desktop; then
+            echo "::error::a desktop artifact appeared in the CLI install directory"
+            exit 1
+          fi
