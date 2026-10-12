@@ -149,12 +149,15 @@ export async function mineTasks(
 export async function snapshot(repo: string, commit: string, directory: string) {
   rmSync(directory, { recursive: true, force: true })
   mkdirSync(directory, { recursive: true })
-  const archive = `${directory}.tar`
-  const archived = await run("git", ["archive", "--format=tar", "-o", archive, commit], { cwd: repo })
-  if (archived.code !== 0) throw new Error(`git archive failed: ${archived.stderr}`)
-  const extracted = await run("tar", ["-xf", archive, "-C", directory], { cwd: repo })
-  rmSync(archive, { force: true })
-  if (extracted.code !== 0) throw new Error(`tar failed: ${extracted.stderr}`)
+  // Checked out with a throwaway index rather than piped through `tar`: Git Bash's tar reads `C:\...` as
+  // a remote host, and a private GIT_INDEX_FILE leaves the real repository's index and HEAD untouched.
+  const index = `${directory}.index`
+  const extracted = await run("git", ["--work-tree", directory, "checkout", commit, "--", "."], {
+    cwd: repo,
+    env: { ...process.env, GIT_INDEX_FILE: index },
+  })
+  rmSync(index, { force: true })
+  if (extracted.code !== 0) throw new Error(`extracting ${commit.slice(0, 9)} failed: ${extracted.stderr}`)
   const git = (...args: string[]) =>
     run(
       "git",
