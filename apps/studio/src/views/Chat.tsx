@@ -21,7 +21,7 @@ export function Chat(props: { sessionID: string; busy: boolean }) {
 
   const messages = useQuery({
     queryKey: ["messages", props.sessionID],
-    queryFn: () => client.messages.list({ sessionID: props.sessionID, order: "asc", limit: 500 }),
+    queryFn: () => client.messages.list({ sessionID: props.sessionID, order: "asc", limit: 200 }),
   })
   const permissions = useQuery({
     queryKey: ["permissions", props.sessionID],
