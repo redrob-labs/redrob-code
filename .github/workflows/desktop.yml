@@ -77,6 +77,29 @@ jobs:
       - name: Smoke test the packaged app
         run: bun run --cwd apps/desktop smoke
 
+      # A whole blind build-off driven through the packaged app's own window: scripted vendors (no key,
+      # no network), the bundled engine, the real contest library. Linux only, under a virtual display,
+      # because Playwright's Electron driver needs one and Windows already proves the package starts.
+      - name: Build-off end to end (packaged app)
+        if: matrix.name == 'linux'
+        run: |
+          set -euo pipefail
+          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.name "redrob"
+          cd apps/desktop
+          xvfb-run -a -s "-screen 0 1400x900x24" bun run e2e
+        env:
+          E2E_ROOT: ${{ runner.temp }}/e2e
+          E2E_SHOTS: ${{ runner.temp }}/e2e/screenshots
+
+      - name: Upload build-off screenshots
+        if: always() && matrix.name == 'linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: buildoff-screenshots
+          path: ${{ runner.temp }}/e2e/screenshots
+          if-no-files-found: ignore
+
   cli-install:
     name: cli install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
