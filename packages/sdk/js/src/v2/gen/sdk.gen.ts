@@ -179,6 +179,10 @@ import type {
   QuestionReplyErrors,
   QuestionReplyResponses,
   QuestionV2Reply,
+  RedrobSpeechErrors,
+  RedrobSpeechResponses,
+  RedrobTranscribeErrors,
+  RedrobTranscribeResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -520,6 +524,84 @@ export class Auth extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<AuthSetResponses, AuthSetErrors, ThrowOnError>({
       url: "/auth/{providerID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Redrob extends HeyApiClient {
+  /**
+   * Speak text
+   *
+   * Turn text into mp3 speech through the Redrob gateway, billed to the connected Redrob account.
+   */
+  public speech<ThrowOnError extends boolean = false>(
+    parameters?: {
+      text?: string
+      voice?: string
+      model?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "text" },
+            { in: "body", key: "voice" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RedrobSpeechResponses, RedrobSpeechErrors, ThrowOnError>({
+      url: "/redrob/speech",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Transcribe speech
+   *
+   * Turn recorded speech into text through the Redrob gateway, billed to the connected Redrob account.
+   */
+  public transcribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      audio?: string
+      format?: "wav" | "mp3" | "flac" | "m4a" | "ogg" | "webm" | "aac"
+      language?: string
+      model?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "audio" },
+            { in: "body", key: "format" },
+            { in: "body", key: "language" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RedrobTranscribeResponses, RedrobTranscribeErrors, ThrowOnError>({
+      url: "/redrob/transcribe",
       ...options,
       ...params,
       headers: {
@@ -7425,6 +7507,11 @@ export class RedrobClient extends HeyApiClient {
   private _auth?: Auth
   get auth(): Auth {
     return (this._auth ??= new Auth({ client: this.client }))
+  }
+
+  private _redrob?: Redrob
+  get redrob(): Redrob {
+    return (this._redrob ??= new Redrob({ client: this.client }))
   }
 
   private _app?: App

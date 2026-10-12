@@ -649,6 +649,17 @@ const scenarios: Scenario[] = [
     .json(200, (body) => {
       check(body === true, "log route should return true")
     }),
+  /* No Redrob key in the exercise home, so both media routes refuse up front with 503, spending nothing. */
+  http.protected
+    .post("/redrob/speech", "redrob.speech")
+    .global()
+    .at(() => ({ path: "/redrob/speech", body: { text: "route coverage" } }))
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/redrob/transcribe", "redrob.transcribe")
+    .global()
+    .at(() => ({ path: "/redrob/transcribe", body: { audio: "UklGRg==", format: "wav" } }))
+    .status(503, undefined, "status"),
   http.protected
     .put("/auth/{providerID}", "auth.set")
     .global()
