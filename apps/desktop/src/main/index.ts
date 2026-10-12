@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell } from "electron"
 import { Channel, type AppInfo, type EngineState, type Settings, type UpdaterState } from "../shared/bridge"
+import { createBuildoffHost } from "./buildoff"
 import { cliStatus, runInstaller } from "./cli"
 import { EngineManager } from "./engine"
 import { findCli, resolveEngineBinary } from "./engine-binary"
@@ -107,6 +108,72 @@ async function main() {
     },
   })
 
+  const buildoffs = createBuildoffHost({
+    engine: () => engine,
+    send: (message) => send(Channel.buildoffMessage, message),
+  })
+  const folder = (value: unknown) => {
+    if (typeof value !== "string" || !path.isAbsolute(value)) throw new Error("An absolute folder path is required.")
+    return value
+  }
+  const slot = (value: unknown) => {
+    if (typeof value !== "string" || !/^[A-J]$/.test(value)) throw new Error("A candidate slot A-J is required.")
+    return value
+  }
+  const contest = (value: unknown) => {
+    if (typeof value !== "string" || !/^c[0-9a-z]+$/.test(value)) throw new Error("A contest id is required.")
+    return value
+  }
+  ipcMain.handle(
+    Channel.buildoffStart,
+    (
+      _event,
+      request: {
+        directory: unknown
+        task: unknown
+        builders?: unknown
+        budgetUsd?: unknown
+        minutes?: unknown
+        gatePercentile?: unknown
+      },
+    ) => {
+      const number = (value: unknown, min: number, max: number) =>
+        typeof value === "number" && value >= min && value <= max ? value : undefined
+      if (typeof request?.task !== "string" || !request.task.trim()) throw new Error("Describe the task first.")
+      return buildoffs.start({
+        directory: folder(request.directory),
+        task: request.task,
+        builders: number(request.builders, 1, 10),
+        budgetUsd: number(request.budgetUsd, 0.1, 500),
+        minutes: number(request.minutes, 1, 240),
+        gatePercentile: number(request.gatePercentile, 0, 100),
+      })
+    },
+  )
+  ipcMain.handle(Channel.buildoffCancel, (_event, runId: unknown) => {
+    if (typeof runId === "string") buildoffs.cancel(runId)
+  })
+  ipcMain.handle(Channel.buildoffHistory, (_event, directory: unknown) => buildoffs.history(folder(directory)))
+  ipcMain.handle(Channel.buildoffDiff, (_event, directory: unknown, id: unknown, which: unknown) =>
+    buildoffs.diff(folder(directory), contest(id), slot(which)),
+  )
+  ipcMain.handle(Channel.buildoffPick, (_event, directory: unknown, id: unknown, which: unknown, reasons: unknown) =>
+    buildoffs.pick(
+      folder(directory),
+      contest(id),
+      slot(which),
+      Array.isArray(reasons)
+        ? reasons.filter((reason): reason is string => typeof reason === "string").slice(0, 10)
+        : [],
+    ),
+  )
+  ipcMain.handle(Channel.buildoffApply, (_event, directory: unknown, id: unknown, strategy: unknown) =>
+    buildoffs.apply(folder(directory), contest(id), strategy === "commit" ? "commit" : "branch"),
+  )
+  ipcMain.handle(Channel.buildoffPreview, (_event, directory: unknown, id: unknown, which: unknown) =>
+    buildoffs.preview(folder(directory), contest(id), slot(which)),
+  )
+
   ipcMain.handle(Channel.engineInfo, () => engine?.current() ?? null)
   ipcMain.handle(Channel.engineState, () => engineState)
   ipcMain.handle(Channel.engineLogs, () => engine?.output() ?? "")
@@ -144,15 +211,12 @@ async function main() {
   ipcMain.handle(Channel.updaterCheck, () => updater.check())
   ipcMain.handle(Channel.updaterInstall, () => updater.install())
   ipcMain.handle(Channel.updaterState, () => updaterState)
-  ipcMain.handle(
-    Channel.appInfo,
-    (): AppInfo => ({
-      version: app.getVersion(),
-      platform: platform === "win32" ? "windows" : platform === "darwin" ? "macos" : "linux",
-      arch: process.arch,
-      packaged: app.isPackaged,
-    }),
-  )
+  ipcMain.handle(Channel.appInfo, (): AppInfo => ({
+    version: app.getVersion(),
+    platform: platform === "win32" ? "windows" : platform === "darwin" ? "macos" : "linux",
+    arch: process.arch,
+    packaged: app.isPackaged,
+  }))
 
   const createWindow = () => {
     window = new BrowserWindow({
@@ -208,7 +272,11 @@ async function main() {
     if (quitting || !engine) return
     event.preventDefault()
     quitting = true
-    void engine.stop().finally(() => app.quit())
+    void buildoffs
+      .dispose()
+      .catch(() => {})
+      .then(() => engine.stop())
+      .finally(() => app.quit())
   })
 
   if (!engine) {

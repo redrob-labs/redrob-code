@@ -50,6 +50,17 @@ const bridge: RedrobCodeBridge = {
     },
   },
   app: { info: () => ipcRenderer.invoke(Channel.appInfo) },
+  buildoff: {
+    start: (request) => ipcRenderer.invoke(Channel.buildoffStart, request),
+    cancel: (runId) => ipcRenderer.invoke(Channel.buildoffCancel, runId),
+    onMessage: (callback) => subscribe(Channel.buildoffMessage, callback),
+    history: (directory) => ipcRenderer.invoke(Channel.buildoffHistory, directory),
+    diff: (directory, contest, slot) => ipcRenderer.invoke(Channel.buildoffDiff, directory, contest, slot),
+    pick: (directory, contest, slot, reasons) =>
+      ipcRenderer.invoke(Channel.buildoffPick, directory, contest, slot, reasons ?? []),
+    apply: (directory, contest, strategy) => ipcRenderer.invoke(Channel.buildoffApply, directory, contest, strategy),
+    preview: (directory, contest, slot) => ipcRenderer.invoke(Channel.buildoffPreview, directory, contest, slot),
+  },
 }
 
 contextBridge.exposeInMainWorld("redrobCode", bridge)

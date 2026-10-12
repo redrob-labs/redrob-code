@@ -29,6 +29,14 @@ export const Channel = {
   updaterInstall: "redrob-code:updater:install",
   updaterState: "redrob-code:updater:state",
   appInfo: "redrob-code:app:info",
+  buildoffStart: "redrob-code:buildoff:start",
+  buildoffCancel: "redrob-code:buildoff:cancel",
+  buildoffMessage: "redrob-code:buildoff:message",
+  buildoffHistory: "redrob-code:buildoff:history",
+  buildoffDiff: "redrob-code:buildoff:diff",
+  buildoffPick: "redrob-code:buildoff:pick",
+  buildoffApply: "redrob-code:buildoff:apply",
+  buildoffPreview: "redrob-code:buildoff:preview",
 } as const
 
 export type EngineState =
@@ -109,6 +117,77 @@ export type AppInfo = {
   packaged: boolean
 }
 
+export type BuildoffStart = {
+  directory: string
+  task: string
+  builders?: number
+  budgetUsd?: number
+  minutes?: number
+  gatePercentile?: number
+}
+
+/** Mirrors @redrob-code/contest's anonymous result; kept structural so the renderer needs no Node code. */
+export type BuildoffGate = { name: string; passed: boolean; detail: string }
+export type BuildoffCandidate = {
+  slot: string
+  status: string
+  changed: boolean
+  files: { path: string; status: string }[]
+  added: number
+  removed: number
+  checks: { name: string; passed: boolean; baselinePassed: boolean | null; output: string }[]
+  crossTests: { passed: number; total: number } | null
+  reproductionTests: string[]
+  quality: { score: number; components: { name: string; penalty: number; detail: string }[] }
+  percentile: number | null
+  flags: { kind: string; file: string; detail: string }[]
+  flagsAccepted: boolean
+  disqualified: string | null
+  costUsd: number
+  durationMs: number
+  points: number
+  summary: string
+}
+export type BuildoffResult = {
+  id: string
+  task: string
+  status: "passed" | "below_standard" | "failed" | "cancelled"
+  winner: string | null
+  ranking: string[]
+  candidates: BuildoffCandidate[]
+  outcomes: { a: string; b: string; winner: string; verdicts: { reviewer: string; winner: string }[] }[]
+  gates: BuildoffGate[]
+  neutral: boolean
+  notes: string[]
+  costUsd: number
+  rounds: number
+}
+export type BuildoffEvent =
+  | { type: "stage"; stage: string; detail?: string }
+  | { type: "candidate"; slot: string; status: string; costUsd?: number; tools?: number }
+  | { type: "note"; message: string }
+export type BuildoffMessage =
+  | { runId: string; kind: "event"; event: BuildoffEvent }
+  | { runId: string; kind: "result"; result: BuildoffResult }
+  | { runId: string; kind: "error"; message: string }
+export type BuildoffReveal = {
+  slot: string
+  model: string
+  vendor: string
+  quality: number
+  points: number
+  costUsd: number
+}[]
+export type BuildoffHistoryEntry = {
+  id: string
+  task: string
+  status: string
+  winner: string | null
+  chosen: string | null
+  revealed: boolean
+  models: Record<string, string> | null
+}
+
 export interface RedrobCodeBridge {
   engine: {
     info(): Promise<EngineInfo | null>
@@ -138,6 +217,21 @@ export interface RedrobCodeBridge {
     onState(callback: (state: UpdaterState) => void): () => void
   }
   app: { info(): Promise<AppInfo> }
+  buildoff: {
+    start(request: BuildoffStart): Promise<{ runId: string }>
+    cancel(runId: string): Promise<void>
+    onMessage(callback: (message: BuildoffMessage) => void): () => void
+    history(directory: string): Promise<BuildoffHistoryEntry[]>
+    diff(directory: string, contest: string, slot: string): Promise<string>
+    /** Records the choice, then returns which model built every slot. */
+    pick(directory: string, contest: string, slot: string, reasons?: string[]): Promise<BuildoffReveal>
+    apply(
+      directory: string,
+      contest: string,
+      strategy: "branch" | "commit",
+    ): Promise<{ strategy: string; branch: string | null; commit: string }>
+    preview(directory: string, contest: string, slot: string): Promise<{ url: string }>
+  }
 }
 
 declare global {

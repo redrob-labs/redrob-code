@@ -24,15 +24,18 @@
     "package": "bun run script/package.ts",
     "smoke": "bun run script/smoke.ts",
     "test": "bun test",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "e2e": "node e2e/buildoff.mjs"
   },
   "devDependencies": {
+    "@redrob-code/contest": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "electron": "43.7.9",
     "electron-builder": "26.17.0",
-    "electron-updater": "6.8.10"
+    "electron-updater": "6.8.10",
+    "playwright-core": "1.64.0"
   }
 }
