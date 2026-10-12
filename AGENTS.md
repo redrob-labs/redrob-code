@@ -4,8 +4,13 @@ Redrob Code: the engine behind Redrob Cowork, a fork of OpenCode. It is consumed
 version rather than a branch — `constants.json` in `redrob-cowork` names the release the desktop app
 ships, so **a change here reaches users only through a release and a pin bump**, never by merging.
 
+This repository also holds Redrob Code Desktop (`apps/desktop`, `apps/studio`), which ships in the
+same release as the CLI with no pin. `apps/` is ours alone: upstream has no such directory, so upstream
+syncs never touch it. Do not move the app under `packages/app` or `packages/desktop`, which upstream
+still develops. Design of record: `docs/DESKTOP.md`.
+
 Per-package instructions live beside the code they describe and are more specific than this file.
-There are ten of them; list them with `git ls-files | grep 'AGENTS.md$'`. **Read the nearest one
+There are twelve of them; list them with `git ls-files | grep 'AGENTS.md$'`. **Read the nearest one
 before editing a package** — `packages/redrob/`, `packages/redrob/test/`, `packages/schema/`,
 `packages/llm/` and `packages/codemode/` each have their own, and three sit deeper under
 `packages/redrob/src/**`.

@@ -136,13 +136,17 @@ new files to `.redrob/`.
 ### Scope
 
 Redrob Code is the engine, the CLI and the terminal UI, plus the SDKs and plugin
-surface built on them. It ships no graphical interface of its own: no desktop
-shell, no web UI, no browser front end.
+surface built on them, and **Redrob Code Desktop** (`apps/desktop`, `apps/studio`).
 
-**Redrob Work is the only GUI.** It drives this engine over the HTTP API that
-`redrob serve` exposes, selecting a project per request with the
-`x-redrob-directory` header. The API, ACP and MCP surfaces are the contract
-between the two; keep them stable.
+The desktop app is optional and ships beside the CLI, not instead of it. The install
+commands above are unchanged and still give you the CLI on its own. The desktop
+installer, `redrob-code-desktop-<version>-win-x64.exe`, is published in the same release
+and bundles its own engine. It never touches your CLI install or your PATH. See
+[docs/DESKTOP.md](./docs/DESKTOP.md).
+
+Redrob Cowork also drives this engine over the HTTP API that `redrob serve` exposes,
+selecting a project per request. The API, ACP and MCP surfaces are the contract with
+every client; keep them stable.
 
 ### Development
 
