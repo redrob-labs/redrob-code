@@ -750,6 +750,17 @@ const scenarios: Scenario[] = [
       body: { label: "Work" },
     }))
     .status(204, undefined, "status"),
+  http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
+    object(body)
+    check(body.mode === "off", "masking should be off until someone turns it on")
+  }),
+  http.protected
+    .put("/api/privacy", "v2.privacy.set")
+    .at((ctx) => ({ path: "/api/privacy", headers: ctx.headers(), body: { mode: "off" } }))
+    .json(200, (body) => {
+      object(body)
+      check(body.mode === "off", "the setting should be echoed back")
+    }),
   http.protected.get("/api/command", "v2.command.list").json(200, locationData(array)),
   http.protected.get("/api/skill", "v2.skill.list").json(200, locationData(array)),
   http.protected
