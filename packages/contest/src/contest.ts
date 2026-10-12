@@ -40,6 +40,14 @@ export type ContestOptions = {
   escalate?: boolean
   /** Only models from these provider ids take part, e.g. ["redrob"] or a person's own keys. */
   providers?: string[]
+  /** Commit to start from instead of HEAD. */
+  base?: string
+  /**
+   * The human distribution to rank against, when the repository the contest runs in is not the one
+   * whose history matters. Replay runs in a history-free snapshot (so builders cannot read the answer
+   * from `git log`) and passes the real repository's distribution here.
+   */
+  history?: { scores: number[]; referenceSize: number }
   checkTimeoutMs?: number
   historyLimit?: number
   root?: string
@@ -166,8 +174,8 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
 
   emit({ type: "stage", stage: "preparing" })
   const repo = await Git.repoRoot(options.directory)
-  const base = await Git.headCommit(repo)
-  if (!(await Git.isClean(repo)))
+  const base = options.base ? await Git.resolve(repo, options.base) : await Git.headCommit(repo)
+  if (!options.base && !(await Git.isClean(repo)))
     note("uncommitted changes in your checkout are not part of the contest; it starts from HEAD")
   const state = await stateDir(repo)
   const id = contestId()
@@ -195,7 +203,7 @@ export async function runContest(engine: Engine, options: ContestOptions): Promi
   const setup = await runSetup(baseline, project, checkTimeoutMs)
   if (!setup.ok) note(`setup failed on the base commit: ${setup.output.split("\n")[0]}`)
   const baselineChecks = setup.ok ? await runChecks(baseline, project, checkTimeoutMs) : []
-  const history = await humanHistory(repo, base, options.historyLimit ?? 40)
+  const history = options.history ?? (await humanHistory(repo, base, options.historyLimit ?? 40))
 
   const models: Record<string, string> = {}
   const vendors: Record<string, string> = {}
@@ -626,7 +634,7 @@ async function crossTest(
   }
 }
 
-async function humanHistory(repo: string, base: string, limit: number) {
+export async function humanHistory(repo: string, base: string, limit: number) {
   // Commits the contest itself produced are not the human bar, so they are left out.
   const commits = (await Git.history(repo, base, limit)).filter((commit) => !/^Redrob-Model:/m.test(commit.body))
   const scores: number[] = []
@@ -752,6 +760,22 @@ function summarise(task: string) {
       .find((entry) => entry.trim())
       ?.trim() ?? "Apply build-off winner"
   return line.length > 72 ? `${line.slice(0, 69)}...` : line
+}
+
+/**
+ * The full record, names included. For the Quality Lab, which scores a contest after the fact and is
+ * never shown to a person choosing. Anything that faces a chooser must use `load` instead.
+ */
+export async function unblindedRecord(directory: string, id: string) {
+  const repo = await Git.repoRoot(directory)
+  const record = loadRecord<Private>(await stateDir(repo), id)
+  return {
+    result: record.result,
+    models: record.models,
+    vendors: record.vendors,
+    reviewers: record.reviewers,
+    commits: record.commits,
+  }
 }
 
 /** The last record's anonymous result, for a caller that lost it (the CLI's `--show`). */

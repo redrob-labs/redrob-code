@@ -37,6 +37,10 @@ export async function headCommit(directory: string) {
   return (await must(directory, ["rev-parse", "HEAD"])).trim()
 }
 
+export async function resolve(directory: string, revision: string) {
+  return (await must(directory, ["rev-parse", "--verify", `${revision}^{commit}`])).trim()
+}
+
 export async function isClean(directory: string) {
   return (await must(directory, ["status", "--porcelain"])).trim() === ""
 }
