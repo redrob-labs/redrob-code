@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { installCommand } from "../src/main/cli"
 import { parseStatus } from "../src/main/git"
 import { resolveRendererFile } from "../src/main/renderer-protocol"
@@ -8,12 +9,16 @@ import { normalize } from "../src/main/settings"
 import { parseEnv } from "../src/main/shell-env"
 
 test("the renderer protocol never serves a file outside the bundle", () => {
-  const root = "/app/studio"
-  const exists = (file: string) => file === "/app/studio/assets/a.js" || file === "/app/studio/index.html"
-  expect(resolveRendererFile(root, "oc://renderer/assets/a.js", exists)).toBe("file:///app/studio/assets/a.js")
-  expect(resolveRendererFile(root, "oc://renderer/sessions/123", exists)).toBe("file:///app/studio/index.html")
+  // Resolved for this platform, so on Windows "/app/studio" is a drive path like the app would see.
+  const root = path.resolve("/app/studio")
+  const asset = path.join(root, "assets", "a.js")
+  const index = path.join(root, "index.html")
+  const url = (file: string) => pathToFileURL(file).toString()
+  const exists = (file: string) => file === asset || file === index
+  expect(resolveRendererFile(root, "oc://renderer/assets/a.js", exists)).toBe(url(asset))
+  expect(resolveRendererFile(root, "oc://renderer/sessions/123", exists)).toBe(url(index))
   // URL parsing already collapses dot segments at the root, so this one stays inside the bundle...
-  expect(resolveRendererFile(root, "oc://renderer/%2e%2e/%2e%2e/etc/passwd", exists)).toStartWith("file:///app/studio/")
+  expect(resolveRendererFile(root, "oc://renderer/%2e%2e/%2e%2e/etc/passwd", exists)).toStartWith(url(root))
   // ...and an encoded slash, which survives URL parsing and only becomes `../` once decoded, is refused.
   expect(resolveRendererFile(root, "oc://renderer/..%2f..%2fetc%2fpasswd", exists)).toBeNull()
   expect(resolveRendererFile(root, "oc://elsewhere/index.html", exists)).toBeNull()
