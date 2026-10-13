@@ -40,9 +40,15 @@ const ChatCompletionsCapability = Schema.Struct({
   stream: Schema.Boolean,
 }).annotate({ identifier: "ChatCompletionsCapability" })
 
+/** The shared daemon contract: `redrob serve --register`, `~/.redrob/run/server.json`, `/api/clients`. */
+const SharedDaemonCapability = Schema.Struct({
+  version: NonNegativeInt,
+}).annotate({ identifier: "SharedDaemonCapability" })
+
 const CapabilitiesResponse = Schema.Struct({
   backgroundSubagents: Schema.Boolean,
   chatCompletions: ChatCompletionsCapability,
+  sharedDaemon: SharedDaemonCapability,
 }).annotate({ identifier: "ExperimentalCapabilities" })
 
 const ConsoleOrgOption = Schema.Struct({

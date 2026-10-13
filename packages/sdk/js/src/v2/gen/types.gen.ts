@@ -2225,9 +2225,14 @@ export type ChatCompletionsCapability = {
   stream: boolean
 }
 
+export type SharedDaemonCapability = {
+  version: number
+}
+
 export type ExperimentalCapabilities = {
   backgroundSubagents: boolean
   chatCompletions: ChatCompletionsCapability
+  sharedDaemon: SharedDaemonCapability
 }
 
 export type ConsoleState = {
@@ -2779,6 +2784,27 @@ export type WorkspaceWarpError = {
 
 export type UnauthorizedError = {
   _tag: "UnauthorizedError"
+  message: string
+}
+
+export type EngineClient = {
+  id: string
+  app: string
+  pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  attachedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  lastSeen: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type EngineClientList = {
+  clients: Array<EngineClient>
+  ttlMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  idleForMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  idleExitAfterMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type ClientNotFoundError = {
+  _tag: "ClientNotFoundError"
+  clientID: string
   message: string
 }
 
@@ -11809,6 +11835,133 @@ export type V2HealthGetResponses = {
 }
 
 export type V2HealthGetResponse = V2HealthGetResponses[keyof V2HealthGetResponses]
+
+export type V2ClientsListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/clients"
+}
+
+export type V2ClientsListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsListError = V2ClientsListErrors[keyof V2ClientsListErrors]
+
+export type V2ClientsListResponses = {
+  /**
+   * EngineClientList
+   */
+  200: EngineClientList
+}
+
+export type V2ClientsListResponse = V2ClientsListResponses[keyof V2ClientsListResponses]
+
+export type V2ClientsAttachData = {
+  body: {
+    app: string
+    pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: never
+  url: "/api/clients"
+}
+
+export type V2ClientsAttachErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsAttachError = V2ClientsAttachErrors[keyof V2ClientsAttachErrors]
+
+export type V2ClientsAttachResponses = {
+  /**
+   * EngineClient
+   */
+  200: EngineClient
+}
+
+export type V2ClientsAttachResponse = V2ClientsAttachResponses[keyof V2ClientsAttachResponses]
+
+export type V2ClientsHeartbeatData = {
+  body?: never
+  path: {
+    clientID: string
+  }
+  query?: never
+  url: "/api/clients/{clientID}/heartbeat"
+}
+
+export type V2ClientsHeartbeatErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ClientNotFoundError
+   */
+  404: ClientNotFoundError
+}
+
+export type V2ClientsHeartbeatError = V2ClientsHeartbeatErrors[keyof V2ClientsHeartbeatErrors]
+
+export type V2ClientsHeartbeatResponses = {
+  /**
+   * EngineClient
+   */
+  200: EngineClient
+}
+
+export type V2ClientsHeartbeatResponse = V2ClientsHeartbeatResponses[keyof V2ClientsHeartbeatResponses]
+
+export type V2ClientsDetachData = {
+  body?: never
+  path: {
+    clientID: string
+  }
+  query?: never
+  url: "/api/clients/{clientID}"
+}
+
+export type V2ClientsDetachErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsDetachError = V2ClientsDetachErrors[keyof V2ClientsDetachErrors]
+
+export type V2ClientsDetachResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2ClientsDetachResponse = V2ClientsDetachResponses[keyof V2ClientsDetachResponses]
 
 export type V2LocationGetData = {
   body?: never

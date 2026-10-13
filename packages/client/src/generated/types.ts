@@ -21,6 +21,14 @@ export type InvalidRequestError = {
 export const isInvalidRequestError = (value: unknown): value is InvalidRequestError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidRequestError"
 
+export type ClientNotFoundError = {
+  readonly _tag: "ClientNotFoundError"
+  readonly clientID: string
+  readonly message: string
+}
+export const isClientNotFoundError = (value: unknown): value is ClientNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ClientNotFoundError"
+
 export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
 export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
@@ -110,6 +118,46 @@ export const isProjectCopyError = (value: unknown): value is ProjectCopyError =>
   typeof value === "object" && value !== null && "name" in value && value["name"] === "ProjectCopyError"
 
 export type HealthGetOutput = { readonly healthy: true }
+
+export type ServerClientsListOutput = {
+  readonly clients: ReadonlyArray<{
+    readonly id: string
+    readonly app: string
+    readonly pid?: number | undefined
+    readonly attachedAt: number
+    readonly lastSeen: number
+  }>
+  readonly ttlMs: number
+  readonly idleForMs?: number | undefined
+  readonly idleExitAfterMs?: number | undefined
+}
+
+export type ServerClientsAttachInput = {
+  readonly app: { readonly app: string; readonly pid?: number | undefined }["app"]
+  readonly pid?: { readonly app: string; readonly pid?: number | undefined }["pid"]
+}
+
+export type ServerClientsAttachOutput = {
+  readonly id: string
+  readonly app: string
+  readonly pid?: number | undefined
+  readonly attachedAt: number
+  readonly lastSeen: number
+}
+
+export type ServerClientsHeartbeatInput = { readonly clientID: { readonly clientID: string }["clientID"] }
+
+export type ServerClientsHeartbeatOutput = {
+  readonly id: string
+  readonly app: string
+  readonly pid?: number | undefined
+  readonly attachedAt: number
+  readonly lastSeen: number
+}
+
+export type ServerClientsDetachInput = { readonly clientID: { readonly clientID: string }["clientID"] }
+
+export type ServerClientsDetachOutput = void
 
 export type LocationGetInput = {
   readonly location?: {

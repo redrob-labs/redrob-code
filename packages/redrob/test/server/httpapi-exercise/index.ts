@@ -18,6 +18,7 @@
  * - `.mutating()` tells the runner to reset isolated state after destructive routes.
  */
 import { Effect } from "effect"
+import * as EngineClients from "@redrob-code/server/clients"
 import { OpenApi } from "effect/unstable/httpapi"
 import { TestLLMServer } from "../../lib/llm-server"
 import path from "path"
@@ -580,6 +581,7 @@ const scenarios: Scenario[] = [
     check(typeof body === "object" && body !== null, "capabilities should be an object")
     check("backgroundSubagents" in body, "capabilities should report background subagents")
     check("chatCompletions" in body, "capabilities should report the chat-completions contract")
+    check("sharedDaemon" in body, "capabilities should report the shared-daemon contract")
   }),
   // The OpenAI-compatible route. Exercised on its 400 path deliberately: a real
   // completion needs a provider credential this harness has none of, so asserting
@@ -760,6 +762,39 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
       body: { label: "Work" },
     }))
+    .status(204, undefined, "status"),
+  // The shared daemon's attachment registry. Process-level state, so each scenario seeds its own
+  // attachment and the list is asserted on shape, not on a count another scenario may have moved.
+  http.protected.get("/api/clients", "v2.clients.list").json(200, (body) => {
+    object(body)
+    check(Array.isArray(body.clients), "clients should be a list")
+    check(typeof body.ttlMs === "number", "the heartbeat deadline should be reported")
+  }),
+  http.protected
+    .post("/api/clients", "v2.clients.attach")
+    .mutating()
+    .at((ctx) => ({ path: "/api/clients", headers: ctx.headers(), body: { app: "httpapi", pid: 4242 } }))
+    .json(200, (body) => {
+      object(body)
+      check(typeof body.id === "string" && body.app === "httpapi" && body.pid === 4242, "the attachment should be echoed with an id")
+    }),
+  http.protected
+    .post("/api/clients/{clientID}/heartbeat", "v2.clients.heartbeat")
+    .mutating()
+    .seeded(() => Effect.sync(() => EngineClients.attach({ app: "httpapi-heartbeat" })))
+    .at((ctx) => ({
+      path: route("/api/clients/{clientID}/heartbeat", { clientID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.id === ctx.state.id, "the heartbeat should answer with the same attachment")
+    }),
+  http.protected
+    .delete("/api/clients/{clientID}", "v2.clients.detach")
+    .mutating()
+    .seeded(() => Effect.sync(() => EngineClients.attach({ app: "httpapi-detach" })))
+    .at((ctx) => ({ path: route("/api/clients/{clientID}", { clientID: ctx.state.id }), headers: ctx.headers() }))
     .status(204, undefined, "status"),
   http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
     object(body)

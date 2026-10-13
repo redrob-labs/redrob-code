@@ -44,6 +44,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
         // supports, and degrades explicitly rather than discovering a gap by getting
         // a 400 mid-feature. `version` is the contract revision, not the engine's.
         chatCompletions: { version: 1, callerTools: true, stream: true },
+        // One shared daemon per user (`redrob serve --register`, `/api/clients`). An app that sees this
+        // attaches instead of starting an engine of its own.
+        sharedDaemon: { version: 1 },
       }
     })
 

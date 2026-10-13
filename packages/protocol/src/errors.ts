@@ -126,3 +126,12 @@ export class PtyNotFoundError extends Schema.TaggedErrorClass<PtyNotFoundError>(
   },
   { httpApiStatus: 404 },
 ) {}
+
+export class ClientNotFoundError extends Schema.TaggedErrorClass<ClientNotFoundError>()(
+  "ClientNotFoundError",
+  {
+    clientID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
