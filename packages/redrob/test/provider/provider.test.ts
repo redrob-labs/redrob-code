@@ -2173,3 +2173,121 @@ it.effect("redrob loader lists the same models with or without an auth.json cred
     expect(none).toBe(keyedCount)
   }).pipe(provideMultiInstance),
 )
+
+/*
+  Redrob Launcher's shared `account.json` as the LAST fallback for the console key, and how the provider
+  report says so. A host app reads `GET /provider` and shows "Signed in with Redrob Launcher" from
+  `source: "launcher"`; it reads `options.apiKey === "public"` as "not connected", so with the shared file
+  present that placeholder must not be set. Every case points REDROB_SHARED_DIR at a scratch directory.
+*/
+const withSharedAccount = (body: unknown) =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const saved = process.env["REDROB_SHARED_DIR"]
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        rememberEnv("REDROB_SHARED_DIR")
+        process.env["REDROB_SHARED_DIR"] = dir
+      }),
+      () =>
+        Effect.sync(() => {
+          if (saved === undefined) delete process.env["REDROB_SHARED_DIR"]
+          else process.env["REDROB_SHARED_DIR"] = saved
+        }),
+    )
+    if (body !== undefined) {
+      yield* Effect.promise(() => Filesystem.write(path.join(dir, "account.json"), JSON.stringify(body)))
+    }
+    return dir
+  })
+
+/**
+ * Pin the engine's own auth.json to `entry` for the test (`undefined` = absent) and put it back after.
+ * Files in one bun process share Global.Path.data, and the device-connect suite leaves a redrob entry
+ * there, which would otherwise win over the shared file and turn these into tests of that leak.
+ */
+const withOwnAuth = (entry: unknown) =>
+  Effect.gen(function* () {
+    const authPath = path.join(Global.Path.data, "auth.json")
+    const original = yield* Effect.promise(() => Filesystem.readText(authPath).catch(() => undefined))
+    yield* Effect.acquireRelease(
+      Effect.promise(async () => {
+        if (entry === undefined) await unlink(authPath).catch(() => undefined)
+        else await Filesystem.write(authPath, JSON.stringify({ redrob: entry }))
+      }),
+      () =>
+        Effect.promise(async () => {
+          if (original !== undefined) await Filesystem.write(authPath, original)
+          else await unlink(authPath).catch(() => undefined)
+        }),
+    )
+    return authPath
+  })
+
+const launcherAccount = {
+  apiKey: "rk_from_launcher",
+  apiKeyName: "Redrob Launcher",
+  accountName: "Acme",
+  apiBaseUrl: "https://console.redrob.ai/api/backend/v1",
+}
+
+const listIn = (directory: string) =>
+  Provider.use
+    .list()
+    .pipe(provideInstanceEffect(directory))
+    .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
+
+it.effect("redrob provider reports source launcher when only the shared file holds a key", () =>
+  Effect.gen(function* () {
+    yield* withOwnAuth(undefined)
+    yield* withSharedAccount(launcherAccount)
+    const providers = yield* listIn(yield* tmpdirScoped())
+    const redrob = providers[ProviderV2.ID.redrob]
+    expect(redrob).toBeDefined()
+    expect(redrob.source).toBe("launcher")
+    expect(redrob.key).toBe("rk_from_launcher")
+    expect(redrob.options.apiKey).toBeUndefined()
+  }).pipe(provideMultiInstance),
+)
+
+it.effect("redrob provider stays keyless with the public placeholder when the shared file is absent or empty", () =>
+  Effect.gen(function* () {
+    yield* withOwnAuth(undefined)
+    yield* withSharedAccount({ apiKey: "" })
+    const providers = yield* listIn(yield* tmpdirScoped())
+    const redrob = providers[ProviderV2.ID.redrob]
+    expect(redrob).toBeDefined()
+    expect(redrob.source).toBe("custom")
+    expect(redrob.key).toBeUndefined()
+    expect(redrob.options.apiKey).toBe("public")
+  }).pipe(provideMultiInstance),
+)
+
+it.effect("REDROB_API_KEY wins over the shared file in the provider report", () =>
+  Effect.gen(function* () {
+    yield* withOwnAuth(undefined)
+    yield* withSharedAccount(launcherAccount)
+    yield* setProcessEnv("REDROB_API_KEY", "rk_from_env")
+    const providers = yield* listIn(yield* tmpdirScoped())
+    const redrob = providers[ProviderV2.ID.redrob]
+    expect(redrob.source).toBe("env")
+    expect(redrob.key).toBe("rk_from_env")
+  }).pipe(provideMultiInstance),
+)
+
+it.effect("the app's own auth.json wins over the shared file, and removing it falls back to the launcher", () =>
+  Effect.gen(function* () {
+    yield* withSharedAccount(launcherAccount)
+    const authPath = yield* withOwnAuth({ type: "api", key: "rk_from_auth_json" })
+
+    const own = (yield* listIn(yield* tmpdirScoped()))[ProviderV2.ID.redrob]
+    expect(own.source).toBe("api")
+    expect(own.key).toBe("rk_from_auth_json")
+
+    // What `DELETE /auth/redrob` does. The shared file is not touched, so the next list() falls back to it.
+    yield* Effect.promise(() => unlink(authPath))
+    const fallback = (yield* listIn(yield* tmpdirScoped()))[ProviderV2.ID.redrob]
+    expect(fallback.source).toBe("launcher")
+    expect(fallback.key).toBe("rk_from_launcher")
+  }).pipe(provideMultiInstance),
+)
