@@ -57,6 +57,10 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
       tag: ${{ steps.compute.outputs.tag }}
       upstream: ${{ steps.compute.outputs.upstream }}
+      # The one commit this release is. Every later job checks THIS out, not `develop`:
+      # a merge that lands while the build runs must not make the tag point at code the
+      # binaries were not built from (it did, once, with a merge two minutes after dispatch).
+      sha: ${{ steps.compute.outputs.sha }}
     steps:
       # Tags are the version state, so this job needs them. `fetch-tags` alone is not
       # enough with a shallow checkout: the tag objects arrive without the commits they
@@ -109,6 +113,7 @@ jobs:
           upstream="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
           echo "::notice::releasing v$version (built on opencode v$upstream)"
 
@@ -118,7 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: develop
+          ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-bun
@@ -597,7 +602,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: develop
+          ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 0
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
