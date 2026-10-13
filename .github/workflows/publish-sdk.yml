@@ -44,8 +44,13 @@ concurrency:
   group: publish-sdk
   cancel-in-progress: false
 
+# `id-token: write` is what npm trusted publishing needs: npm exchanges the GitHub OIDC token for a
+# short-lived publish credential, so no NPM_TOKEN secret is stored anywhere. The trust is configured
+# on npmjs.com (package settings > Trusted publisher: this repository, this workflow file). When
+# NPM_TOKEN IS set it still wins, so the old path keeps working during the switch.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -61,6 +66,12 @@ jobs:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-bun
+
+      # Trusted publishing needs npm >= 11.5.1 (Node 24 ships one); the runner's default is older.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm install -g npm@latest && npm --version
 
       - id: resolve
         env:
@@ -100,8 +111,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is not set for this repository or its organization"
-            exit 1
+            echo "no NPM_TOKEN: publishing through npm trusted publishing (OIDC)"
+            exit 0
           fi
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           if ! who="$(npm whoami 2>&1)"; then
