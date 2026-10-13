@@ -633,6 +633,26 @@ jobs:
             tar -czf "../assets/${directory}.tar.gz" -C "$directory/bin" .
           done
 
+      # Redrob Launcher installs only `<stem>-<version>-<os>-<arch>[-portable].<ext>` with its own
+      # os-arch spellings (`linux-x86_64`, `macos-aarch64`), which none of the names above are. The
+      # names above stay -- install.sh, `redrob upgrade`, Homebrew, AUR and the Dockerfile download
+      # them verbatim -- and the launcher's are added beside them. See the script's header for the
+      # layout inside; `test/installation/launcher-assets.test.ts` guards both.
+      #
+      # Bun alone, without the repository's dependencies: the script imports nothing but Bun and
+      # Node built-ins, and `bun install` here would cost minutes for nothing.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Add the Redrob Launcher assets
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bun ./packages/redrob/script/launcher-assets.ts \
+            --version "$VERSION" --unsigned unsigned --signed assets --out assets
+
       - name: Checksums
         working-directory: assets
         run: |
