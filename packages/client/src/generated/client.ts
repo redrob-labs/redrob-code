@@ -1,5 +1,12 @@
 import type {
   HealthGetOutput,
+  ServerClientsListOutput,
+  ServerClientsAttachInput,
+  ServerClientsAttachOutput,
+  ServerClientsHeartbeatInput,
+  ServerClientsHeartbeatOutput,
+  ServerClientsDetachInput,
+  ServerClientsDetachOutput,
   LocationGetInput,
   LocationGetOutput,
   AgentsListInput,
@@ -269,6 +276,47 @@ export function make(options: ClientOptions) {
       get: (requestOptions?: RequestOptions) =>
         request<HealthGetOutput>(
           { method: "GET", path: `/api/health`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+    },
+    "server.clients": {
+      list: (requestOptions?: RequestOptions) =>
+        request<ServerClientsListOutput>(
+          { method: "GET", path: `/api/clients`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      attach: (input: ServerClientsAttachInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsAttachOutput>(
+          {
+            method: "POST",
+            path: `/api/clients`,
+            body: { app: input["app"], pid: input["pid"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      heartbeat: (input: ServerClientsHeartbeatInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsHeartbeatOutput>(
+          {
+            method: "POST",
+            path: `/api/clients/${encodeURIComponent(input.clientID)}/heartbeat`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      detach: (input: ServerClientsDetachInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsDetachOutput>(
+          {
+            method: "DELETE",
+            path: `/api/clients/${encodeURIComponent(input.clientID)}`,
+            successStatus: 204,
+            declaredStatuses: [401, 400],
+            empty: true,
+          },
           requestOptions,
         ),
     },

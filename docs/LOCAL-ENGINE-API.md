@@ -149,15 +149,33 @@ step.
 
 ### One daemon, not one per product
 
-A shared record at `$HOME/.redrob/run/server.json`, mode `0600`:
+Built. `redrob serve --register` is the daemon; `redrob service start | status | stop | restart`
+drives it by hand, and `redrob service start --json` prints the record for a caller in another
+language (the launcher is Rust). The record is `$HOME/.redrob/run/server.json`
+(`REDROB_RUN_DIR` overrides the folder), mode `0600`:
 
 ```json
-{ "port": 51234, "pid": 8412, "secret": "…", "version": "0.1.7" }
+{ "id": "…", "version": "0.5.0", "url": "http://127.0.0.1:4096", "port": 4096, "pid": 8412, "secret": "…" }
 ```
 
-The first product that needs the engine starts it; the rest attach. Required
-behaviour: liveness check before attaching, recovery from a stale record whose pid is
-gone, and reconnection by attached products when an upgrade restarts the daemon.
+`id` is random per start, so a client that saw another id knows the daemon restarted. `secret`
+is the Basic password (username `redrob`), drawn fresh on every start: a stale record never opens
+a running server, and an app that loses its connection re-reads the file rather than keeping a
+secret of its own.
+
+The first app that needs the engine starts it; the rest attach. `connectOrStart` in
+`@redrob-labs/sdk/daemon` (JavaScript) and `packages/redrob/src/daemon/connect.ts` (the CLI) do
+the required steps: a liveness check before attaching (`/api/health` with the record's secret), a
+stale record whose pid is gone is removed, a healthy daemon of another version is stopped and
+replaced (an upgrade), and the new record is awaited.
+
+Attached apps are counted. `POST /api/clients {app, pid}` attaches, `POST
+/api/clients/:id/heartbeat` keeps it (expected within `ttlMs`, 90 s; the SDK's `attach()` does this
+for you), `DELETE /api/clients/:id` detaches, `GET /api/clients` lists them with `idleForMs` and
+the daemon's `idleExitAfterMs`. A registered daemon exits once nobody has been attached for
+`--idle-exit` minutes (default 10; 0 keeps it up), and also when another daemon has taken over
+the record. `redrob acp --attach` makes the ACP face a thin client of the daemon instead of an
+engine of its own, so ACP hosts (Design, Cut, CAD, Browser) share the one process too.
 
 Per-product processes were considered and rejected: with local inference, N processes
 means the same weights loaded N times, which defeats the reason for doing this.
@@ -174,7 +192,7 @@ handler at `packages/redrob/src/server/routes/instance/httpapi/handlers/experime
 grows an entry:
 
 ```json
-{ "chatCompletions": { "version": 1, "callerTools": true, "stream": true } }
+{ "chatCompletions": { "version": 1, "callerTools": true, "stream": true }, "sharedDaemon": { "version": 1 } }
 ```
 
 A product declares the MINIMUM capability it needs, never a version number. If the

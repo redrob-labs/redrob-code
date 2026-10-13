@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "@redrob-code/core/flag/flag"
+import { InstallationVersion } from "@redrob-code/core/installation/version"
 
 // The startup handshake Redrob Work depends on.
 //
@@ -15,21 +16,84 @@ export const SERVER_LISTENING_PREFIX = "redrob server listening"
 export const serverListeningLine = (server: { hostname: string; port: number }) =>
   `${SERVER_LISTENING_PREFIX} on http://${server.hostname}:${server.port}`
 
+/** Default minutes with nobody attached before a registered daemon exits. */
+export const DEFAULT_IDLE_EXIT_MINUTES = 10
+
 export const ServeCommand = effectCmd({
   command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
+  builder: (yargs) =>
+    withNetworkOptions(yargs)
+      .option("register", {
+        type: "boolean",
+        default: false,
+        describe:
+          "run as the user's shared daemon: draw a secret, write ~/.redrob/run/server.json for other Redrob apps to find, exit when idle",
+      })
+      .option("idle-exit", {
+        type: "number",
+        default: DEFAULT_IDLE_EXIT_MINUTES,
+        describe: "with --register: minutes with no attached app before exiting (0 = stay up)",
+      }),
   describe: "starts a headless redrob server",
   // Server loads instances per-request via x-redrob-directory header — no
   // need for an ambient project InstanceContext at startup.
   instance: false,
   handler: Effect.fn("Cli.serve")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
-    if (!Flag.REDROB_SERVER_PASSWORD) {
+    const register = args.register === true
+    const Registry = register ? yield* Effect.promise(() => import("../../daemon/registry")) : undefined
+    // The daemon's secret is per start. It must be in the environment BEFORE the server's config
+    // layer reads it, and it is what goes into the record, so other apps can authenticate.
+    const secret = Registry ? Registry.newSecret() : undefined
+    if (secret) process.env.REDROB_SERVER_PASSWORD = secret
+    else if (!Flag.REDROB_SERVER_PASSWORD) {
       console.log("Warning: REDROB_SERVER_PASSWORD is not set; server is unsecured.")
     }
     const opts = yield* resolveNetworkOptions(args)
     const server = yield* Effect.promise(() => Server.listen(opts))
     console.log(serverListeningLine(server))
+
+    if (Registry && secret) {
+      const { setIdleExitAfterMs } = yield* Effect.promise(() => import("@redrob-code/server/handlers/clients"))
+      const Clients = yield* Effect.promise(() => import("@redrob-code/server/clients"))
+      const id = Registry.newID()
+      yield* Effect.promise(() =>
+        Registry.write({
+          id,
+          version: InstallationVersion,
+          url: `http://${server.hostname}:${server.port}`,
+          port: server.port,
+          pid: process.pid,
+          secret,
+        }),
+      )
+      const idleExitMs = args["idle-exit"] > 0 ? args["idle-exit"] * 60_000 : undefined
+      setIdleExitAfterMs(idleExitMs)
+
+      let leaving = false
+      const leave = (code: number) => {
+        if (leaving) return
+        leaving = true
+        void Registry.remove(id)
+          .catch(() => undefined)
+          .then(() => server.stop(true))
+          .finally(() => process.exit(code))
+      }
+      process.once("SIGTERM", () => leave(0))
+      process.once("SIGINT", () => leave(0))
+
+      // Watch the record: a newer daemon that took the file over means this one should go. Watch
+      // the clients: once nobody has been attached for the idle window, go too.
+      const tick = setInterval(() => {
+        void Registry.read().then((current) => {
+          if (current && current.id !== id) return leave(0)
+          Clients.sweep()
+          const idle = Clients.idleFor()
+          if (idleExitMs !== undefined && idle !== undefined && idle >= idleExitMs) leave(0)
+        })
+      }, 10_000)
+      tick.unref()
+    }
 
     yield* Effect.never
   }),

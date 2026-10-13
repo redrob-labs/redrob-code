@@ -14,12 +14,14 @@ import { Catalog } from "@redrob-code/core/catalog"
 import { Integration } from "@redrob-code/core/integration"
 import { ModelV2 } from "@redrob-code/core/model"
 import { ProviderV2 } from "@redrob-code/core/provider"
+import { Mask } from "@redrob-code/core/privacy/mask"
+import { Privacy } from "@redrob-code/core/privacy/service"
 import { fromCatalogModel } from "@redrob-code/core/session/runner/model"
-import { LLM, LLMError } from "@redrob-code/llm"
-import type { LLMEvent, LLMResponse } from "@redrob-code/llm"
+import { LLM, LLMError, LLMResponse, Message } from "@redrob-code/llm"
+import type { LLMEvent, LLMRequest } from "@redrob-code/llm"
 import type { Credential } from "@redrob-code/schema/credential"
 import { ChatCompletionRequest } from "@redrob-code/protocol/groups/chat-completion"
-import { Effect, Stream } from "effect"
+import { Effect, Option, Stream } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
@@ -179,6 +181,53 @@ const buildRequest = Effect.fn("chat.buildRequest")(function* (payload: ChatComp
   })
 })
 
+/**
+ * PII masking on this route, with the same switch and the same masker as the agent runner
+ * (session/runner/llm.ts). A caller sends its whole history with real values each time, so one
+ * vault per request is enough: placeholders only have to agree within a request, and the answer
+ * is put back before it leaves. The model tier asks the configured LOCAL model for names,
+ * organisations and places exactly as the runner does.
+ */
+export const maskedRequest = Effect.fn("chat.mask")(function* (unmasked: LLMRequest) {
+  const privacy = yield* (yield* Privacy.Service).get()
+  if (privacy.mode === "off") return { request: unmasked, unmask: undefined }
+  const vault = new Mask.Vault()
+  if (privacy.mode === "model" && privacy.model) {
+    const text = Mask.readableTexts(unmasked).join("\n")
+    const local = yield* resolveModel(privacy.model).pipe(Effect.option)
+    if (text.length > 0 && Option.isSome(local)) {
+      const answer = yield* LLM.generate(
+        LLM.request({
+          model: local.value,
+          messages: [Message.user(Mask.ENTITY_PROMPT + text)],
+          tools: [],
+          generation: { maxTokens: 512 },
+        }),
+      ).pipe(Effect.option)
+      if (Option.isSome(answer)) for (const entity of Mask.parseEntities(answer.value.text)) vault.add(entity)
+    }
+  }
+  return { request: Mask.maskRequest(vault, unmasked), unmask: Mask.unmaskEvents(vault) }
+})
+
+/** The provider stream, with real values put back when masking is on. */
+export function maskedStream(request: LLMRequest, unmask: ReturnType<typeof Mask.unmaskEvents> | undefined) {
+  const events = LLM.stream(request)
+  return unmask ? events.pipe(Stream.flatMap((event) => Stream.fromIterable(unmask(event)))) : events
+}
+
+/** `LLM.generate`, over the unmasked stream: the response is assembled from what the caller may read. */
+export const maskedGenerate = Effect.fn("chat.generate")(function* (
+  request: LLMRequest,
+  unmask: ReturnType<typeof Mask.unmaskEvents> | undefined,
+) {
+  if (!unmask) return yield* LLM.generate(request)
+  const state = yield* maskedStream(request, unmask).pipe(Stream.runFold(LLMResponse.empty, LLMResponse.reduce))
+  const response = LLMResponse.complete(state)
+  if (response) return response
+  return yield* Effect.fail(new ConversionError("Provider stream ended without a terminal finish event", "model"))
+})
+
 function toJsonBody(id: string, model: string, response: LLMResponse): unknown {
   const toolCalls = toWireToolCalls(
     response.toolCalls.map((call) => ({ id: call.id, name: call.name, input: call.input })),
@@ -289,17 +338,17 @@ export const ChatCompletionHandler = HttpApiBuilder.group(Api, "server.chat", (h
         // still the contract, so it is applied here rather than trusting the body.
         const payload = yield* HttpServerRequest.schemaBodyJson(ChatCompletionRequest)
         const id = completionID()
-        const request = yield* buildRequest(payload)
+        const { request, unmask } = yield* maskedRequest(yield* buildRequest(payload))
 
         if (payload.stream !== true) {
-          const response = yield* LLM.generate(request)
+          const response = yield* maskedGenerate(request, unmask)
           return yield* HttpServerResponse.json(toJsonBody(id, payload.model, response)).pipe(Effect.orDie)
         }
 
         // Streaming: the error envelope can only be sent before the first byte,
         // so a failure after headers travels as an SSE error frame (see
         // eventFrames) rather than as a status code.
-        const frames = toChunks(id, payload.model, LLM.stream(request)).pipe(
+        const frames = toChunks(id, payload.model, maskedStream(request, unmask)).pipe(
           Stream.pipeThroughChannel(Sse.encode()),
           Stream.encodeText,
         )

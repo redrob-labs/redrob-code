@@ -11,6 +11,7 @@ import { SkillHandler } from "./handlers/skill"
 import { EventHandler } from "./handlers/event"
 import { AgentHandler } from "./handlers/agent"
 import { HealthHandler } from "./handlers/health"
+import { ClientsHandler } from "./handlers/clients"
 import { PtyHandler } from "./handlers/pty"
 import { BrowserRequestHandler } from "./handlers/browser-request"
 import { QuestionHandler } from "./handlers/question"
@@ -24,6 +25,7 @@ import { ChatCompletionHandler } from "./handlers/chat-completion"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
+  ClientsHandler,
   LocationHandler,
   AgentHandler,
   SessionHandler,

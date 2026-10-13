@@ -283,6 +283,14 @@ import type {
   V1SessionBrowserReplyResponses,
   V2AgentListErrors,
   V2AgentListResponses,
+  V2ClientsAttachErrors,
+  V2ClientsAttachResponses,
+  V2ClientsDetachErrors,
+  V2ClientsDetachResponses,
+  V2ClientsHeartbeatErrors,
+  V2ClientsHeartbeatResponses,
+  V2ClientsListErrors,
+  V2ClientsListResponses,
   V2CommandListErrors,
   V2CommandListResponses,
   V2CredentialRemoveErrors,
@@ -5141,6 +5149,93 @@ export class Health extends HeyApiClient {
   }
 }
 
+export class Clients extends HeyApiClient {
+  /**
+   * List attached apps
+   *
+   * The apps attached to this engine and how long it has been idle.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2ClientsListResponses, V2ClientsListErrors, ThrowOnError>({
+      url: "/api/clients",
+      ...options,
+    })
+  }
+
+  /**
+   * Attach an app
+   *
+   * Tell the engine an app depends on it. Send a heartbeat at least every ttlMs/2 while it runs.
+   */
+  public attach<ThrowOnError extends boolean = false>(
+    parameters?: {
+      app?: string
+      pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "app" },
+            { in: "body", key: "pid" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2ClientsAttachResponses, V2ClientsAttachErrors, ThrowOnError>({
+      url: "/api/clients",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Keep an attachment alive
+   *
+   * 404 when the attachment expired or was never made; attach again.
+   */
+  public heartbeat<ThrowOnError extends boolean = false>(
+    parameters: {
+      clientID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "clientID" }] }])
+    return (options?.client ?? this.client).post<V2ClientsHeartbeatResponses, V2ClientsHeartbeatErrors, ThrowOnError>({
+      url: "/api/clients/{clientID}/heartbeat",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Detach an app
+   *
+   * The app no longer depends on the engine.
+   */
+  public detach<ThrowOnError extends boolean = false>(
+    parameters: {
+      clientID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "clientID" }] }])
+    return (options?.client ?? this.client).delete<V2ClientsDetachResponses, V2ClientsDetachErrors, ThrowOnError>({
+      url: "/api/clients/{clientID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Location extends HeyApiClient {
   /**
    * Get location
@@ -7211,6 +7306,11 @@ export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
     return (this._health ??= new Health({ client: this.client }))
+  }
+
+  private _clients?: Clients
+  get clients(): Clients {
+    return (this._clients ??= new Clients({ client: this.client }))
   }
 
   private _location?: Location

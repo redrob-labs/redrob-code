@@ -1,5 +1,6 @@
 export * from "./client.js"
 export * from "./server.js"
+export * from "../daemon.js"
 
 import { createRedrobClient } from "./client.js"
 import { createRedrobServer } from "./server.js"
