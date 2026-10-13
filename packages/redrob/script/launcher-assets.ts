@@ -32,6 +32,10 @@
  * `--unsigned` is the build artifact (`redrob-<os>-<arch>/bin/redrob` directories); `--signed`
  * holds the signed macOS and Windows zips; `--out` receives the launcher assets. Exits non-zero
  * if any expected input is missing, so a release cannot quietly ship without a platform.
+ *
+ * Beside the installers it writes `redrob-launcher.json`, the release manifest the launcher reads
+ * to learn that this release uses the launcher's shared account (`packages/core/src/shared-account.ts`),
+ * and `verifyReleaseDirectory` refuses a release directory that lacks it or carries a wrong one.
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -39,6 +43,59 @@ import { $ } from "bun"
 
 /** The stem Redrob Launcher expects for this app: the repository name. */
 export const STEM = "redrob-code"
+
+/**
+ * The release manifest the launcher reads beside the installers (the launcher's
+ * `docs/release-manifest.md`). `schema` is 1; `sharedAccount` is true because every release from
+ * here on reads the launcher's shared account file as its last console-key fallback.
+ */
+export const MANIFEST_NAME = "redrob-launcher.json"
+export const MANIFEST = { schema: 1, sharedAccount: true } as const
+
+/** The manifest's bytes, exactly as the launcher contract spells them, newline-terminated. */
+export function manifestText(): string {
+  return `{ "schema": ${MANIFEST.schema}, "sharedAccount": ${MANIFEST.sharedAccount} }\n`
+}
+
+/** Writes the manifest into `out` and returns its path. */
+export function writeManifest(out: string): string {
+  fs.mkdirSync(out, { recursive: true })
+  const dest = path.join(out, MANIFEST_NAME)
+  fs.writeFileSync(dest, manifestText())
+  return dest
+}
+
+/**
+ * Checks a release directory is one the launcher can use: every launcher installer for `version`
+ * is present and `redrob-launcher.json` exists, is JSON, is schema 1 and says `sharedAccount: true`.
+ * Returns the problems found, empty when the directory passes.
+ */
+export function verifyReleaseDirectory(dir: string, version: string): string[] {
+  const problems: string[] = []
+  for (const name of expectedLauncherAssets(version)) {
+    if (!fs.existsSync(path.join(dir, name))) problems.push(`missing launcher asset ${name}`)
+  }
+  const manifest = path.join(dir, MANIFEST_NAME)
+  if (!fs.existsSync(manifest)) {
+    problems.push(`missing ${MANIFEST_NAME}`)
+    return problems
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifest, "utf8"))
+  } catch (error) {
+    problems.push(`${MANIFEST_NAME} is not JSON: ${error instanceof Error ? error.message : String(error)}`)
+    return problems
+  }
+  const record = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>
+  if (record.schema !== MANIFEST.schema)
+    problems.push(`${MANIFEST_NAME} schema is ${JSON.stringify(record.schema)}, expected ${MANIFEST.schema}`)
+  if (record.sharedAccount !== MANIFEST.sharedAccount)
+    problems.push(
+      `${MANIFEST_NAME} sharedAccount is ${JSON.stringify(record.sharedAccount)}, expected ${MANIFEST.sharedAccount}`,
+    )
+  return problems
+}
 
 /**
  * Build output directory -> launcher os-arch token. Only the variants the launcher has a token
@@ -107,7 +164,10 @@ export interface Inputs {
   out: string
 }
 
-/** Produces every launcher asset into `out`. Returns the names written, in TARGETS order. */
+/**
+ * Produces every launcher asset into `out`, then the manifest. Returns the installer names
+ * written, in TARGETS order; the manifest is not an installer and is not among them.
+ */
 export async function pack(inputs: Inputs): Promise<string[]> {
   const written: string[] = []
   fs.mkdirSync(inputs.out, { recursive: true })
@@ -137,6 +197,7 @@ export async function pack(inputs: Inputs): Promise<string[]> {
     }
     written.push(name)
   }
+  writeManifest(inputs.out)
   return written
 }
 
@@ -154,4 +215,8 @@ if (import.meta.main) {
     if (!isLauncherAssetName(name)) throw new Error(`produced a name the launcher cannot parse: ${name}`)
     console.log(name)
   }
+  console.log(MANIFEST_NAME)
+  const problems = verifyReleaseDirectory(inputs.out, inputs.version)
+  if (problems.length)
+    throw new Error(`release directory ${inputs.out} is not launcher-ready:\n  ${problems.join("\n  ")}`)
 }

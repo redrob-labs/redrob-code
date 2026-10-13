@@ -644,6 +644,11 @@ jobs:
       # them verbatim -- and the launcher's are added beside them. See the script's header for the
       # layout inside; `test/installation/launcher-assets.test.ts` guards both.
       #
+      # The same step writes `redrob-launcher.json`, the release manifest the launcher reads to
+      # learn this release uses its shared account file (`{ "schema": 1, "sharedAccount": true }`),
+      # and refuses to finish if the release directory lacks it. It is checksummed below like
+      # every other asset so the launcher's quota-free path, which lists SHA256SUMS, sees it.
+      #
       # Bun alone, without the repository's dependencies: the script imports nothing but Bun and
       # Node built-ins, and `bun install` here would cost minutes for nothing.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -668,11 +673,12 @@ jobs:
           # and a release without it must still produce checksums for everything else.
           set -- redrob-code-x64-setup.exe
           if [ -e "$1" ]; then
-            sha256sum redrob-*.zip redrob-*.tar.gz redrob-code-x64-setup.exe > SHA256SUMS
+            sha256sum redrob-*.zip redrob-*.tar.gz redrob-launcher.json redrob-code-x64-setup.exe > SHA256SUMS
           else
             echo "::warning::no installer present; SHA256SUMS will not cover one"
-            sha256sum redrob-*.zip redrob-*.tar.gz > SHA256SUMS
+            sha256sum redrob-*.zip redrob-*.tar.gz redrob-launcher.json > SHA256SUMS
           fi
+          grep -q ' redrob-launcher.json$' SHA256SUMS || { echo "::error::SHA256SUMS does not list redrob-launcher.json"; exit 1; }
           cat SHA256SUMS
 
       # The marker install.sh and `redrob upgrade` read to answer "what is the newest
