@@ -17,6 +17,7 @@ import { Env } from "../env"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { iife } from "@/util/iife"
 import { Global } from "@redrob-code/core/global"
+import { SharedAccount } from "@redrob-code/core/shared-account"
 import path from "path"
 import { pathToFileURL } from "url"
 import { Effect, Layer, Context, Schema, Types } from "effect"
@@ -211,7 +212,11 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const ok =
         hasKey ||
         Boolean(yield* dep.auth(input.id)) ||
-        Boolean((yield* dep.config()).provider?.["redrob"]?.options?.apiKey)
+        Boolean((yield* dep.config()).provider?.["redrob"]?.options?.apiKey) ||
+        // Redrob Launcher's shared sign-in is a real credential too: with it present the SDK gets the
+        // key (merged in by `list` as source `launcher`), not the "public" placeholder a host app reads
+        // as "not connected".
+        Boolean(yield* Effect.promise(() => SharedAccount.apiKey()))
 
       // Without a credential the SDK still needs a non-empty apiKey to instantiate, so it gets a
       // placeholder. What used to happen here was that every model priced above 0 was deleted from
@@ -1109,7 +1114,12 @@ export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 export const Info = Schema.Struct({
   id: ProviderV2.ID,
   name: Schema.String,
-  source: Schema.Literals(["env", "config", "custom", "api"]),
+  /**
+   * Where the provider's credential came from. `launcher` is Redrob Launcher's shared `account.json`,
+   * the sign-in for the whole computer, used only when nothing of this app's own is present; a host app
+   * reads it off `GET /provider` to show "Signed in with Redrob Launcher".
+   */
+  source: Schema.Literals(["env", "config", "custom", "api", "launcher"]),
   env: Schema.Array(Schema.String),
   key: optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),
@@ -1742,6 +1752,18 @@ const layer = Layer.effect(
               source: "api",
               key: provider.key,
             })
+          }
+        }
+
+        // load Redrob Launcher's shared account - the LAST fallback for the console key. Only when this
+        // app holds nothing of its own: no REDROB_API_KEY, no auth.json entry, no config apiKey. Read
+        // fresh on every list(), never cached, so a launcher sign-in or sign-out lands on the next call.
+        {
+          const providerID = ProviderV2.ID.redrob
+          const own = providers[providerID]?.key || cfg.provider?.["redrob"]?.options?.apiKey
+          if (!disabled.has(providerID) && !own) {
+            const shared = yield* Effect.promise(() => SharedAccount.apiKey())
+            if (shared) mergeProvider(providerID, { source: "launcher", key: shared })
           }
         }
 

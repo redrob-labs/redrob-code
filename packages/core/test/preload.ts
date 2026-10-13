@@ -23,6 +23,15 @@ import path from "path"
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "redrob-core-test-data-"))
 process.env.XDG_DATA_HOME = dataDir
 
+/*
+  The same leak, one source further down the chain. `resolveApiKey()` now ends at Redrob Launcher's shared
+  `account.json` (`~/.config/redrob-shared`), and a developer whose launcher is signed in would otherwise
+  hand the "no key" tests a real credential from there. `REDROB_SHARED_DIR` is the override the contract
+  defines for exactly this, so point it at an empty directory; the suites that exercise the fallback set
+  it to their own scratch directory per test.
+*/
+process.env.REDROB_SHARED_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "redrob-core-test-shared-"))
+
 process.env.REDROB_DB = ":memory:"
 // Gate the console /models fetch off so core tests stay offline/deterministic; the
 // ModelsDev.Service then serves the static console fallback catalog (redrob/auto and the rest of

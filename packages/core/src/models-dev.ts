@@ -8,6 +8,7 @@ import { InstallationChannel, InstallationVersion } from "./installation/version
 import { Credential } from "./credential"
 import { EventV2 } from "./event"
 import { Integration } from "./integration"
+import { SharedAccount } from "./shared-account"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
 import {
@@ -505,7 +506,7 @@ const layer = Layer.effect(
     /**
      * The console key, from wherever the user actually put it.
      *
-     * Three origins, and they are not interchangeable historically. `REDROB_API_KEY` is the one a
+     * Four origins, and they are not interchangeable historically. `REDROB_API_KEY` is the one a
      * terminal user exports. The Credential store is what `redrob providers login` writes. And
      * `auth.json` is what `PUT /auth/redrob` writes, which is the route the DESKTOP APP uses for both
      * of its connect paths, the pasted key and "Connect Redrob" - that flow ends by handing the key to
@@ -520,6 +521,9 @@ const layer = Layer.effect(
      * Note the shapes differ as well as the locations: the Credential store discriminates on
      * `type: "key"`, auth.json on `type: "api"`. Matching only one of those spellings was the second
      * half of the same bug.
+     *
+     * The fourth is Redrob Launcher's shared `account.json`, the sign-in for the whole computer. It is
+     * read-only and it is last: anything this app holds itself wins over it.
      */
     const resolveApiKey = Effect.fn("ModelsDev.resolveApiKey")(function* () {
       const fromEnv = process.env["REDROB_API_KEY"]
@@ -527,7 +531,11 @@ const layer = Layer.effect(
       const stored = yield* credential.list(Integration.ID.make("redrob"))
       const fromCredential = stored.flatMap((item) => (item.value.type === "key" ? [item.value.key] : []))[0]
       if (fromCredential) return fromCredential
-      return yield* authStoreApiKey()
+      const fromFile = yield* authStoreApiKey()
+      if (fromFile) return fromFile
+      // Fourth and last: Redrob Launcher's shared sign-in for the whole computer. Read fresh on every
+      // call, never cached, and only when nothing of our own is present (see shared-account.ts).
+      return yield* Effect.promise(() => SharedAccount.apiKey())
     })
 
     const populate = Effect.gen(function* () {

@@ -18,7 +18,7 @@ import { type ToolDefinition } from "./tool.js"
 export * from "./tool.js"
 
 export type ProviderContext = {
-  source: "env" | "config" | "custom" | "api"
+  source: "env" | "config" | "custom" | "api" | "launcher"
   info: Provider
   options: Record<string, any>
 }
