@@ -34,8 +34,11 @@ describe("daemon registry", () => {
   test("writes the record with mode 0600 and reads it back", async () => {
     const env = await runDir()
     await Registry.write(record(), env)
-    const stat = await fs.stat(Registry.file(env))
-    expect(stat.mode & 0o777).toBe(0o600)
+    // POSIX mode bits only: Windows reports 0666 for everything and protects the file by ACL.
+    if (process.platform !== "win32") {
+      const stat = await fs.stat(Registry.file(env))
+      expect(stat.mode & 0o777).toBe(0o600)
+    }
     expect(await Registry.read(env)).toEqual(record())
   })
 
