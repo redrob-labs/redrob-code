@@ -4,12 +4,17 @@ import os from "node:os"
 import path from "node:path"
 import { $ } from "bun"
 import {
+  MANIFEST,
+  MANIFEST_NAME,
   STEM,
   TARGETS,
   expectedLauncherAssets,
   isLauncherAssetName,
   launcherAssetName,
+  manifestText,
   pack,
+  verifyReleaseDirectory,
+  writeManifest,
 } from "../../script/launcher-assets"
 
 /**
@@ -78,7 +83,9 @@ describe("launcher asset names", () => {
 
       const names = await pack({ version: "0.5.1", unsigned, signed, out })
       expect(names.sort()).toEqual(expectedLauncherAssets("0.5.1").sort())
-      expect(fs.readdirSync(out).sort()).toEqual(expectedLauncherAssets("0.5.1").sort())
+      expect(fs.readdirSync(out).sort()).toEqual([...expectedLauncherAssets("0.5.1"), MANIFEST_NAME].sort())
+      expect(fs.readFileSync(path.join(out, MANIFEST_NAME), "utf8")).toBe(manifestText())
+      expect(verifyReleaseDirectory(out, "0.5.1")).toEqual([])
 
       // The launcher unpacks into a single top folder and looks for `bin/<app-id>`.
       const listing = await $`tar -tzvf ${path.join(out, "redrob-code-0.5.1-linux-x86_64.tar.gz")}`.text()
@@ -96,6 +103,52 @@ describe("launcher asset names", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  /**
+   * `redrob-launcher.json` is how the launcher learns, without a launcher release, that this release
+   * reads its shared account file (the launcher's `docs/release-manifest.md`). Exactly `{ "schema": 1,
+   * "sharedAccount": true }`: a wrong schema is ignored by the launcher and a false flag hides the
+   * sign-in, both silently, so the bytes are pinned here.
+   */
+  describe("release manifest", () => {
+    test("is the launcher contract, verbatim", () => {
+      expect(MANIFEST_NAME).toBe("redrob-launcher.json")
+      expect(manifestText()).toBe('{ "schema": 1, "sharedAccount": true }\n')
+      const parsed = JSON.parse(manifestText())
+      expect(parsed).toEqual({ schema: 1, sharedAccount: true })
+      expect(parsed.schema).toBe(1)
+      expect(parsed.sharedAccount).toBe(true)
+      expect(MANIFEST).toEqual({ schema: 1, sharedAccount: true })
+    })
+
+    test("a release directory without it fails the check", () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-manifest-"))
+      try {
+        for (const name of expectedLauncherAssets("0.5.1")) fs.writeFileSync(path.join(root, name), name)
+        expect(verifyReleaseDirectory(root, "0.5.1")).toEqual([`missing ${MANIFEST_NAME}`])
+
+        writeManifest(root)
+        expect(verifyReleaseDirectory(root, "0.5.1")).toEqual([])
+
+        fs.writeFileSync(path.join(root, MANIFEST_NAME), '{ "schema": 2, "sharedAccount": false }\n')
+        expect(verifyReleaseDirectory(root, "0.5.1")).toEqual([
+          `${MANIFEST_NAME} schema is 2, expected 1`,
+          `${MANIFEST_NAME} sharedAccount is false, expected true`,
+        ])
+
+        fs.writeFileSync(path.join(root, MANIFEST_NAME), "not json")
+        expect(verifyReleaseDirectory(root, "0.5.1")[0]).toMatch(/is not JSON/)
+
+        fs.rmSync(path.join(root, "redrob-code-0.5.1-linux-x86_64.tar.gz"))
+        writeManifest(root)
+        expect(verifyReleaseDirectory(root, "0.5.1")).toEqual([
+          "missing launcher asset redrob-code-0.5.1-linux-x86_64.tar.gz",
+        ])
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+      }
+    })
   })
 
   unix("refuses to pack when a platform's build output is missing", async () => {
