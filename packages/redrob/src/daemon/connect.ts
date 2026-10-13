@@ -104,4 +104,62 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
   throw new Error("The Redrob Code daemon did not start in time")
 }
 
+export type Attachment = {
+  readonly id: string
+  /** Detach and stop the heartbeat. Safe to call twice. */
+  readonly detach: () => Promise<void>
+}
+
+/**
+ * Tell the daemon this process depends on it, and keep saying so: `POST /api/clients`, then a
+ * heartbeat every third of the daemon's TTL. The daemon exits once nobody has been attached for
+ * its idle window, so `redrob acp --attach` must hold one for as long as its host keeps it open --
+ * connecting alone leaves the daemon counting idle time under a live session. Mirrors
+ * `attach()` in `@redrob-labs/sdk/daemon`.
+ */
+export async function attach(
+  connection: Connection,
+  app: string,
+  options: { readonly pid?: number; readonly fetch?: typeof fetch } = {},
+): Promise<Attachment> {
+  const fetchImpl = options.fetch ?? fetch
+  const base = connection.url.replace(/\/+$/, "")
+  const headers = { ...connection.headers, "content-type": "application/json" }
+  const body = JSON.stringify({ app, pid: options.pid ?? process.pid })
+  const response = await fetchImpl(`${base}/api/clients`, { method: "POST", headers, body })
+  if (!response.ok) throw new Error(`The engine refused the attachment (${response.status})`)
+  const client = (await response.json()) as { id: string }
+  const list = (await fetchImpl(`${base}/api/clients`, { headers: connection.headers })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { ttlMs?: number } | null
+  const every = Math.max(5_000, Math.floor((list?.ttlMs ?? 90_000) / 3))
+  let stopped = false
+  const beat = async () => {
+    if (stopped) return
+    const r = await fetchImpl(`${base}/api/clients/${client.id}/heartbeat`, { method: "POST", headers }).catch(
+      () => undefined,
+    )
+    // 404: the daemon restarted (or dropped us); attach again so it keeps counting this app.
+    if (r && r.status === 404) {
+      const again = await fetchImpl(`${base}/api/clients`, { method: "POST", headers, body }).catch(() => undefined)
+      if (again?.ok) client.id = ((await again.json()) as { id: string }).id
+    }
+  }
+  const timer = setInterval(() => void beat(), every)
+  timer.unref?.()
+  return {
+    get id() {
+      return client.id
+    },
+    detach: async () => {
+      if (stopped) return
+      stopped = true
+      clearInterval(timer)
+      await fetchImpl(`${base}/api/clients/${client.id}`, { method: "DELETE", headers: connection.headers }).catch(
+        () => undefined,
+      )
+    },
+  }
+}
+
 export * as Daemon from "./connect"

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { Daemon } from "@/daemon/connect"
 import * as Registry from "@/daemon/registry"
 import * as Clients from "@redrob-code/server/clients"
 
@@ -113,4 +114,38 @@ describe("attached apps", () => {
     expect(Clients.attach({ app: "   " }).app).toBe("unknown")
     expect(Clients.attach({ app: " x".repeat(80) }).app.length).toBe(64)
   })
+})
+
+describe("attach", () => {
+  test("posts the app, heartbeats, re-attaches after a 404 and deletes on detach", async () => {
+    const calls: string[] = []
+    let ids = 0
+    const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? "GET"
+      calls.push(`${method} ${new URL(url).pathname}`)
+      if (method === "POST" && url.endsWith("/api/clients")) {
+        expect(JSON.parse(String(init?.body)).app).toBe("cut")
+        return Response.json({ id: `c${++ids}` })
+      }
+      if (method === "GET") return Response.json({ clients: [], ttlMs: 15_000 })
+      if (url.endsWith("/heartbeat")) return new Response("", { status: ids === 1 ? 404 : 200 })
+      return new Response("", { status: 204 })
+    }) as unknown as typeof fetch
+    const connection = { url: "http://127.0.0.1:4096/", headers: Registry.headers("s"), record: record() }
+    const a = await Daemon.attach(connection, "cut", { pid: 7, fetch: fetchImpl })
+    expect(a.id).toBe("c1")
+    await new Promise((r) => setTimeout(r, 5_300))
+    // The first heartbeat met a 404 (daemon restarted), so the attachment was re-created.
+    expect(a.id).toBe("c2")
+    await a.detach()
+    await a.detach()
+    expect(calls).toEqual([
+      "POST /api/clients",
+      "GET /api/clients",
+      "POST /api/clients/c1/heartbeat",
+      "POST /api/clients",
+      "DELETE /api/clients/c2",
+    ])
+  }, 10_000)
 })
