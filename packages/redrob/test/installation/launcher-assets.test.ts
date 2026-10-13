@@ -55,7 +55,12 @@ describe("launcher asset names", () => {
     }
   })
 
-  test("packs a launcher tarball with bin/redrob-code and copies the signed zips", async () => {
+  // The publish job runs the packer on ubuntu only, and that is the only place it is meant to run:
+  // Windows' tar does not take the same symlink and a user-mode symlink needs a privilege the
+  // runner does not hold. The name tests above still run everywhere.
+  const unix = test.skipIf(process.platform === "win32")
+
+  unix("packs a launcher tarball with bin/redrob-code and copies the signed zips", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-assets-"))
     try {
       const unsigned = path.join(root, "unsigned")
@@ -93,7 +98,7 @@ describe("launcher asset names", () => {
     }
   })
 
-  test("refuses to pack when a platform's build output is missing", async () => {
+  unix("refuses to pack when a platform's build output is missing", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-assets-"))
     try {
       await expect(
