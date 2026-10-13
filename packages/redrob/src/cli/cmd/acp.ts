@@ -29,11 +29,15 @@ export const AcpCommand = effectCmd({
     ACPProfile.mark("cli.acp.handler")
     process.env.REDROB_CLIENT = "acp"
     // --attach: this process is only the ACP face; the engine is the shared daemon. Without it the
-    // engine runs in here, as it always has.
+    // engine runs in here, as it always has. The attachment is what keeps the daemon from counting
+    // this session as idle time; it is released when the host closes stdin.
+    let detach: (() => Promise<void>) | undefined
     const sdk = args.attach
       ? yield* Effect.promise(async () => {
           const { Daemon } = await import("@/daemon/connect")
           const connection = await Daemon.connectOrStart()
+          const attachment = await Daemon.attach(connection, process.env.REDROB_APP?.trim() || "acp")
+          detach = attachment.detach
           return createRedrobClient({ baseUrl: connection.url, headers: connection.headers })
         })
       : yield* Effect.gen(function* () {
@@ -87,5 +91,6 @@ export const AcpCommand = effectCmd({
           process.stdin.on("error", reject)
         }),
     )
+    if (detach) yield* Effect.promise(() => detach!())
   }),
 })
