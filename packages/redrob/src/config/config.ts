@@ -397,6 +397,15 @@ const layer = Layer.effect(
           yield* Effect.logDebug("loaded custom config", { path: Flag.REDROB_CONFIG })
         }
 
+        // App-managed config for this directory (see ConfigPaths.directoryConfigDir). Same
+        // position as REDROB_CONFIG, so the project's own files below still win.
+        for (const file of ConfigPaths.fileInDirectory(ConfigPaths.directoryConfigDir(ctx.directory), "redrob")) {
+          const next = yield* loadFile(file, authEnv)
+          if (Object.keys(next).length === 0) continue
+          yield* merge(file, next, "local")
+          yield* Effect.logDebug("loaded directory config", { path: file })
+        }
+
         if (!Flag.REDROB_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files("redrob", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
             yield* merge(file, yield* loadFile(file, authEnv), "local")
