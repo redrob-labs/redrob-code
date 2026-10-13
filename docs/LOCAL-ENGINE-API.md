@@ -54,16 +54,16 @@ provider the registry resolves, and callers see no difference.
 
 An OpenAI chat-completions subset:
 
-| field | required | notes |
-| --- | --- | --- |
-| `model` | yes | `redrob/auto` routes through the Console; a local provider id targets a local model |
-| `messages` | yes | `system` / `user` / `assistant` / `tool` roles |
-| `tools` | no | **presence changes who executes them — see below** |
-| `tool_choice` | no | `auto` \| `none` \| a named function |
-| `stream` | no | default `false`; `true` returns SSE |
-| `max_tokens` | no | |
-| `temperature` | no | ignored for models that fix their own sampling |
-| `reasoning_effort` | no | passed through where the provider accepts it |
+| field              | required | notes                                                                               |
+| ------------------ | -------- | ----------------------------------------------------------------------------------- |
+| `model`            | yes      | `redrob/auto` routes through the Console; a local provider id targets a local model |
+| `messages`         | yes      | `system` / `user` / `assistant` / `tool` roles                                      |
+| `tools`            | no       | **presence changes who executes them — see below**                                  |
+| `tool_choice`      | no       | `auto` \| `none` \| a named function                                                |
+| `stream`           | no       | default `false`; `true` returns SSE                                                 |
+| `max_tokens`       | no       |                                                                                     |
+| `temperature`      | no       | ignored for models that fix their own sampling                                      |
+| `reasoning_effort` | no       | passed through where the provider accepts it                                        |
 
 Unknown fields are ignored rather than rejected, so a newer client can talk to an
 older engine without a version check.
@@ -180,6 +180,20 @@ engine of its own, so ACP hosts (Design, Cut, CAD, Browser) share the one proces
 Per-product processes were considered and rejected: with local inference, N processes
 means the same weights loaded N times, which defeats the reason for doing this.
 
+One daemon also means an app can no longer hand "its" engine a private config through the
+environment (`REDROB_CONFIG`, `REDROB_SERVER_URL`, …): env is per process, and the process is
+shared. What an app needs to tell the engine about one directory goes in a file the engine reads
+for that directory: `<state>/directories/<key>/redrob.json` (`<state>` is `$XDG_STATE_HOME/redrob`,
+else `~/.local/state/redrob`; `<key>` is the SHA-256 of the absolute, normalised directory path,
+lower-cased on Windows). `directoryConfigDir(dir)` in `@redrob-labs/sdk/daemon` and
+`ConfigPaths.directoryConfigDir` in the engine compute it. It merges after the global config and
+before the project's own `redrob.json`, exactly where `REDROB_CONFIG` merged, so the user's files
+still win; it lives outside the project tree so it never collides with them or shows up in git.
+After writing it the app calls `POST /instance/dispose` for the directory and the next request
+rebuilds the instance on the new file. Anything a plugin used to read from the spawning app's env
+belongs in this file too (for example under a key the plugin owns), because the daemon's env is
+nobody's.
+
 That file is the auth boundary — it carries the Basic secret. It is per-user by
 location and must stay `0600`; a multi-user machine gets one daemon per user, never a
 shared one.
@@ -211,14 +225,14 @@ run `redrob upgrade` instead of failing with a transport error.
 
 ## 4. Migration
 
-| product | change |
-| --- | --- |
-| redrob-browser | point `sidecar_client.cc:592` at `/v1/chat/completions`; its host-owned tool loop already matches the contract |
-| redrob-office | drop the bundled binary and the packaging guard; point the engine route at the local daemon; keep its editor-owned tool loop |
-| redrob-cowork | drop the download-and-stage step and the duplicate alias copy; keep driving the session API for agent work |
-| redrob-shape | either pass the local base URL and allow loopback HTTP in its sidecar, or delete the LOCAL transport that cannot work |
-| redrob-canvas, redrob-query, redrob-recall | optional: switching from the Console to the local daemon buys them one shared login |
-| redrob-extension, redrob-cad | unchanged; they want engine-owned tools and the session API already serves that |
+| product                                    | change                                                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| redrob-browser                             | point `sidecar_client.cc:592` at `/v1/chat/completions`; its host-owned tool loop already matches the contract               |
+| redrob-office                              | drop the bundled binary and the packaging guard; point the engine route at the local daemon; keep its editor-owned tool loop |
+| redrob-cowork                              | drop the download-and-stage step and the duplicate alias copy; keep driving the session API for agent work                   |
+| redrob-shape                               | either pass the local base URL and allow loopback HTTP in its sidecar, or delete the LOCAL transport that cannot work        |
+| redrob-canvas, redrob-query, redrob-recall | optional: switching from the Console to the local daemon buys them one shared login                                          |
+| redrob-extension, redrob-cad               | unchanged; they want engine-owned tools and the session API already serves that                                              |
 
 ## Open items
 

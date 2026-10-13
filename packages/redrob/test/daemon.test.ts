@@ -149,3 +149,17 @@ describe("attach", () => {
     ])
   }, 10_000)
 })
+
+describe("directory config", () => {
+  test("the SDK computes the same per-directory config dir as the engine", async () => {
+    const { ConfigPaths } = await import("@/config/paths")
+    const { Global } = await import("@redrob-code/core/global")
+    const sdk = await import("@redrob-labs/sdk/daemon")
+    const dir = path.join(os.tmpdir(), "redrob-dircfg", "Project")
+    expect(sdk.directoryKey(dir)).toBe(ConfigPaths.directoryKey(dir))
+    expect(sdk.directoryKey(dir + path.sep)).toBe(sdk.directoryKey(dir))
+    expect(sdk.directoryConfigDir(dir, { XDG_STATE_HOME: path.dirname(Global.Path.state) })).toBe(
+      ConfigPaths.directoryConfigDir(dir),
+    )
+  })
+})

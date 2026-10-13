@@ -10,6 +10,7 @@
  * a Node sidecar that has nothing else from this SDK loaded.
  */
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -45,6 +46,29 @@ export function daemonRecordPath(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(env.REDROB_RUN_DIR?.trim() || path.join(os.homedir(), ".redrob", "run"), "server.json")
 }
 
+/**
+ * Key the engine uses for a project directory: absolute, normalised, lower-cased on Windows,
+ * SHA-256 hex. Must match `ConfigPaths.directoryKey` in the engine.
+ */
+export function directoryKey(directory: string): string {
+  let resolved = path.resolve(directory).replace(/[\\/]+$/, "")
+  if (process.platform === "win32") resolved = resolved.toLowerCase()
+  return createHash("sha256").update(resolved).digest("hex")
+}
+
+/**
+ * Where an app writes engine config for ONE directory it works in: `<state>/directories/<key>/`,
+ * holding `redrob.json` (or `.jsonc`). The engine reads it for every instance on that directory,
+ * after the global config and before the project's own `redrob.json`, so the project still wins.
+ * Outside the project tree on purpose: it never touches the user's files and never shows in git.
+ * Write the file, then `POST /instance/dispose` for the directory so the running instance
+ * reloads. `<state>` is `$XDG_STATE_HOME/redrob`, else `~/.local/state/redrob`.
+ */
+export function directoryConfigDir(directory: string, env: NodeJS.ProcessEnv = process.env): string {
+  const state = env.XDG_STATE_HOME?.trim() || path.join(os.homedir(), ".local", "state")
+  return path.join(state, "redrob", "directories", directoryKey(directory))
+}
+
 export function daemonHeaders(secret: string): { Authorization: string } {
   return { Authorization: `Basic ${Buffer.from(`${USERNAME}:${secret}`).toString("base64")}` }
 }
@@ -54,7 +78,13 @@ export async function resolveRedrobBin(env: NodeJS.ProcessEnv = process.env): Pr
   const explicit = env.REDROB_CODE_BIN?.trim()
   if (explicit) return explicit
   const home = path.join(os.homedir(), ".redrob", "bin", process.platform === "win32" ? "redrob.exe" : "redrob")
-  if (await fs.stat(home).then(() => true, () => false)) return home
+  if (
+    await fs.stat(home).then(
+      () => true,
+      () => false,
+    )
+  )
+    return home
   return "redrob"
 }
 
