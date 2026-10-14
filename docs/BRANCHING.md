@@ -87,8 +87,9 @@ sorts below the release it precedes. See `docs/VERSIONING.md`.
 
 Run the `release` workflow from the Actions tab against `develop` with a `bump` of `patch`,
 `minor` or `major`. It computes the next version from the newest `v*` tag, builds every
-platform, signs and notarizes the macOS binaries, signs the Windows binary when Azure
-Trusted Signing is configured, attaches build provenance, and creates the tagged release.
+platform, signs and notarizes the macOS binaries, signs the Windows binaries and installer
+through Azure Artifact Signing when it is configured, attaches build provenance, and creates
+the tagged release.
 It then prints a link to open the promotion pull request from `develop` into `main`.
 
 `main` moves through a reviewed pull request rather than an automated push. It is what
@@ -100,6 +101,20 @@ to check the signing credentials are actually visible to this repository — org
 secrets are not automatically visible to a new public repository, and an absent Azure
 configuration degrades to an unsigned Windows binary with a warning rather than failing
 the release.
+
+Windows signing is Azure Artifact Signing authenticated with the job's OpenID Connect
+token: the `sign-windows` job runs in the `release` environment with `id-token: write`,
+and `azure/login` exchanges the token for an Azure credential right before
+`script/sign-windows.ps1` runs signtool with the Artifact Signing dlib. The login comes
+after the download and immediately before each signing step because the OIDC token lives
+minutes. The inputs are the redrob-labs organization secrets `AZURE_CLIENT_ID`,
+`AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (plain IDs for the login) and
+`ARTIFACT_SIGNING_ENDPOINT`, `ARTIFACT_SIGNING_ACCOUNT`, `ARTIFACT_SIGNING_CERT_PROFILE`
+(the account to sign with); no certificate file and no client secret exist anywhere. The
+three `ARTIFACT_SIGNING_*` names alone decide whether signing happens -- all unset means an
+unsigned build with a warning, some set is an error. Every signed file is read back with
+`signtool verify /pa` and must be `Valid` with the signer `CN=McKinley Rice, Inc.`; the log
+prints `<file> signed by <Subject>`.
 
 ## Hotfixes
 
