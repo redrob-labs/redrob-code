@@ -254,6 +254,13 @@ jobs:
   sign-windows:
     needs: [version, build]
     runs-on: windows-latest
+    # `release` is the environment the organization's federated credential names
+    # (repo:redrob-labs@<org id>/<repo>@<id>:environment:release); any other name is refused.
+    environment: release
+    permissions:
+      contents: read
+      # The OIDC token `azure/login` exchanges for the Artifact Signing credential.
+      id-token: write
     outputs:
       # Carried to `publish` so the release notes state what actually happened. Notes that
       # claim a signature the run did not produce are worse than no claim: a reader has no
@@ -262,29 +269,36 @@ jobs:
       # Separate from `signed`: the binaries can be signed while the installer is not, and the
       # notes must not round one up into the other.
       installer: ${{ steps.installer-result.outputs.installer }}
-      # WHICH method signed, not just whether something did. The notes used to name Azure
-      # Trusted Signing unconditionally while this repository signs with the organization
-      # Authenticode certificate, so every published release claimed a method it had not
-      # used. `signed` cannot carry that -- it is a boolean about success -- and a reader has
-      # no way to check, which is exactly the failure the comment above warns about.
+      # WHICH method signed, not just whether something did (`azure` or `none`). The notes used
+      # to name a method unconditionally while the run had used another, so every published
+      # release claimed a method it had not used. `signed` cannot carry that -- it is a boolean
+      # about success -- and a reader has no way to check.
       method: ${{ steps.config.outputs.method }}
     env:
+      # All plain IDs, none a credential. The redrob-labs organization secrets; do not recreate
+      # them as repository secrets (a same-named repository secret would override them).
+      # AZURE_CLIENT_ID is here so the login step can be skipped when signing is not set up.
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-      AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-      AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # sign-windows.ps1 reads these three; the credential comes from the `az login` below.
+      ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+      ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+      ARTIFACT_SIGNING_CERT_PROFILE: ${{ secrets.ARTIFACT_SIGNING_CERT_PROFILE }}
+      REDROB_WINDOWS_BINARIES: >-
+        dist/redrob-windows-arm64/bin/redrob.exe
+        dist/redrob-windows-x64/bin/redrob.exe
+        dist/redrob-windows-x64-baseline/bin/redrob.exe
+      REDROB_WINDOWS_INSTALLER: dist/redrob-code-x64-setup.exe
     steps:
       # This job used to download the build and nothing else, because signing needs only the
-      # artifact. The installer definition lives in the repository, so it needs a checkout -- and
-      # without one `ISCC` was handed a path to a file that was never on the runner. Sparse, because
-      # cloning this whole repository to read one .iss file is a minute of clone for nothing.
+      # artifact. The installer definition and the signing script live in the repository, so it
+      # needs a checkout -- and without one `ISCC` was handed a path to a file that was never on
+      # the runner. Sparse, because cloning this whole repository to read two directories is a
+      # minute of clone for nothing.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          sparse-checkout: installer
+          sparse-checkout: |
+            installer
+            script
           sparse-checkout-cone-mode: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -292,126 +306,62 @@ jobs:
           name: cli-unsigned
           path: dist
 
-      # There are two ways to sign here and the choice is made once, up front, so no later
-      # step re-derives it and a half-configured method is reported as such rather than
-      # failing inside an Azure login with an unrelated message.
-      #
-      # Azure Trusted Signing is preferred when configured: the key never reaches the
-      # runner. The organization Authenticode PFX is the fallback, and it does put a private
-      # key on the runner, which is why it is second and why the file is deleted immediately
-      # after use.
+      # Azure Artifact Signing, authenticated with OpenID Connect: the job's GitHub token is
+      # exchanged for an Azure token against the organization's app registration, whose federated
+      # credential accepts `repo:redrob-labs@<org id>/*:environment:release`. No certificate file
+      # and no client secret exist anywhere. The choice to sign is made once, up front, from the
+      # three ARTIFACT_SIGNING_* names ALONE, so a half-configured account is reported as such
+      # rather than failing inside signtool with an unrelated message.
       - name: Detect the signing configuration
         id: config
         shell: bash
         run: |
           set -euo pipefail
-
-          azure_present=0
-          azure_missing=()
-          for name in \
-            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
-            AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT \
-            AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE; do
-            if [ -n "${!name:-}" ]; then azure_present=$((azure_present + 1)); else azure_missing+=("$name"); fi
+          present=0
+          missing=()
+          for name in ARTIFACT_SIGNING_ENDPOINT ARTIFACT_SIGNING_ACCOUNT ARTIFACT_SIGNING_CERT_PROFILE; do
+            if [ -n "${!name:-}" ]; then present=$((present + 1)); else missing+=("$name"); fi
           done
-
-          pfx_present=0
-          pfx_missing=()
-          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
-            if [ -n "${!name:-}" ]; then pfx_present=$((pfx_present + 1)); else pfx_missing+=("$name"); fi
-          done
-
-          # A PARTIAL configuration is a mistake, not a choice, so it is fatal either way --
-          # silently falling back from a half-configured Azure to a PFX would hide the
-          # mistake and sign with something other than what was intended.
-          if [ "$azure_present" -gt 0 ] && [ "$azure_present" -lt 6 ]; then
-            echo "::error::partial Azure signing configuration; missing: ${azure_missing[*]}"
+          # A PARTIAL configuration is a mistake, not a choice, so it is fatal rather than
+          # silently degraded to an unsigned build.
+          if [ "$present" -gt 0 ] && [ "$present" -lt 3 ]; then
+            echo "::error::partial Artifact Signing configuration; missing: ${missing[*]}"
             exit 1
           fi
-          if [ "$pfx_present" -eq 1 ]; then
-            echo "::error::partial Authenticode configuration; missing: ${pfx_missing[*]}"
-            exit 1
-          fi
-
-          if [ "$azure_present" -eq 6 ]; then
+          if [ "$present" -eq 3 ]; then
             echo "method=azure" >> "$GITHUB_OUTPUT"
-            echo "::notice::signing Windows binaries with Azure Trusted Signing"
-          elif [ "$pfx_present" -eq 2 ]; then
-            echo "method=pfx" >> "$GITHUB_OUTPUT"
-            echo "::notice::signing Windows binaries with the organization Authenticode certificate"
+            echo "::notice::signing Windows binaries with Azure Artifact Signing"
           else
             echo "method=none" >> "$GITHUB_OUTPUT"
-            echo "::warning::no Windows signing method is configured; the binaries will be unsigned"
+            echo "::warning::Artifact Signing is not configured; the binaries will be unsigned"
           fi
 
-      - name: Azure login
-        if: steps.config.outputs.method == 'azure'
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+      # The login comes AFTER the download and right BEFORE signing: GitHub's OIDC token lives
+      # minutes, and a login done earlier left signtool without a usable credential.
+      - name: Log in to Azure (OIDC)
+        if: steps.config.outputs.method == 'azure' && env.AZURE_CLIENT_ID != ''
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign with Azure Trusted Signing
+      # The script signs, then reads every file back (`signtool verify /pa /v` and
+      # Get-AuthenticodeSignature must say Valid) and prints `<file> signed by <Subject>`.
+      - name: Sign with Azure Artifact Signing
         id: sign-azure
         continue-on-error: true
         if: steps.config.outputs.method == 'azure'
-        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
-        with:
-          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-          files: |
-            ${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe
-            ${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe
-            ${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe
-          exclude-environment-credential: true
-          exclude-workload-identity-credential: true
-          exclude-managed-identity-credential: true
-          exclude-shared-token-cache-credential: true
-          exclude-visual-studio-credential: true
-          exclude-visual-studio-code-credential: true
-          exclude-azure-cli-credential: false
-          exclude-azure-powershell-credential: true
-          exclude-azure-developer-cli-credential: true
-          exclude-interactive-browser-credential: true
-
-      # The fallback. Unlike Trusted Signing this puts a private key on the runner, so the
-      # PFX is written, imported, and deleted within the one step -- `finally` so a signing
-      # failure does not leave it behind.
-      - name: Sign with the organization Authenticode certificate
-        id: sign-pfx
-        continue-on-error: true
-        if: steps.config.outputs.method == 'pfx'
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $pfx = Join-Path $env:RUNNER_TEMP "redrob-code-signing.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
-            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
-            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
-            $files = @(
-              "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
-              "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
-              "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
-            )
-            foreach ($file in $files) {
-              # Timestamped, so the signature outlives the certificate's own validity.
-              $result = Set-AuthenticodeSignature -FilePath $file -Certificate $cert `
-                -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
-              if (-not $result.SignerCertificate) {
-                throw "Authenticode signing failed for ${file}: $($result.StatusMessage)"
-              }
-            }
-          } finally {
-            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          }
+          $files = $env:REDROB_WINDOWS_BINARIES -split '\s+'
+          ./script/sign-windows.ps1 @files
 
       # Reads the signature back off the artifacts rather than trusting the signing step's
       # exit code. This is what makes "signed" in the release notes a checked claim: the
-      # previous release said Windows was signed while nothing had signed it.
+      # previous release said Windows was signed while nothing had signed it. A Public Trust
+      # certificate chains to a root every Windows trusts, so only `Valid` passes, and the
+      # signer must be the organization's own certificate.
       - name: Verify the Windows signatures
         id: verify
         continue-on-error: true
@@ -419,24 +369,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $files = @(
-            "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
-            "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
-            "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
-          )
-          foreach ($file in $files) {
+          foreach ($file in ($env:REDROB_WINDOWS_BINARIES -split '\s+')) {
             $sig = Get-AuthenticodeSignature $file
-            if (-not $sig.SignerCertificate) {
-              throw "no Authenticode signer certificate on ${file}"
+            if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on ${file}" }
+            if ($sig.Status -ne "Valid") { throw "unexpected signature status on ${file}: $($sig.Status) $($sig.StatusMessage)" }
+            # The parsed CN, not a regex over the Subject string: the Subject renders as
+            # `CN="McKinley Rice, Inc.", O=...` (quoted, because the name contains a comma).
+            if ($sig.SignerCertificate.GetNameInfo('SimpleName', $false) -ne 'McKinley Rice, Inc.') {
+              throw "unexpected signer on ${file}: $($sig.SignerCertificate.Subject)"
             }
-            # A runner does not trust the organization's own CA chain, so `NotTrusted` and
-            # `UnknownError` are expected for the PFX path and mean "signed, chain not
-            # verifiable here" rather than "unsigned". Trusted Signing must be outright Valid.
-            $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
-            if ($accepted -notcontains $sig.Status.ToString()) {
-              throw "unexpected signature status on ${file}: $($sig.Status) $($sig.StatusMessage)"
-            }
-            Write-Host "$([IO.Path]::GetFileName($file)): $($sig.Status), signer $($sig.SignerCertificate.Subject)"
+            Write-Host "$file signed by $($sig.SignerCertificate.Subject)"
           }
 
       - name: Record the signing outcome
@@ -448,7 +390,6 @@ jobs:
           method="${{ steps.config.outputs.method }}"
           case "$method" in
             azure) signed="${{ steps.sign-azure.outcome }}" ;;
-            pfx)   signed="${{ steps.sign-pfx.outcome }}" ;;
             *)     signed="skipped" ;;
           esac
           # Both the signing step AND the read-back have to succeed. Either alone can be
@@ -493,68 +434,41 @@ jobs:
           if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
           Write-Host "built $((Get-Item $setup).Length) bytes"
 
-      - name: Sign the installer with Azure Trusted Signing
+      # A fresh login right before the second signing point, for the same reason as the first:
+      # the installer build above takes minutes, and the credential must not be assumed to have
+      # outlived it.
+      - name: Log in to Azure again (OIDC)
+        if: steps.config.outputs.method == 'azure' && steps.installer.outcome == 'success' && env.AZURE_CLIENT_ID != ''
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign the installer with Azure Artifact Signing
         id: sign-installer-azure
         continue-on-error: true
-        if: steps.config.outputs.method == 'azure'
-        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
-        with:
-          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-          files: |
-            ${{ github.workspace }}\dist\redrob-code-x64-setup.exe
-          exclude-environment-credential: true
-          exclude-workload-identity-credential: true
-          exclude-managed-identity-credential: true
-          exclude-shared-token-cache-credential: true
-          exclude-visual-studio-credential: true
-          exclude-visual-studio-code-credential: true
-          exclude-azure-cli-credential: false
-          exclude-azure-powershell-credential: true
-          exclude-azure-developer-cli-credential: true
-          exclude-interactive-browser-credential: true
-
-      - name: Sign the installer with the organization Authenticode certificate
-        id: sign-installer-pfx
-        continue-on-error: true
-        if: steps.config.outputs.method == 'pfx'
+        if: steps.config.outputs.method == 'azure' && steps.installer.outcome == 'success'
         shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $pfx = Join-Path $env:RUNNER_TEMP "redrob-installer-signing.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
-            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
-            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
-            $result = Set-AuthenticodeSignature `
-              -FilePath "${{ github.workspace }}\dist\redrob-code-x64-setup.exe" `
-              -Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
-            if (-not $result.SignerCertificate) {
-              throw "Authenticode signing failed for the installer: $($result.StatusMessage)"
-            }
-          } finally {
-            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          }
+        run: ./script/sign-windows.ps1 $env:REDROB_WINDOWS_INSTALLER
 
       # Read back, on the same terms as the binaries: an unsigned installer is the one file a user
       # actually double-clicks, so it is the last thing that should be trusted on an exit code.
       - name: Verify the installer signature
         id: verify-installer
         continue-on-error: true
-        if: steps.config.outputs.method != 'none'
+        if: steps.config.outputs.method != 'none' && steps.installer.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
+          $setup = $env:REDROB_WINDOWS_INSTALLER
           $sig = Get-AuthenticodeSignature $setup
           if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on the installer" }
-          $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
-          if ($accepted -notcontains $sig.Status.ToString()) {
-            throw "unexpected signature status on the installer: $($sig.Status) $($sig.StatusMessage)"
+          if ($sig.Status -ne "Valid") { throw "unexpected signature status on the installer: $($sig.Status) $($sig.StatusMessage)" }
+          if ($sig.SignerCertificate.GetNameInfo('SimpleName', $false) -ne 'McKinley Rice, Inc.') {
+            throw "unexpected signer on the installer: $($sig.SignerCertificate.Subject)"
           }
-          Write-Host "redrob-code-x64-setup.exe: $($sig.Status), signer $($sig.SignerCertificate.Subject)"
+          Write-Host "$setup signed by $($sig.SignerCertificate.Subject)"
 
       - name: Record the installer signing outcome
         id: installer-result
@@ -565,7 +479,6 @@ jobs:
           method="${{ steps.config.outputs.method }}"
           case "$method" in
             azure) signed="${{ steps.sign-installer-azure.outcome }}" ;;
-            pfx)   signed="${{ steps.sign-installer-pfx.outcome }}" ;;
             *)     signed="skipped" ;;
           esac
           if [ "${{ steps.installer.outcome }}" != "success" ]; then
@@ -764,10 +677,7 @@ jobs:
               # worse than a vaguer true one, because a reader cannot tell it is wrong.
               case "${WINDOWS_SIGNING_METHOD:-}" in
                 azure)
-                  echo "Windows binaries are signed through Azure Trusted Signing."
-                  ;;
-                pfx)
-                  echo "Windows binaries are signed with the Redrob Authenticode certificate."
+                  echo "Windows binaries are signed through Azure Artifact Signing (McKinley Rice, Inc.)."
                   ;;
                 *)
                   echo "Windows binaries are signed. Verify the signature with \`signtool verify /pa\`"

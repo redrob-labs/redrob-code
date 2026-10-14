@@ -1,70 +1,104 @@
+<#
+.SYNOPSIS
+  Authenticode-sign files with signtool through Azure Artifact Signing.
+
+.DESCRIPTION
+  Reads ARTIFACT_SIGNING_ENDPOINT (e.g. https://krc.codesigning.azure.net), ARTIFACT_SIGNING_ACCOUNT
+  and ARTIFACT_SIGNING_CERT_PROFILE. The Azure credential is whatever DefaultAzureCredential finds:
+  in CI that is the `az login` done by azure/login with the job's OpenID Connect token; on a
+  developer machine, `az login`. There is no certificate file and no client secret anywhere.
+
+  With the three variables unset, it prints a warning and leaves the files unsigned (exit code 0),
+  so test builds still produce binaries. With only some of them set it fails: a partial
+  configuration is a mistake, not a choice.
+
+  Every file is read back after signing: `signtool verify /pa /v` and Get-AuthenticodeSignature
+  must both report a valid chain, and the script prints `<file> signed by <Subject>`.
+
+  This is the one place to adapt when the signing setup changes. Optional overrides:
+  WINDOWS_TIMESTAMP_URL, SIGNTOOL (path to signtool.exe).
+
+.EXAMPLE
+  pwsh script/sign-windows.ps1 dist/redrob-windows-x64/bin/redrob.exe dist/redrob-code-x64-setup.exe
+#>
 param(
-  [Parameter(ValueFromRemainingArguments = $true)]
-  [string[]] $Path
+  [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+  [string[]] $Files
 )
+$ErrorActionPreference = 'Stop'
 
-$ErrorActionPreference = "Stop"
-
-if (-not $Path -or $Path.Count -eq 0) {
-  throw "At least one path is required"
+function Write-Warn([string] $Message) {
+  if ($env:GITHUB_ACTIONS) { Write-Output "::warning::$Message" } else { Write-Warning $Message }
 }
 
-if ($env:GITHUB_ACTIONS -ne "true") {
-  Write-Host "Skipping Windows signing because this is not running on GitHub Actions"
+function Find-SignTool {
+  if ($env:SIGNTOOL) { return $env:SIGNTOOL }
+  $onPath = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if ($onPath) { return $onPath.Source }
+  $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+  $found = Get-ChildItem -Path $kits -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+    Sort-Object FullName -Descending | Select-Object -First 1
+  if (-not $found) { throw 'signtool.exe not found (install the Windows SDK)' }
+  return $found.FullName
+}
+
+function Invoke-SignTool([string[]] $Arguments) {
+  & $script:SignTool @Arguments
+  if ($LASTEXITCODE -ne 0) { throw "signtool $($Arguments[0]) failed with exit code $LASTEXITCODE" }
+}
+
+$Files = @($Files | ForEach-Object { (Resolve-Path $_).Path } | Select-Object -Unique)
+$required = 'ARTIFACT_SIGNING_ENDPOINT', 'ARTIFACT_SIGNING_ACCOUNT', 'ARTIFACT_SIGNING_CERT_PROFILE'
+$missing = @($required | Where-Object { -not [Environment]::GetEnvironmentVariable($_) })
+
+if ($missing.Count -eq $required.Count) {
+  Write-Warn "Artifact Signing not configured ($($required -join ', ') unset): leaving unsigned: $($Files -join ', ')"
   exit 0
 }
+if ($missing.Count -gt 0) { throw "Artifact Signing half-configured; missing: $($missing -join ', ')" }
 
-$vars = @{
-  endpoint = $env:AZURE_TRUSTED_SIGNING_ENDPOINT
-  account = $env:AZURE_TRUSTED_SIGNING_ACCOUNT_NAME
-  profile = $env:AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE
-}
+$script:SignTool = Find-SignTool
+$tmp = Join-Path ([IO.Path]::GetTempPath()) "redrob-code-sign-$PID"
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
-if ($vars.Values | Where-Object { -not $_ }) {
-  Write-Host "Skipping Windows signing because Azure Artifact Signing is not configured"
-  exit 0
-}
+try {
+  Write-Output "Signing with Azure Artifact Signing ($env:ARTIFACT_SIGNING_ACCOUNT / $env:ARTIFACT_SIGNING_CERT_PROFILE): $($Files -join ', ')"
+  # The signtool dlib from the Microsoft.ArtifactSigning.Client NuGet package. It authenticates with
+  # DefaultAzureCredential, so the `az login` performed before this script is what it uses.
+  $pkg = Join-Path $tmp 'artifact-signing-client.zip'
+  Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client' -OutFile $pkg
+  Expand-Archive -Path $pkg -DestinationPath (Join-Path $tmp 'client') -Force
+  $dlib = Get-ChildItem -Path (Join-Path $tmp 'client') -Recurse -Filter Azure.CodeSigning.Dlib.dll |
+    Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+  if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll not found in Microsoft.ArtifactSigning.Client' }
+  $metadata = Join-Path $tmp 'metadata.json'
+  @{
+    Endpoint               = $env:ARTIFACT_SIGNING_ENDPOINT.TrimEnd('/')
+    CodeSigningAccountName = $env:ARTIFACT_SIGNING_ACCOUNT
+    CertificateProfileName = $env:ARTIFACT_SIGNING_CERT_PROFILE
+    # Only the credentials a CI runner or a developer shell can satisfy. Without this list a
+    # missing login falls through to InteractiveBrowserCredential, which opens a browser nobody
+    # sees and waits forever. With it, a missing login fails in seconds.
+    ExcludeCredentials     = @(
+      'InteractiveBrowserCredential', 'ManagedIdentityCredential', 'SharedTokenCacheCredential',
+      'VisualStudioCredential', 'VisualStudioCodeCredential', 'AzurePowerShellCredential',
+      'AzureDeveloperCliCredential', 'WorkloadIdentityCredential'
+    )
+  } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
+  $ts = if ($env:WINDOWS_TIMESTAMP_URL) { $env:WINDOWS_TIMESTAMP_URL } else { 'http://timestamp.acs.microsoft.com' }
+  $common = @('sign', '/v', '/fd', 'SHA256', '/td', 'SHA256', '/d', 'Redrob Code', '/du', 'https://github.com/redrob-labs/redrob-code')
+  Invoke-SignTool ($common + @('/tr', $ts, '/dlib', $dlib.FullName, '/dmdf', $metadata) + $Files)
 
-$moduleVersion = "0.5.8"
-$module = Get-Module -ListAvailable -Name TrustedSigning | Where-Object { $_.Version -eq [version] $moduleVersion }
-
-if (-not $module) {
-  try {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+  # A Public Trust certificate chains to a Microsoft root every Windows trusts, so the full
+  # Authenticode check must pass. Anything less (an unsigned file, a broken chain, a bad hash) fails.
+  foreach ($file in $Files) {
+    Invoke-SignTool @('verify', '/pa', '/v', $file)
+    $signature = Get-AuthenticodeSignature -FilePath $file
+    if ($signature.Status -ne 'Valid') { throw "$file signature status $($signature.Status): $($signature.StatusMessage)" }
+    Write-Output "$file signed by $($signature.SignerCertificate.Subject)"
   }
-  catch {
-    Write-Host "NuGet package provider install skipped: $($_.Exception.Message)"
-  }
-
-  Install-Module -Name TrustedSigning -RequiredVersion $moduleVersion -Force -Repository PSGallery -Scope CurrentUser
 }
-
-Import-Module TrustedSigning -RequiredVersion $moduleVersion -Force
-
-$files = @($Path | ForEach-Object { Resolve-Path $_ -ErrorAction SilentlyContinue } | Select-Object -ExpandProperty Path -Unique)
-
-if (-not $files -or $files.Count -eq 0) {
-  throw "No files matched the requested paths"
+finally {
+  Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
-
-$params = @{
-  Endpoint                         = $vars.endpoint
-  CodeSigningAccountName           = $vars.account
-  CertificateProfileName           = $vars.profile
-  Files                            = ($files -join ",")
-  FileDigest                       = "SHA256"
-  TimestampDigest                  = "SHA256"
-  TimestampRfc3161                 = "http://timestamp.acs.microsoft.com"
-  ExcludeEnvironmentCredential     = $true
-  ExcludeWorkloadIdentityCredential = $true
-  ExcludeManagedIdentityCredential = $true
-  ExcludeSharedTokenCacheCredential = $true
-  ExcludeVisualStudioCredential    = $true
-  ExcludeVisualStudioCodeCredential = $true
-  ExcludeAzureCliCredential        = $false
-  ExcludeAzurePowerShellCredential = $true
-  ExcludeAzureDeveloperCliCredential = $true
-  ExcludeInteractiveBrowserCredential = $true
-}
-
-Invoke-TrustedSigning @params
