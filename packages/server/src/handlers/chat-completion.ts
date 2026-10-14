@@ -166,13 +166,35 @@ const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   return yield* fromCatalogModel(info, credential)
 })
 
-const buildRequest = Effect.fn("chat.buildRequest")(function* (payload: ChatCompletionRequest) {
+/**
+ * Caller labels forwarded to the provider, so the Console can group AI work by app and session
+ * exactly as it does for the agent runner. A shared daemon serves several apps at once, so these
+ * cannot come from the engine's own environment: each request names its app and session. They are
+ * labels and nothing else -- an absent header sends nothing.
+ */
+export const APP_HEADER = "x-redrob-app"
+export const SESSION_HEADER = "x-redrob-session"
+
+export function callerLabels(headers: Record<string, string>): Record<string, string> {
+  const app = headers[APP_HEADER]?.trim()
+  const session = headers[SESSION_HEADER]?.trim()
+  return {
+    ...(app ? { [APP_HEADER]: app } : {}),
+    ...(session ? { "X-Session-Id": session, "x-session-affinity": session } : {}),
+  }
+}
+
+const buildRequest = Effect.fn("chat.buildRequest")(function* (
+  payload: ChatCompletionRequest,
+  labels: Record<string, string> = {},
+) {
   const model = yield* resolveModel(payload.model)
   const messages = toLLMMessages(payload)
   const tools = toLLMTools(payload)
   const generation = toGeneration(payload)
   return LLM.request({
     model,
+    ...(Object.keys(labels).length > 0 ? { http: { headers: labels } } : {}),
     messages,
     // Absent tools is what selects engine-owned behaviour; an empty array would
     // tell the provider "you may call nothing", which is a different thing.
@@ -337,8 +359,9 @@ export const ChatCompletionHandler = HttpApiBuilder.group(Api, "server.chat", (h
         // to answer with either JSON or an event stream. The declared schema is
         // still the contract, so it is applied here rather than trusting the body.
         const payload = yield* HttpServerRequest.schemaBodyJson(ChatCompletionRequest)
+        const incoming = yield* HttpServerRequest.HttpServerRequest
         const id = completionID()
-        const { request, unmask } = yield* maskedRequest(yield* buildRequest(payload))
+        const { request, unmask } = yield* maskedRequest(yield* buildRequest(payload, callerLabels(incoming.headers)))
 
         if (payload.stream !== true) {
           const response = yield* maskedGenerate(request, unmask)

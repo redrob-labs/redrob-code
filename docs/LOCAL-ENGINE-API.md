@@ -194,6 +194,25 @@ rebuilds the instance on the new file. Anything a plugin used to read from the s
 belongs in this file too (for example under a key the plugin owns), because the daemon's env is
 nobody's.
 
+The same goes for *which app is calling*. The agent runner labels its provider requests with
+`x-redrob-app` from `REDROB_APP`, which only names the app that started a private engine. On the
+shared daemon `POST /v1/chat/completions` reads the labels from the request instead: send
+`x-redrob-app: <app>` and `x-redrob-session: <your session id>` and the engine forwards them to
+the provider as `x-redrob-app` and `X-Session-Id` (plus `x-session-affinity`), the names the
+runner uses, so the Console groups both paths alike. Absent headers forward nothing; no other
+request header crosses.
+
+Detecting the engine from another language, without the SDK: `redrob service status --json`
+prints the record as one JSON line and exits `0` when a healthy daemon is registered, prints
+`null` and exits `1` when none is. `redrob service start --json` prints the record (starting the
+daemon when needed) and exits `0`, or exits non-zero with the reason on stderr. A missing `redrob`
+binary (not on `PATH`, no `REDROB_BIN`) is the "engine not installed" case: the app should say so
+and point at the launcher or the Code install, never fall back to calling a provider directly --
+two paths would mean the user cannot tell whether masking applied. The Rust crate
+`redrob-engine-client` (`crates/engine-client` in this repository, pinned by apps as a git
+dependency on the engine tag they target) wraps all of this for Shape, Canvas, Query, Recall and
+the launcher.
+
 That file is the auth boundary — it carries the Basic secret. It is per-user by
 location and must stay `0600`; a multi-user machine gets one daemon per user, never a
 shared one.
