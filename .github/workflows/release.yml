@@ -373,7 +373,9 @@ jobs:
             $sig = Get-AuthenticodeSignature $file
             if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on ${file}" }
             if ($sig.Status -ne "Valid") { throw "unexpected signature status on ${file}: $($sig.Status) $($sig.StatusMessage)" }
-            if ($sig.SignerCertificate.Subject -notmatch '^CN=McKinley Rice, Inc\.(,|$)') {
+            # The parsed CN, not a regex over the Subject string: the Subject renders as
+            # `CN="McKinley Rice, Inc.", O=...` (quoted, because the name contains a comma).
+            if ($sig.SignerCertificate.GetNameInfo('SimpleName', $false) -ne 'McKinley Rice, Inc.') {
               throw "unexpected signer on ${file}: $($sig.SignerCertificate.Subject)"
             }
             Write-Host "$file signed by $($sig.SignerCertificate.Subject)"
@@ -463,7 +465,7 @@ jobs:
           $sig = Get-AuthenticodeSignature $setup
           if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on the installer" }
           if ($sig.Status -ne "Valid") { throw "unexpected signature status on the installer: $($sig.Status) $($sig.StatusMessage)" }
-          if ($sig.SignerCertificate.Subject -notmatch '^CN=McKinley Rice, Inc\.(,|$)') {
+          if ($sig.SignerCertificate.GetNameInfo('SimpleName', $false) -ne 'McKinley Rice, Inc.') {
             throw "unexpected signer on the installer: $($sig.SignerCertificate.Subject)"
           }
           Write-Host "$setup signed by $($sig.SignerCertificate.Subject)"
