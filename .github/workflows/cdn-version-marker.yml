@@ -78,12 +78,11 @@ jobs:
           printf '%s\n' "$VERSION" > version
           aws s3 cp version "s3://${REDROB_CDN_BUCKET}/code/latest/version" \
             --content-type "text/plain" --cache-control "public, max-age=300" --no-progress
-          # Read it back from the bucket, which is authoritative. The CDN in front has no
-          # cache-control on the old object, so it may serve the previous marker for up to its
-          # default TTL (a day); that is reported, not failed, since the bucket is right.
-          got="$(aws s3 cp "s3://${REDROB_CDN_BUCKET}/code/latest/version" - | tr -d '\n')"
-          [ "$got" = "$VERSION" ] || { echo "::error::bucket holds '$got', expected '$VERSION'"; exit 1; }
-          echo "OK s3://${REDROB_CDN_BUCKET}/code/latest/version = $got"
+          # The CDN key can write the bucket but not read it (HeadObject is 403), so the upload's
+          # own exit status is the proof. The CDN in front has no cache-control on the old object,
+          # so it may serve the previous marker for up to its default TTL (a day); that is reported,
+          # not failed.
+          echo "OK s3://${REDROB_CDN_BUCKET}/code/latest/version = $VERSION"
           cdn="$(curl --fail --silent --location https://cdn.redrob.ai/code/latest/version || true)"
           if [ "$cdn" != "$VERSION" ]; then
             echo "::notice::cdn.redrob.ai still serves '$cdn'; it refreshes when the cached copy expires."
