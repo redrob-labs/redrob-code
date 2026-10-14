@@ -4,6 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redrob-labs/redrob-code.git",
+    "directory": "packages/sdk/js"
+  },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
