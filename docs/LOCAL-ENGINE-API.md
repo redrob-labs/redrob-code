@@ -172,8 +172,12 @@ replaced (an upgrade), and the new record is awaited.
 Attached apps are counted. `POST /api/clients {app, pid}` attaches, `POST
 /api/clients/:id/heartbeat` keeps it (expected within `ttlMs`, 90 s; the SDK's `attach()` does this
 for you), `DELETE /api/clients/:id` detaches, `GET /api/clients` lists them with `idleForMs` and
-the daemon's `idleExitAfterMs`. A registered daemon exits once nobody has been attached for
-`--idle-exit` minutes (default 10; 0 keeps it up), and also when another daemon has taken over
+the daemon's `idleExitAfterMs`. A registered daemon exits once nobody has needed it for
+`--idle-exit` minutes (default 10; 0 keeps it up): no app attached, no request in flight, and no
+authorized request since -- so an app that only calls the API (the Rust apps: Shape, Canvas, Query,
+Recall, through `redrob-engine-client`) keeps it alive by using it, and it never leaves under a
+request still being answered. Status polls (`/api/health`, `/api/clients`) do not count: the
+launcher's engine card asks every few seconds. It also exits when another daemon has taken over
 the record. `redrob acp --attach` makes the ACP face a thin client of the daemon instead of an
 engine of its own, so ACP hosts (Design, Cut, CAD, Browser) share the one process too.
 

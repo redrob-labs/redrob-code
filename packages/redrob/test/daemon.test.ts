@@ -75,9 +75,13 @@ describe("daemon registry", () => {
   test("healthy is false for a daemon that does not answer, and true for one that does", async () => {
     const no = await Registry.healthy(record({ url: "http://127.0.0.1:9" }), undefined, 300)
     expect(no).toBe(false)
-    const yes = await Registry.healthy(record(), (async () => Response.json({ healthy: true })) as unknown as typeof fetch)
+    const yes = await Registry.healthy(record(), (async () =>
+      Response.json({ healthy: true })) as unknown as typeof fetch)
     expect(yes).toBe(true)
-    const wrong = await Registry.healthy(record(), (async () => new Response("", { status: 401 })) as unknown as typeof fetch)
+    const wrong = await Registry.healthy(
+      record(),
+      (async () => new Response("", { status: 401 })) as unknown as typeof fetch,
+    )
     expect(wrong).toBe(false)
   })
 })
@@ -95,6 +99,36 @@ describe("attached apps", () => {
     expect(Clients.detach(b.id, 10_000)).toBe(true)
     expect(Clients.idleFor(12_500)).toBe(2_500)
     expect(Clients.detach(b.id)).toBe(false)
+  })
+
+  test("requests count as activity: not idle while one is in flight, idle timer restarts after it", () => {
+    Clients.reset(1_000)
+    expect(Clients.idleFor(4_000)).toBe(3_000)
+    Clients.requestStarted(5_000)
+    expect(Clients.idleFor(600_000)).toBeUndefined()
+    Clients.requestEnded(20_000)
+    expect(Clients.idleFor(25_000)).toBe(5_000)
+    // Two overlapping requests: idle only once both are answered.
+    Clients.requestStarted(30_000)
+    Clients.requestStarted(31_000)
+    Clients.requestEnded(32_000)
+    expect(Clients.idleFor(40_000)).toBeUndefined()
+    Clients.requestEnded(33_000)
+    expect(Clients.idleFor(40_000)).toBe(7_000)
+    // An attachment still wins over the request clock.
+    const a = Clients.attach({ app: "office" }, 41_000)
+    expect(Clients.idleFor(90_000)).toBeUndefined()
+    Clients.detach(a.id, 50_000)
+    expect(Clients.idleFor(60_000)).toBe(10_000)
+  })
+
+  test("status polls are not activity; everything else is", () => {
+    expect(Clients.countsAsActivity("/api/health")).toBe(false)
+    expect(Clients.countsAsActivity("/api/clients")).toBe(false)
+    expect(Clients.countsAsActivity("/api/clients/abc")).toBe(false)
+    expect(Clients.countsAsActivity("/v1/chat/completions")).toBe(true)
+    expect(Clients.countsAsActivity("/provider")).toBe(true)
+    expect(Clients.countsAsActivity("/api/healthz")).toBe(true)
   })
 
   test("an app whose heartbeats stop is swept; a heartbeat keeps one alive", () => {

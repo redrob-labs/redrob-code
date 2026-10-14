@@ -7,6 +7,7 @@
  * service: the serve command polls it from outside the request context.
  */
 import { randomUUID } from "node:crypto"
+import { Effect } from "effect"
 
 export type Client = {
   readonly id: string
@@ -67,13 +68,60 @@ export function list(): Client[] {
   return [...clients.values()].sort((a, b) => a.attachedAt - b.attachedAt)
 }
 
-/** How long nobody has been attached, in ms; undefined while someone is. */
+/**
+ * Requests count as activity too. The Rust apps (Shape, Canvas, Query, Recall) call the API
+ * without attaching, so with attachments alone the daemon would leave ten minutes after it was
+ * started -- possibly under a request still being answered. Status polls (health, the client
+ * list) are not activity: the launcher's engine card asks every few seconds.
+ */
+let lastRequestAt: number | undefined
+let inFlight = 0
+
+const STATUS_PATHS = ["/api/health", "/api/clients"]
+
+/** Whether a request to this path keeps the daemon alive. */
+export function countsAsActivity(path: string): boolean {
+  return !STATUS_PATHS.some(
+    (prefix) => path === prefix || path.startsWith(prefix + "/") || path.startsWith(prefix + "?"),
+  )
+}
+
+export function requestStarted(now = Date.now()): void {
+  inFlight += 1
+  lastRequestAt = now
+}
+
+export function requestEnded(now = Date.now()): void {
+  inFlight = Math.max(0, inFlight - 1)
+  lastRequestAt = now
+}
+
+/** Run an authorized request's effect, counting it as activity unless it is a status poll. */
+export function withActivity<A, E, R>(path: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+  if (!countsAsActivity(path)) return effect
+  return Effect.suspend(() => {
+    requestStarted()
+    return Effect.ensuring(
+      effect,
+      Effect.sync(() => requestEnded()),
+    )
+  })
+}
+
+/**
+ * How long nobody has needed this engine, in ms: no attachment, no request in flight, and no
+ * request since. Undefined while someone is attached or a request is being answered.
+ */
 export function idleFor(now = Date.now()): number | undefined {
-  return idleSince === undefined ? undefined : now - idleSince
+  if (idleSince === undefined || inFlight > 0) return undefined
+  const since = lastRequestAt === undefined ? idleSince : Math.max(idleSince, lastRequestAt)
+  return now - since
 }
 
 /** Test seam. */
 export function reset(now = Date.now()): void {
   clients.clear()
   idleSince = now
+  lastRequestAt = undefined
+  inFlight = 0
 }
