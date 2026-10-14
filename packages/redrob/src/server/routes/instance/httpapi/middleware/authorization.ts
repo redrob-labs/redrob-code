@@ -1,4 +1,5 @@
 import { ServerAuth } from "@/server/auth"
+import * as Clients from "@redrob-code/server/clients"
 import { Effect, Encoding, Layer, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
@@ -40,6 +41,7 @@ function validateCredential<A, E, R>(
   effect: Effect.Effect<A, E, R>,
   credential: ServerAuth.DecodedCredentials,
   config: ServerAuth.Info,
+  path: string,
 ) {
   return Effect.gen(function* () {
     if (!ServerAuth.required(config)) return yield* effect
@@ -49,7 +51,8 @@ function validateCredential<A, E, R>(
       )
       return yield* new HttpApiError.Unauthorized({})
     }
-    return yield* effect
+    // The shared daemon's idle clock: an authorized request is someone needing the engine.
+    return yield* Clients.withActivity(path, effect)
   })
 }
 
@@ -85,6 +88,7 @@ function validateRawCredential<A, E, R>(
   effect: Effect.Effect<A, E, R>,
   credential: ServerAuth.DecodedCredentials,
   config: ServerAuth.Info,
+  path: string,
 ) {
   if (!ServerAuth.required(config)) return effect
   if (!ServerAuth.authorized(credential, config))
@@ -94,7 +98,7 @@ function validateRawCredential<A, E, R>(
         headers: { "www-authenticate": WWW_AUTHENTICATE },
       }),
     )
-  return effect
+  return Clients.withActivity(path, effect)
 }
 
 export const authorizationRouterMiddleware = HttpRouter.middleware()(
@@ -107,7 +111,7 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
         const request = yield* HttpServerRequest.HttpServerRequest
         const url = new URL(request.url, "http://localhost")
         return yield* credentialFromURL(url, request).pipe(
-          Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
+          Effect.flatMap((credential) => validateRawCredential(effect, credential, config, url.pathname)),
         )
       })
   }),
@@ -121,8 +125,9 @@ export const authorizationLayer = Layer.effect(
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
+        const path = new URL(request.url, "http://localhost").pathname
         return yield* credentialFromRequest(request).pipe(
-          Effect.flatMap((credential) => validateCredential(effect, credential, config)),
+          Effect.flatMap((credential) => validateCredential(effect, credential, config, path)),
         )
       }),
     )
@@ -140,7 +145,7 @@ export const ptyConnectAuthorizationLayer = Layer.effect(
         const url = new URL(request.url, "http://localhost")
         if (hasPtyConnectTicketURL(url)) return yield* effect
         return yield* credentialFromURL(url, request).pipe(
-          Effect.flatMap((credential) => validateCredential(effect, credential, config)),
+          Effect.flatMap((credential) => validateCredential(effect, credential, config, url.pathname)),
         )
       }),
     )

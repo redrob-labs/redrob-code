@@ -1,4 +1,5 @@
 import { ServerAuth } from "../auth"
+import * as Clients from "../clients"
 import { UnauthorizedError } from "@redrob-code/protocol/errors"
 import { Authorization } from "@redrob-code/protocol/middleware/authorization"
 export { Authorization } from "@redrob-code/protocol/middleware/authorization"
@@ -47,7 +48,8 @@ export const authorizationLayer = Layer.effect(
         // credential checks here; the connect handler consumes and validates the ticket.
         if (hasPtyConnectTicketURL(new URL(request.url, "http://localhost"))) return yield* effect
         const credential = yield* credentialFromRequest(request)
-        if (ServerAuth.authorized(credential, config)) return yield* effect
+        if (ServerAuth.authorized(credential, config))
+          return yield* Clients.withActivity(new URL(request.url, "http://localhost").pathname, effect)
         yield* HttpEffect.appendPreResponseHandler((_request, response) =>
           Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),
         )
