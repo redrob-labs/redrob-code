@@ -145,7 +145,7 @@ step.
 2. `$HOME/.redrob/bin/redrob` — where `install.sh` already installs
 3. `PATH`
 4. absent → the product offers a one-click install that runs the official installer
-   (GitHub Releases, verified against `SHA256SUMS`)
+   (GitHub Releases, verified against `SHA256SUMS.txt`)
 
 ### One daemon, not one per product
 

@@ -14,33 +14,32 @@ before editing a package** — `packages/redrob/`, `packages/redrob/test/`, `pac
 
 Gitflow. **`develop` is the default branch and the base of every pull request.**
 
-Branch names come from `docs/BRANCHING.md` and nothing else: `feature/<slug>`,
-`sync/upstream-<tag>`, `hotfix/<slug>`, `release/<version>`. Do not invent a prefix, and in
-particular do not name a branch after the tool or agent that made it: a branch name says what the
-change is, not who typed it.
+Branch names are `<type>/<slug>` with the type from the redrob-labs organization list:
+`feat fix chore docs test refactor perf ci build sync hotfix release` (`docs/BRANCHING.md` has the
+ones this repository actually uses: `feat/<slug>`, `sync/upstream-<tag>`, `hotfix/<slug>`,
+`release/<version>`). Do not invent a prefix, and in particular do not name a branch after the tool
+or agent that made it: a branch name says what the change is, not who typed it.
 
-The table has no name for the back-merge that closes a hotfix, which is part of why that step gets
-skipped. Until it does, use `hotfix/<slug>-backmerge` and say in the pull request that it carries
-`main` into `develop`.
-
-- **`develop`** integrates. Release from it: the `release` workflow builds, signs, tags, and then
-  prints a link to open the promotion pull request from `develop` into `main`.
+- **`develop`** integrates. Release from it: the `release` workflow builds, signs, tags, publishes
+  the release, and prints a link to open the promotion pull request from `develop` into `main`.
 - **`main`** is released state. It moves through a reviewed pull request, not an automated push.
 - **Hotfix**: branch from `main`, merge into `main`, release, **then merge `main` back into
   `develop`**. This is the step that gets skipped. #13 fixed the lockfile on `main`, the back-merge
   never happened, and for a month `bun install --frozen-lockfile` failed on the default branch.
-  `branch-sync.yml` now fails on push to `main` while `main` holds a commit `develop` does not, so
-  this is checked rather than remembered.
+  The shared gitflow workflow now opens the back-merge pull request (`sync/back-merge-<sha>`) on
+  every push to `main` that leaves `main` ahead of `develop`, so this is checked rather than
+  remembered.
 - Both branches are protected: pull requests only, force pushes and deletions blocked, zero required
   reviews, admin enforcement off. Required checks: `typecheck`, `unit (linux)`, `core (linux)`,
   `httpapi (linux)`.
 
-Both rules above are enforced by CI, not by memory. `gitflow.yml` runs on every pull request and
-fails when the head branch prefix is not one of the four types, because a prefix nobody defined
-(`kiro/`) reached this repository while the rule sat in prose. `branch-sync.yml` runs on every push
-to `main` and owns the back-merge rule; the two are separate workflows because a branch name can
-only be judged once a pull request exists, while a missing back-merge can only be judged after
-`main` has moved.
+Both rules above are enforced by CI, not by memory. `gitflow.yml` is a verbatim copy of the
+organization's caller template and only calls `redrob-labs/.github/.github/workflows/gitflow.yml`,
+which owns both checks: `gitflow / branch name follows the convention` on every pull request
+(because a prefix nobody defined, `kiro/`, reached this repository while the rule sat in prose) and
+`gitflow / main is contained in develop` on every push to `main`. Do not add a type list to the
+caller; the one list lives in the organization repository. This repository's own tag rule (no
+workflow pushes tags in bulk) is `tag-hygiene.yml`.
 
 The invariant, readable by hand:
 
