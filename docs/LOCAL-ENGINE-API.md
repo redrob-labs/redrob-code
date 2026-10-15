@@ -142,9 +142,11 @@ step.
 ### Resolution order
 
 1. `REDROB_CODE_BIN` — explicit override, development
-2. `$HOME/.redrob/bin/redrob` — where `install.sh` already installs
-3. `PATH`
-4. absent → the product offers a one-click install that runs the official installer
+2. `$HOME/.redrob/bin/redrob` — where `install.sh` already installs (and where Redrob Launcher
+   links the copy it installs)
+3. Windows: `%LOCALAPPDATA%\Redrob\bin\redrob.exe` — where the setup.exe and the MSI install
+4. `PATH`
+5. absent → the product offers a one-click install that runs the official installer
    (GitHub Releases, verified against `SHA256SUMS.txt`)
 
 ### One daemon, not one per product

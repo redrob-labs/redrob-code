@@ -155,6 +155,13 @@ jobs:
       APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
       APPLE_NOTARY_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
     steps:
+      # Only the installer scripts are needed from the repository (sparse: one directory).
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          sparse-checkout: |
+            installer
+          sparse-checkout-cone-mode: true
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-unsigned
@@ -238,10 +245,37 @@ jobs:
             (cd "$directory/bin" && zip -qr "../../${directory}.zip" .)
           done
 
+      # ── The disk images ───────────────────────────────────────────────────────────────────
+      #
+      # Redrob Launcher installs macOS apps only from a DMG holding a signed `.app`, so the signed
+      # binary of each architecture is wrapped in `Redrob Code.app` (installer/macos/make-dmg.sh),
+      # the bundle signed, the image notarized and stapled. The launcher then links
+      # ~/.redrob/bin/redrob to the binary inside, where every app looks for the engine.
+      - name: Build, notarize and staple the disk images
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pair in "redrob-darwin-arm64:macos-aarch64" "redrob-darwin-x64:macos-x86_64"; do
+            directory="${pair%%:*}"; token="${pair##*:}"
+            dmg="$(bash installer/macos/make-dmg.sh "dist/$directory/bin/redrob" "$VERSION" "$token" dist)"
+            xcrun notarytool submit "$dmg" \
+              --key "$RUNNER_TEMP/AuthKey.p8" \
+              --key-id "$APPLE_NOTARY_API_KEY_ID" \
+              --issuer "$APPLE_NOTARY_API_ISSUER_ID" \
+              --wait
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            echo "$dmg notarized and stapled"
+          done
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-macos
-          path: dist/redrob-darwin-*.zip
+          path: |
+            dist/redrob-darwin-*.zip
+            dist/redrob-code-*-macos-*.dmg
+          if-no-files-found: error
 
       # `if: always()` so a failed notarization still takes the private key off the runner.
       - name: Delete the signing keychain
@@ -266,7 +300,10 @@ jobs:
         dist/redrob-windows-arm64/bin/redrob.exe
         dist/redrob-windows-x64/bin/redrob.exe
         dist/redrob-windows-x64-baseline/bin/redrob.exe
-      REDROB_WINDOWS_INSTALLER: dist/redrob-code-x64-setup.exe
+      REDROB_WINDOWS_INSTALLER: >-
+        dist/redrob-code-x64-setup.exe
+        dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64.msi
+        dist/redrob-code-${{ needs.version.outputs.version }}-windows-arm64.msi
     steps:
       # Only the installer definition is needed from the repository; the signing recipe is the
       # organization's (redrob-labs/.github/actions/sign-windows), not a copy kept here. Sparse,
@@ -335,6 +372,29 @@ jobs:
           if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
           Write-Host "built $((Get-Item $setup).Length) bytes"
 
+      # The MSIs: the one package format Redrob Launcher installs on Windows (per user, into
+      # %LOCALAPPDATA%\Redrob\bin, PATH appended; installer/windows/redrob-code.wxs). One per
+      # architecture, each wrapping the binary signed above; signed themselves in the next step.
+      - name: Build the Windows MSIs
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet tool install --global wix --version 5.0.2
+          # MSI versions are numeric: a prerelease suffix is dropped.
+          $msiVersion = ($env:VERSION -split '-')[0]
+          foreach ($pair in @(@('x64', 'redrob-windows-x64'), @('arm64', 'redrob-windows-arm64'))) {
+            $arch = $pair[0]; $dir = $pair[1]
+            $out = "${{ github.workspace }}\dist\redrob-code-$env:VERSION-windows-$arch.msi"
+            wix build "${{ github.workspace }}\installer\windows\redrob-code.wxs" -arch $arch `
+              -d "Version=$msiVersion" -d "SourceBin=${{ github.workspace }}\dist\$dir\bin" -o $out
+            if ($LASTEXITCODE -ne 0) { throw "wix build ($arch) failed with $LASTEXITCODE" }
+            Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($out, '.wixpdb'))
+            if (-not (Test-Path $out)) { throw "the MSI was not produced at $out" }
+            Write-Host "built $out ($((Get-Item $out).Length) bytes)"
+          }
+
       # A fresh login right before the second signing point, for the same reason as the first:
       # the installer build above takes minutes, and the credential must not be assumed to have
       # outlived it.
@@ -345,7 +405,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign the installer
+      - name: Sign the installers
         uses: redrob-labs/.github/actions/sign-windows@main
         with:
           files: ${{ env.REDROB_WINDOWS_INSTALLER }}
@@ -371,6 +431,7 @@ jobs:
           path: |
             dist/redrob-windows-*.zip
             dist/redrob-code-x64-setup.exe
+            dist/redrob-code-*-windows-*.msi
           if-no-files-found: error
 
   # The assets only this repository knows how to shape: the Linux archives, the Redrob Launcher
@@ -453,6 +514,8 @@ jobs:
         with:
           subject-path: |
             signed/redrob-*.zip
+            signed/redrob-code-*.msi
+            signed/redrob-code-*.dmg
             assets/redrob-*.zip
             assets/redrob-*.tar.gz
 
