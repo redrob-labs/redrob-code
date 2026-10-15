@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://console.redrob.ai/code/theme.json",
+  "title": "Redrob Code TUI theme",
+  "description": "A colour theme for the Redrob Code terminal interface. `defs` holds named colours; `theme` maps every interface role to a colour, a `defs` name, another role, or a dark/light pair.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "defs": {
+      "type": "object",
+      "description": "Named colours referenced from `theme` (or from other defs).",
+      "additionalProperties": {
+        "$ref": "#/$defs/HexOrRef"
+      }
+    },
+    "theme": {
+      "type": "object",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "secondary": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "accent": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "error": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "warning": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "success": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "info": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "text": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "textMuted": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "background": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "backgroundPanel": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "backgroundElement": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "border": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "borderActive": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "borderSubtle": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffAdded": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffRemoved": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffContext": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffHunkHeader": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffHighlightAdded": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffHighlightRemoved": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffAddedBg": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffRemovedBg": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffContextBg": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffLineNumber": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffAddedLineNumberBg": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "diffRemovedLineNumberBg": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownText": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownHeading": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownLink": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownLinkText": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownCode": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownBlockQuote": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownEmph": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownStrong": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownHorizontalRule": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownListItem": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownListEnumeration": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownImage": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownImageText": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "markdownCodeBlock": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxComment": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxKeyword": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxFunction": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxVariable": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxString": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxNumber": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxType": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxOperator": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "syntaxPunctuation": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "selectedListItemText": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "backgroundMenu": {
+          "$ref": "#/$defs/ColorValue"
+        },
+        "thinkingOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Opacity applied to thinking/reasoning text. Defaults to 0.6."
+        }
+      },
+      "required": [
+        "primary",
+        "secondary",
+        "accent",
+        "error",
+        "warning",
+        "success",
+        "info",
+        "text",
+        "textMuted",
+        "background",
+        "backgroundPanel",
+        "backgroundElement",
+        "border",
+        "borderActive",
+        "borderSubtle",
+        "diffAdded",
+        "diffRemoved",
+        "diffContext",
+        "diffHunkHeader",
+        "diffHighlightAdded",
+        "diffHighlightRemoved",
+        "diffAddedBg",
+        "diffRemovedBg",
+        "diffContextBg",
+        "diffLineNumber",
+        "diffAddedLineNumberBg",
+        "diffRemovedLineNumberBg",
+        "markdownText",
+        "markdownHeading",
+        "markdownLink",
+        "markdownLinkText",
+        "markdownCode",
+        "markdownBlockQuote",
+        "markdownEmph",
+        "markdownStrong",
+        "markdownHorizontalRule",
+        "markdownListItem",
+        "markdownListEnumeration",
+        "markdownImage",
+        "markdownImageText",
+        "markdownCodeBlock",
+        "syntaxComment",
+        "syntaxKeyword",
+        "syntaxFunction",
+        "syntaxVariable",
+        "syntaxString",
+        "syntaxNumber",
+        "syntaxType",
+        "syntaxOperator",
+        "syntaxPunctuation"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "theme"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "HexColor": {
+      "type": "string",
+      "pattern": "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "description": "Hex colour: #RGB, #RGBA, #RRGGBB or #RRGGBBAA, e.g. #8aafff"
+    },
+    "RefName": {
+      "type": "string",
+      "description": "The name of an entry in `defs`, the name of another role in `theme`, or `transparent` / `none` for no colour.",
+      "not": {
+        "pattern": "^#"
+      }
+    },
+    "HexOrRef": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HexColor"
+        },
+        {
+          "$ref": "#/$defs/RefName"
+        }
+      ]
+    },
+    "AnsiIndex": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "description": "An ANSI 256-colour palette index."
+    },
+    "Variant": {
+      "type": "object",
+      "description": "A colour that differs between dark and light terminals.",
+      "properties": {
+        "dark": {
+          "$ref": "#/$defs/HexOrRef"
+        },
+        "light": {
+          "$ref": "#/$defs/HexOrRef"
+        }
+      },
+      "required": [
+        "dark",
+        "light"
+      ],
+      "additionalProperties": false
+    },
+    "ColorValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HexOrRef"
+        },
+        {
+          "$ref": "#/$defs/AnsiIndex"
+        },
+        {
+          "$ref": "#/$defs/Variant"
+        }
+      ]
+    }
+  },
+  "allowComments": true,
+  "allowTrailingCommas": true
+}

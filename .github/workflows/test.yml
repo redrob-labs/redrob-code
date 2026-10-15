@@ -122,6 +122,12 @@ jobs:
         working-directory: packages/client
         run: bun run check:generated
 
+      # The JSON Schemas the Console serves (config.json, tui.json, theme.json) are committed under
+      # packages/redrob/schema and regenerated from the live Effect schemas; a stale copy fails here.
+      - name: Check generated schemas
+        working-directory: packages/redrob
+        run: bun run check:generated
+
   httpapi:
     name: httpapi (linux)
     runs-on: ubuntu-latest
