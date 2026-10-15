@@ -52,8 +52,8 @@ PLIST
 
 if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   codesign --force --options runtime --timestamp \
-    --keychain "${APPLE_SIGNING_KEYCHAIN:?}" --sign "$APPLE_SIGNING_IDENTITY" "$app"
-  codesign --verify --strict --deep --verbose=2 "$app"
+    --keychain "${APPLE_SIGNING_KEYCHAIN:?}" --sign "$APPLE_SIGNING_IDENTITY" "$app" 1>&2
+  codesign --verify --strict --deep --verbose=2 "$app" 1>&2
 else
   echo "APPLE_SIGNING_IDENTITY unset: bundle left unsigned" >&2
 fi
@@ -62,6 +62,17 @@ mkdir -p "$out"
 dmg="$out/redrob-code-$version-$token.dmg"
 rm -f "$dmg"
 # A plain compressed image of the bundle; the launcher mounts it and copies the .app out, and a
-# person can drag it to Applications.
-hdiutil create -quiet -format UDZO -volname "$name $version" -srcfolder "$app" "$dmg"
+# person can drag it to Applications. hdiutil on the hosted macOS runners fails now and then with
+# "Resource busy" right after another image operation, so it gets a few tries, and its output goes
+# to stderr so a failure says why (stdout is the path, for the caller).
+attempt=0
+until hdiutil create -format UDZO -ov -volname "$name $version" -srcfolder "$app" "$dmg" 1>&2; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 4 ]; then
+    echo "hdiutil create failed $attempt times" >&2
+    exit 1
+  fi
+  echo "hdiutil create failed (attempt $attempt); retrying" >&2
+  sleep 5
+done
 echo "$dmg"
