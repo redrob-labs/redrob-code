@@ -1,6 +1,6 @@
 import { Database } from "@redrob-code/core/database/database"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
-import { httpClient } from "@redrob-code/core/effect/app-node-platform"
+import { httpClient, llmClient } from "@redrob-code/core/effect/app-node-platform"
 import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
 import { EventV2 } from "@redrob-code/core/event"
 import { Credential } from "@redrob-code/core/credential"
@@ -27,6 +27,10 @@ const applicationServices = LayerNode.group([
   Database.node,
   EventV2.node,
   httpClient,
+  // The OpenAI-compatible chat-completions route calls the model directly (no session), so the
+  // LLM client has to be in the route tree itself. Without it every /v1/chat/completions died
+  // with "Service not found: @redrob/LLMClient" (v0.6.4).
+  llmClient,
   ToolOutputStore.cleanupNode,
   SessionV2.node,
   PermissionSaved.node,
