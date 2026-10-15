@@ -22,6 +22,7 @@ import { Policy } from "./policy"
 import { ProjectCopy } from "./project/copy"
 import { Pty } from "./pty"
 import { QuestionV2 } from "./question"
+import { BrowserRequestV1 } from "./browser-request"
 import { Reference } from "./reference"
 import { ReferenceGuidance } from "./reference/guidance"
 import * as SessionRunnerLLM from "./session/runner/llm"
@@ -29,6 +30,7 @@ import { SessionRunnerModel } from "./session/runner/model"
 import { SessionTodo } from "./session/todo"
 import { SkillV2 } from "./skill"
 import { SkillGuidance } from "./skill/guidance"
+import { Privacy } from "./privacy/service"
 import { Snapshot } from "./snapshot"
 import { SystemContextBuiltIns } from "./system-context/builtins"
 import { SystemContextRegistry } from "./system-context/registry"
@@ -71,9 +73,11 @@ export const locationServices = LayerNode.group([
   ReferenceGuidance.node,
   SessionTodo.node,
   QuestionV2.node,
+  BrowserRequestV1.node,
   ReadToolFileSystem.node,
   BuiltInTools.node,
   SessionRunnerModel.node,
+  Privacy.node,
   Snapshot.node,
   SessionRunnerLLM.node,
 ])

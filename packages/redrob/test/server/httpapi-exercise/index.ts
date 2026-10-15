@@ -18,6 +18,7 @@
  * - `.mutating()` tells the runner to reset isolated state after destructive routes.
  */
 import { Effect } from "effect"
+import * as EngineClients from "@redrob-code/server/clients"
 import { OpenApi } from "effect/unstable/httpapi"
 import { TestLLMServer } from "../../lib/llm-server"
 import path from "path"
@@ -97,9 +98,7 @@ const scenarios: Scenario[] = [
         Effect.gen(function* () {
           object(body)
           check(body.username === "httpapi-global", "global config update should return patched config")
-          const text = yield* Effect.promise(() =>
-            Bun.file(path.join(exerciseConfigDirectory, "redrob.jsonc")).text(),
-          )
+          const text = yield* Effect.promise(() => Bun.file(path.join(exerciseConfigDirectory, "redrob.jsonc")).text())
           check(text.includes('"username": "httpapi-global"'), "global config update should write isolated config file")
         }),
       "status",
@@ -581,7 +580,33 @@ const scenarios: Scenario[] = [
   http.protected.get("/experimental/capabilities", "experimental.capabilities.get").json(200, (body) => {
     check(typeof body === "object" && body !== null, "capabilities should be an object")
     check("backgroundSubagents" in body, "capabilities should report background subagents")
+    check("chatCompletions" in body, "capabilities should report the chat-completions contract")
+    check("sharedDaemon" in body, "capabilities should report the shared-daemon contract")
   }),
+  // The OpenAI-compatible route. Exercised on its 400 path deliberately: a real
+  // completion needs a provider credential this harness has none of, so asserting
+  // 200 would make the gate depend on the machine it runs on. An unknown model id
+  // is refused before any provider is resolved, which is what makes this
+  // deterministic -- and it still covers the parts most likely to break, namely
+  // that the body decodes against ChatCompletionRequest and that the failure comes
+  // back in the OpenAI error envelope rather than Effect's default shape.
+  http.protected
+    .post("/v1/chat/completions", "chat.completions")
+    .at((ctx) => ({
+      path: "/v1/chat/completions",
+      headers: ctx.headers(),
+      body: {
+        model: "redrob-httpapi-exercise/no-such-model",
+        messages: [{ role: "user", content: "ping" }],
+      },
+    }))
+    .json(400, (body) => {
+      check(typeof body === "object" && body !== null, "chat completions error should be an object")
+      const error = (body as { error?: { message?: unknown; type?: unknown } }).error
+      check(typeof error === "object" && error !== null, "error should be nested under `error`, as OpenAI does")
+      check(typeof error?.message === "string", "error should carry a message")
+      check(typeof error?.type === "string", "error should carry a type")
+    }),
   http.protected
     .post("/experimental/session/{sessionID}/background", "experimental.session.background")
     .mutating()
@@ -626,6 +651,17 @@ const scenarios: Scenario[] = [
     .json(200, (body) => {
       check(body === true, "log route should return true")
     }),
+  /* No Redrob key in the exercise home, so both media routes refuse up front with 503, spending nothing. */
+  http.protected
+    .post("/redrob/speech", "redrob.speech")
+    .global()
+    .at(() => ({ path: "/redrob/speech", body: { text: "route coverage" } }))
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/redrob/transcribe", "redrob.transcribe")
+    .global()
+    .at(() => ({ path: "/redrob/transcribe", body: { audio: "UklGRg==", format: "wav" } }))
+    .status(503, undefined, "status"),
   http.protected
     .put("/auth/{providerID}", "auth.set")
     .global()
@@ -727,6 +763,50 @@ const scenarios: Scenario[] = [
       body: { label: "Work" },
     }))
     .status(204, undefined, "status"),
+  // The shared daemon's attachment registry. Process-level state, so each scenario seeds its own
+  // attachment and the list is asserted on shape, not on a count another scenario may have moved.
+  http.protected.get("/api/clients", "v2.clients.list").json(200, (body) => {
+    object(body)
+    check(Array.isArray(body.clients), "clients should be a list")
+    check(typeof body.ttlMs === "number", "the heartbeat deadline should be reported")
+  }),
+  http.protected
+    .post("/api/clients", "v2.clients.attach")
+    .mutating()
+    .at((ctx) => ({ path: "/api/clients", headers: ctx.headers(), body: { app: "httpapi", pid: 4242 } }))
+    .json(200, (body) => {
+      object(body)
+      check(typeof body.id === "string" && body.app === "httpapi" && body.pid === 4242, "the attachment should be echoed with an id")
+    }),
+  http.protected
+    .post("/api/clients/{clientID}/heartbeat", "v2.clients.heartbeat")
+    .mutating()
+    .seeded(() => Effect.sync(() => EngineClients.attach({ app: "httpapi-heartbeat" })))
+    .at((ctx) => ({
+      path: route("/api/clients/{clientID}/heartbeat", { clientID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.id === ctx.state.id, "the heartbeat should answer with the same attachment")
+    }),
+  http.protected
+    .delete("/api/clients/{clientID}", "v2.clients.detach")
+    .mutating()
+    .seeded(() => Effect.sync(() => EngineClients.attach({ app: "httpapi-detach" })))
+    .at((ctx) => ({ path: route("/api/clients/{clientID}", { clientID: ctx.state.id }), headers: ctx.headers() }))
+    .status(204, undefined, "status"),
+  http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
+    object(body)
+    check(body.mode === "off", "masking should be off until someone turns it on")
+  }),
+  http.protected
+    .put("/api/privacy", "v2.privacy.set")
+    .at((ctx) => ({ path: "/api/privacy", headers: ctx.headers(), body: { mode: "off" } }))
+    .json(200, (body) => {
+      object(body)
+      check(body.mode === "off", "the setting should be echoed back")
+    }),
   http.protected.get("/api/command", "v2.command.list").json(200, locationData(array)),
   http.protected.get("/api/skill", "v2.skill.list").json(200, locationData(array)),
   http.protected
@@ -894,6 +974,47 @@ const scenarios: Scenario[] = [
         requestID: "que_httpapi_missing",
       }),
       headers: ctx.headers(),
+    }))
+    .json(404, object, "status"),
+  // PA-10's four, mirroring the V2 question scenarios above because the browser request
+  // service is deliberately the same shape: a global list, a per-session list, and the two
+  // settlement routes. The settlements name a request id that does not exist, so each
+  // asserts the 404 path rather than needing a live browser on the other end.
+  http.protected.get("/api/browser/request", "v2.browser.request.list").json(200, (body) => {
+    object(body)
+    object(body.location)
+    array(body.data)
+  }),
+  http.protected
+    .get("/api/session/{sessionID}/browser", "v2.session.browser.list")
+    .seeded((ctx) => ctx.session({ title: "Browser request list owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, data(array)),
+  http.protected
+    .post("/api/session/{sessionID}/browser/{requestID}/reply", "v2.session.browser.reply")
+    .seeded((ctx) => ctx.session({ title: "Browser request reply owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser/{requestID}/reply", {
+        sessionID: ctx.state.id,
+        requestID: "brq_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: { value: { type: "string", value: "" } },
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/api/session/{sessionID}/browser/{requestID}/refuse", "v2.session.browser.refuse")
+    .seeded((ctx) => ctx.session({ title: "Browser request refuse owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/browser/{requestID}/refuse", {
+        sessionID: ctx.state.id,
+        requestID: "brq_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: { reason: "no page executor" },
     }))
     .json(404, object, "status"),
   http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, (body) => {

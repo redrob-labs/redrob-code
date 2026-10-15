@@ -67,6 +67,9 @@ export type Event =
   | EventQuestionV2Asked
   | EventQuestionV2Replied
   | EventQuestionV2Rejected
+  | EventBrowserRequestAsked
+  | EventBrowserRequestAnswered
+  | EventBrowserRequestRefused
   | EventTodoUpdated
   | EventLspUpdated
   | EventPermissionAsked
@@ -106,6 +109,35 @@ export type QuestionRejected = {
   requestID: string
 }
 
+export type ChatCompletionChunk = {
+  id: string
+  object: "chat.completion.chunk"
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    delta: {
+      role?: "assistant"
+      content?: string
+      tool_calls?: Array<{
+        id: string
+        type: "function"
+        function: {
+          name: string
+          arguments: string
+        }
+      }>
+      reasoning_content?: string
+    }
+    finish_reason: string
+  }>
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
 export type OAuth = {
   type: "oauth"
   refresh: string
@@ -140,6 +172,25 @@ export type InvalidRequestError = {
   message: string
   kind?: string
   field?: string
+}
+
+export type ServiceUnavailableError = {
+  _tag: "ServiceUnavailableError"
+  message: string
+  service?: string
+}
+
+export type UpstreamError = {
+  _tag: "UpstreamError"
+  message: string
+  service?: string
+  status?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type TimeoutError = {
+  _tag: "TimeoutError"
+  message: string
+  operation?: string
 }
 
 export type MoveSessionError = {
@@ -1374,6 +1425,32 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "browser.request.asked"
+        properties: {
+          id: string
+          sessionID: string
+          command: BrowserRequestCommand
+        }
+      }
+    | {
+        id: string
+        type: "browser.request.answered"
+        properties: {
+          sessionID: string
+          requestID: string
+        }
+      }
+    | {
+        id: string
+        type: "browser.request.refused"
+        properties: {
+          sessionID: string
+          requestID: string
+          reason: string
+        }
+      }
+    | {
+        id: string
         type: "todo.updated"
         properties: {
           sessionID: string
@@ -2131,7 +2208,7 @@ export type Model = {
 export type Provider = {
   id: string
   name: string
-  source: "env" | "config" | "custom" | "api"
+  source: "env" | "config" | "custom" | "api" | "launcher"
   env: Array<string>
   key?: string
   options: {
@@ -2142,8 +2219,20 @@ export type Provider = {
   }
 }
 
+export type ChatCompletionsCapability = {
+  version: number
+  callerTools: boolean
+  stream: boolean
+}
+
+export type SharedDaemonCapability = {
+  version: number
+}
+
 export type ExperimentalCapabilities = {
   backgroundSubagents: boolean
+  chatCompletions: ChatCompletionsCapability
+  sharedDaemon: SharedDaemonCapability
 }
 
 export type ConsoleState = {
@@ -2698,6 +2787,27 @@ export type UnauthorizedError = {
   message: string
 }
 
+export type EngineClient = {
+  id: string
+  app: string
+  pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  attachedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  lastSeen: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type EngineClientList = {
+  clients: Array<EngineClient>
+  ttlMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  idleForMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  idleExitAfterMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type ClientNotFoundError = {
+  _tag: "ClientNotFoundError"
+  clientID: string
+  message: string
+}
+
 export type SessionsResponse = {
   data: Array<SessionV2Info>
   cursor: {
@@ -2731,12 +2841,6 @@ export type ConflictError = {
   _tag: "ConflictError"
   message: string
   resource?: string
-}
-
-export type ServiceUnavailableError = {
-  _tag: "ServiceUnavailableError"
-  message: string
-  service?: string
 }
 
 export type MessageNotFoundError = {
@@ -2801,6 +2905,11 @@ export type ProviderNotFoundError = {
   _tag: "ProviderNotFoundError"
   providerID: string
   message: string
+}
+
+export type PrivacySettings = {
+  mode: "off" | "regex" | "model"
+  model?: string
 }
 
 export type OutputFormat1 =
@@ -2931,6 +3040,9 @@ export type V2Event =
   | QuestionV2Asked
   | QuestionV2Replied
   | QuestionV2Rejected
+  | BrowserRequestAsked
+  | BrowserRequestAnswered
+  | BrowserRequestRefused
   | TodoUpdated
   | LspUpdated
   | PermissionAsked
@@ -2965,11 +3077,99 @@ export type ForbiddenError = {
   message: string
 }
 
+export type BrowserRequestNotFoundError = {
+  _tag: "BrowserRequestNotFoundError"
+  requestID: string
+  message: string
+}
+
 export type ProjectCopyError = {
   name: "ProjectCopyError"
   data: {
     message: string
     forceRequired?: boolean
+  }
+}
+
+export type ChatCompletionRequest = {
+  model: string
+  messages: Array<{
+    role: "system" | "developer" | "user" | "assistant" | "tool"
+    content?:
+      | string
+      | Array<{
+          [key: string]: unknown
+        }>
+    tool_calls?: Array<{
+      id: string
+      type: "function"
+      function: {
+        name: string
+        arguments: string
+      }
+    }>
+    tool_call_id?: string
+    name?: string
+  }>
+  tools?: Array<{
+    type: "function"
+    function: {
+      name: string
+      description?: string
+      parameters?: {
+        [key: string]: unknown
+      }
+    }
+  }>
+  tool_choice?:
+    | "auto"
+    | "none"
+    | "required"
+    | {
+        type: "function"
+        function: {
+          name: string
+        }
+      }
+  stream?: boolean
+  max_tokens?: number
+  max_completion_tokens?: number
+  temperature?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  top_p?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  stop?: string | Array<string>
+  seed?: number
+  frequency_penalty?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  presence_penalty?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  reasoning_effort?: string
+  user?: string
+}
+
+export type ChatCompletionResponse = {
+  id: string
+  object: "chat.completion"
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    message: {
+      role: "assistant"
+      content: string
+      tool_calls?: Array<{
+        id: string
+        type: "function"
+        function: {
+          name: string
+          arguments: string
+        }
+      }>
+      reasoning_content?: string
+    }
+    finish_reason: string
+  }>
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
   }
 }
 
@@ -3177,6 +3377,33 @@ export type QuestionV2Tool = {
 }
 
 export type QuestionV2Answer = Array<string>
+
+export type BrowserRequestCommand =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
 
 export type ProjectVcs = "git"
 
@@ -3858,6 +4085,11 @@ export type ConfigV2ExperimentalPolicy = {
   action: "provider.use"
   effect: PolicyEffect
   resource: string
+}
+
+export type SkillV2AutoInject = {
+  keywords?: Array<string>
+  url?: Array<string>
 }
 
 export type ProjectDirectories = Array<{
@@ -5078,6 +5310,8 @@ export type SkillV2Info = {
   name: string
   description?: string
   slash?: boolean
+  icon?: string
+  autoInject?: SkillV2AutoInject
   location: string
   content: string
 }
@@ -5719,6 +5953,89 @@ export type QuestionV2Rejected = {
   }
 }
 
+export type BrowserRequestCommand1 =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
+
+export type BrowserRequestAsked = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.asked"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    id: string
+    sessionID: string
+    command: BrowserRequestCommand1
+  }
+}
+
+export type BrowserRequestAnswered = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.answered"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type BrowserRequestRefused = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "browser.request.refused"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    requestID: string
+    reason: string
+  }
+}
+
 export type TodoUpdated = {
   id: string
   metadata?: {
@@ -6181,6 +6498,44 @@ export type QuestionV2Reply = {
    * User answers in order of questions (each answer is an array of selected labels)
    */
   answers: Array<QuestionV2Answer>
+}
+
+export type BrowserRequestRequest = {
+  id: string
+  sessionID: string
+  command: BrowserRequestCommand
+}
+
+export type BrowserRequestNode = {
+  selector: string
+  text: string
+  attributes: {
+    [key: string]: string
+  }
+}
+
+export type BrowserRequestValue =
+  | {
+      type: "string"
+      value: string
+    }
+  | {
+      type: "nodes"
+      value: Array<BrowserRequestNode>
+    }
+  | {
+      type: "void"
+    }
+
+export type BrowserRequestReply = {
+  value: BrowserRequestValue
+}
+
+export type BrowserRequestRefusal = {
+  /**
+   * Why the action could not be performed, in one sentence.
+   */
+  reason: string
 }
 
 export type ReferenceLocalSource = {
@@ -6900,6 +7255,62 @@ export type EventQuestionV2Rejected = {
   }
 }
 
+export type BrowserRequestCommand2 =
+  | {
+      action: "page.url"
+    }
+  | {
+      action: "page.text"
+    }
+  | {
+      action: "page.query"
+      selector: string
+      limit?: number | "NaN" | "Infinity" | "-Infinity"
+    }
+  | {
+      action: "page.click"
+      selector: string
+    }
+  | {
+      action: "page.type"
+      selector: string
+      text: string
+      submit?: boolean
+    }
+  | {
+      action: "page.navigate"
+      url: string
+    }
+
+export type EventBrowserRequestAsked = {
+  id: string
+  type: "browser.request.asked"
+  properties: {
+    id: string
+    sessionID: string
+    command: BrowserRequestCommand2
+  }
+}
+
+export type EventBrowserRequestAnswered = {
+  id: string
+  type: "browser.request.answered"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type EventBrowserRequestRefused = {
+  id: string
+  type: "browser.request.refused"
+  properties: {
+    sessionID: string
+    requestID: string
+    reason: string
+  }
+}
+
 export type EventTodoUpdated = {
   id: string
   type: "todo.updated"
@@ -7208,6 +7619,111 @@ export type AuthSetResponses = {
 }
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
+
+export type RedrobSpeechData = {
+  body?: {
+    /**
+     * The words to speak, at most 4096 characters
+     */
+    text: string
+    voice?: string
+    model?: string
+  }
+  path?: never
+  query?: never
+  url: "/redrob/speech"
+}
+
+export type RedrobSpeechErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+  /**
+   * TimeoutError
+   */
+  504: TimeoutError
+}
+
+export type RedrobSpeechError = RedrobSpeechErrors[keyof RedrobSpeechErrors]
+
+export type RedrobSpeechResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type RedrobSpeechResponse = RedrobSpeechResponses[keyof RedrobSpeechResponses]
+
+export type RedrobTranscribeData = {
+  body?: {
+    /**
+     * Base64-encoded audio, the raw bytes rather than a data URL, at most 10 MB
+     */
+    audio: string
+    /**
+     * The audio's container format
+     */
+    format: "wav" | "mp3" | "flac" | "m4a" | "ogg" | "webm" | "aac"
+    language?: string
+    model?: string
+  }
+  path?: never
+  query?: never
+  url: "/redrob/transcribe"
+}
+
+export type RedrobTranscribeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+  /**
+   * TimeoutError
+   */
+  504: TimeoutError
+}
+
+export type RedrobTranscribeError = RedrobTranscribeErrors[keyof RedrobTranscribeErrors]
+
+export type RedrobTranscribeResponses = {
+  /**
+   * The transcript
+   */
+  200: {
+    /**
+     * The transcript, trimmed; empty when nothing was said
+     */
+    text: string
+    /**
+     * Seconds of audio billed
+     */
+    seconds?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    /**
+     * What the request cost, in USD
+     */
+    costUsd?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type RedrobTranscribeResponse = RedrobTranscribeResponses[keyof RedrobTranscribeResponses]
 
 export type AppLogData = {
   body?: {
@@ -8428,6 +8944,7 @@ export type AppSkillsResponses = {
     description?: string
     location: string
     content: string
+    autoInject?: SkillV2AutoInject
   }>
 }
 
@@ -11319,6 +11836,133 @@ export type V2HealthGetResponses = {
 
 export type V2HealthGetResponse = V2HealthGetResponses[keyof V2HealthGetResponses]
 
+export type V2ClientsListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/clients"
+}
+
+export type V2ClientsListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsListError = V2ClientsListErrors[keyof V2ClientsListErrors]
+
+export type V2ClientsListResponses = {
+  /**
+   * EngineClientList
+   */
+  200: EngineClientList
+}
+
+export type V2ClientsListResponse = V2ClientsListResponses[keyof V2ClientsListResponses]
+
+export type V2ClientsAttachData = {
+  body: {
+    app: string
+    pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: never
+  url: "/api/clients"
+}
+
+export type V2ClientsAttachErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsAttachError = V2ClientsAttachErrors[keyof V2ClientsAttachErrors]
+
+export type V2ClientsAttachResponses = {
+  /**
+   * EngineClient
+   */
+  200: EngineClient
+}
+
+export type V2ClientsAttachResponse = V2ClientsAttachResponses[keyof V2ClientsAttachResponses]
+
+export type V2ClientsHeartbeatData = {
+  body?: never
+  path: {
+    clientID: string
+  }
+  query?: never
+  url: "/api/clients/{clientID}/heartbeat"
+}
+
+export type V2ClientsHeartbeatErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ClientNotFoundError
+   */
+  404: ClientNotFoundError
+}
+
+export type V2ClientsHeartbeatError = V2ClientsHeartbeatErrors[keyof V2ClientsHeartbeatErrors]
+
+export type V2ClientsHeartbeatResponses = {
+  /**
+   * EngineClient
+   */
+  200: EngineClient
+}
+
+export type V2ClientsHeartbeatResponse = V2ClientsHeartbeatResponses[keyof V2ClientsHeartbeatResponses]
+
+export type V2ClientsDetachData = {
+  body?: never
+  path: {
+    clientID: string
+  }
+  query?: never
+  url: "/api/clients/{clientID}"
+}
+
+export type V2ClientsDetachErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2ClientsDetachError = V2ClientsDetachErrors[keyof V2ClientsDetachErrors]
+
+export type V2ClientsDetachResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2ClientsDetachResponse = V2ClientsDetachResponses[keyof V2ClientsDetachResponses]
+
 export type V2LocationGetData = {
   body?: never
   path?: never
@@ -12647,6 +13291,74 @@ export type V2CredentialUpdateResponses = {
 
 export type V2CredentialUpdateResponse = V2CredentialUpdateResponses[keyof V2CredentialUpdateResponses]
 
+export type V2PrivacyGetData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/privacy"
+}
+
+export type V2PrivacyGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2PrivacyGetError = V2PrivacyGetErrors[keyof V2PrivacyGetErrors]
+
+export type V2PrivacyGetResponses = {
+  /**
+   * PrivacySettings
+   */
+  200: PrivacySettings
+}
+
+export type V2PrivacyGetResponse = V2PrivacyGetResponses[keyof V2PrivacyGetResponses]
+
+export type V2PrivacySetData = {
+  body: PrivacySettings
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/privacy"
+}
+
+export type V2PrivacySetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2PrivacySetError = V2PrivacySetErrors[keyof V2PrivacySetErrors]
+
+export type V2PrivacySetResponses = {
+  /**
+   * PrivacySettings
+   */
+  200: PrivacySettings
+}
+
+export type V2PrivacySetResponse = V2PrivacySetResponses[keyof V2PrivacySetResponses]
+
 export type V2PermissionRequestListData = {
   body?: never
   path?: never
@@ -13580,6 +14292,152 @@ export type V2SessionQuestionRejectResponses = {
 
 export type V2SessionQuestionRejectResponse = V2SessionQuestionRejectResponses[keyof V2SessionQuestionRejectResponses]
 
+export type V1BrowserRequestListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/browser/request"
+}
+
+export type V1BrowserRequestListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V1BrowserRequestListError = V1BrowserRequestListErrors[keyof V1BrowserRequestListErrors]
+
+export type V1BrowserRequestListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<BrowserRequestRequest>
+  }
+}
+
+export type V1BrowserRequestListResponse = V1BrowserRequestListResponses[keyof V1BrowserRequestListResponses]
+
+export type V1SessionBrowserListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser"
+}
+
+export type V1SessionBrowserListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V1SessionBrowserListError = V1SessionBrowserListErrors[keyof V1SessionBrowserListErrors]
+
+export type V1SessionBrowserListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: Array<BrowserRequestRequest>
+  }
+}
+
+export type V1SessionBrowserListResponse = V1SessionBrowserListResponses[keyof V1SessionBrowserListResponses]
+
+export type V1SessionBrowserReplyData = {
+  body: BrowserRequestReply
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser/{requestID}/reply"
+}
+
+export type V1SessionBrowserReplyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | BrowserRequestNotFoundError
+   */
+  404: BrowserRequestNotFoundError | SessionNotFoundError
+}
+
+export type V1SessionBrowserReplyError = V1SessionBrowserReplyErrors[keyof V1SessionBrowserReplyErrors]
+
+export type V1SessionBrowserReplyResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V1SessionBrowserReplyResponse = V1SessionBrowserReplyResponses[keyof V1SessionBrowserReplyResponses]
+
+export type V1SessionBrowserRefuseData = {
+  body: BrowserRequestRefusal
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/browser/{requestID}/refuse"
+}
+
+export type V1SessionBrowserRefuseErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | BrowserRequestNotFoundError
+   */
+  404: BrowserRequestNotFoundError | SessionNotFoundError
+}
+
+export type V1SessionBrowserRefuseError = V1SessionBrowserRefuseErrors[keyof V1SessionBrowserRefuseErrors]
+
+export type V1SessionBrowserRefuseResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V1SessionBrowserRefuseResponse = V1SessionBrowserRefuseResponses[keyof V1SessionBrowserRefuseResponses]
+
 export type V2ReferenceListData = {
   body?: never
   path?: never
@@ -13719,6 +14577,31 @@ export type V2ProjectCopyRefreshResponses = {
 }
 
 export type V2ProjectCopyRefreshResponse = V2ProjectCopyRefreshResponses[keyof V2ProjectCopyRefreshResponses]
+
+export type V1ChatCompletionsData = {
+  body?: ChatCompletionRequest
+  path?: never
+  query?: never
+  url: "/v1/chat/completions"
+}
+
+export type V1ChatCompletionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V1ChatCompletionsError = V1ChatCompletionsErrors[keyof V1ChatCompletionsErrors]
+
+export type V1ChatCompletionsResponses = {
+  /**
+   * Chat completion. `application/json` when `stream` is false or absent; `text/event-stream` of `ChatCompletionChunk` frames terminated by `data: [DONE]` when true.
+   */
+  200: ChatCompletionResponse
+}
+
+export type V1ChatCompletionsResponse = V1ChatCompletionsResponses[keyof V1ChatCompletionsResponses]
 
 export type PtyConnectData = {
   body?: never

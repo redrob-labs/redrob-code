@@ -14,14 +14,18 @@ import { EventGroup, makeEventGroup } from "./groups/event"
 import type { Definition } from "@redrob-code/schema/event"
 import { AgentGroup } from "./groups/agent"
 import { HealthGroup } from "./groups/health"
+import { ClientsGroup } from "./groups/clients"
 import { PtyGroup } from "./groups/pty"
+import { makeBrowserRequestGroup } from "./groups/browser-request"
 import { makeQuestionGroup } from "./groups/question"
 import { ReferenceGroup } from "./groups/reference"
 import { Authorization } from "./middleware/authorization"
 import { LocationGroup } from "./groups/location"
 import { IntegrationGroup } from "./groups/integration"
 import { CredentialGroup } from "./groups/credential"
+import { PrivacyGroup } from "./groups/privacy"
 import { ProjectCopyGroup } from "./groups/project-copy"
+import { ChatCompletionGroup } from "./groups/chat-completion"
 
 // Protocol owns middleware placement, while Server injects concrete keys so Core service identities stay downstream.
 const makeApiFromGroup = <
@@ -37,6 +41,7 @@ const makeApiFromGroup = <
 ) =>
   HttpApi.make("server")
     .add(HealthGroup)
+    .add(ClientsGroup)
     .add(LocationGroup.middleware(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))
     .add(makeSessionGroup(sessionLocationMiddleware))
@@ -46,6 +51,7 @@ const makeApiFromGroup = <
     .add(VariantGroup.middleware(locationMiddleware))
     .add(IntegrationGroup.middleware(locationMiddleware))
     .add(CredentialGroup.middleware(locationMiddleware))
+    .add(PrivacyGroup.middleware(locationMiddleware))
     .add(makePermissionGroup(locationMiddleware, sessionLocationMiddleware))
     .add(FileSystemGroup.middleware(locationMiddleware))
     .add(CommandGroup.middleware(locationMiddleware))
@@ -53,8 +59,13 @@ const makeApiFromGroup = <
     .add(eventGroup)
     .add(PtyGroup.middleware(locationMiddleware))
     .add(makeQuestionGroup(locationMiddleware, sessionLocationMiddleware))
+    .add(makeBrowserRequestGroup(locationMiddleware, sessionLocationMiddleware))
     .add(ReferenceGroup.middleware(locationMiddleware))
     .add(ProjectCopyGroup.middleware(locationMiddleware))
+    // The OpenAI-compatible inference route. It takes locationMiddleware like the
+    // rest: the provider registry it resolves against is per-location, so a
+    // project-local provider must be visible to it.
+    .add(ChatCompletionGroup.middleware(locationMiddleware))
     .annotateMerge(
       OpenApi.annotations({
         title: "redrob HttpApi",

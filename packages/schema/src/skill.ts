@@ -16,11 +16,29 @@ export const UrlSource = Schema.Struct({
   url: Schema.String,
 }).annotate({ identifier: "SkillV2.UrlSource" })
 
+/**
+ * K-2 auto-arming block. A skill carrying one arms itself when the current prompt or the
+ * current tab URL matches; a skill WITHOUT one never auto-arms and stays explicitly
+ * loadable. Both lists are optional and an empty list matches nothing, so
+ * `autoInject: {}` is a skill that still never arms rather than one that arms on
+ * everything - a skill that arms on everything is a skill that is always in the prompt.
+ */
+export interface AutoInject extends Schema.Schema.Type<typeof AutoInject> {}
+export const AutoInject = Schema.Struct({
+  /** Case-insensitive keywords matched against the prompt text on word boundaries. */
+  keywords: Schema.Array(Schema.String).pipe(optional),
+  /** Globs matched against the current tab URL, e.g. `docs.google.com/document/**`. */
+  url: Schema.Array(Schema.String).pipe(optional),
+}).annotate({ identifier: "SkillV2.AutoInject" })
+
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 export const Info = Schema.Struct({
   name: Schema.String,
   description: Schema.String.pipe(optional),
   slash: Schema.Boolean.pipe(optional),
+  /** Icon URL declared in frontmatter, for surfaces that list skills. */
+  icon: Schema.String.pipe(optional),
+  autoInject: AutoInject.pipe(optional),
   location: AbsolutePath,
   content: Schema.String,
 }).annotate({ identifier: "SkillV2.Info" })

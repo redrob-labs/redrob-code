@@ -211,7 +211,8 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
         skill.transform((draft) =>
           callback({
             source: (source) => draft.source(Schema.decodeUnknownSync(SkillV2.Source)(source)),
-            list: draft.list,
+            // The plugin API is typed from the generated SDK, which has no readonly arrays.
+            list: () => mutable(draft.list()),
           }),
         ),
     },

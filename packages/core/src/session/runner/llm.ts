@@ -38,6 +38,8 @@ import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
+import { Mask } from "../../privacy/mask"
+import { Privacy } from "../../privacy/service"
 import { llmClient } from "../../effect/app-node-platform"
 
 /**
@@ -90,6 +92,13 @@ import { llmClient } from "../../effect/app-node-platform"
  * explicit loop starts the next provider turn after local settlement. Configured agent step limits bound the loop.
  */
 
+/**
+ * Which Redrob app is driving this engine (cowork, office, design, code), set by the app on the
+ * engine process it starts. Sent as `x-redrob-app` so the Console can group AI work by app. It is a
+ * label and nothing else: an unset value sends no header.
+ */
+const APP_NAME = process.env.REDROB_APP?.trim() || undefined
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -107,6 +116,55 @@ const layer = Layer.effect(
     const snapshots = yield* Snapshot.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({ events, llm, config: yield* config.entries() })
+    const privacyService = yield* Privacy.Service
+    /**
+     * PII masking, one vault per session, read from the privacy service on every turn so a switch
+     * flipped in the app takes effect on the next message. Off by default.
+     */
+    const vaults = new Map<SessionSchema.ID, Mask.Vault>()
+    const vaultFor = (sessionID: SessionSchema.ID) => {
+      const vault = vaults.get(sessionID) ?? new Mask.Vault()
+      vaults.set(sessionID, vault)
+      return vault
+    }
+    /** Model tier: ask the configured LOCAL model for names, organisations and places in the text, and teach the vault. */
+    const learnEntities = Effect.fn("SessionRunner.learnEntities")(function* (
+      session: SessionSchema.Info,
+      vault: Mask.Vault,
+      modelRef: string,
+      text: string,
+    ) {
+      const slash = modelRef.indexOf("/")
+      if (slash <= 0) return
+      const local = yield* models
+        .resolve({
+          ...session,
+          model: {
+            providerID: ProviderV2.ID.make(modelRef.slice(0, slash)),
+            id: ModelV2.ID.make(modelRef.slice(slash + 1)),
+          },
+        })
+        .pipe(Effect.option)
+      if (Option.isNone(local)) return
+      const chunks: string[] = []
+      yield* llm
+        .stream(
+          LLM.request({
+            model: local.value,
+            messages: [Message.user(Mask.ENTITY_PROMPT + text)],
+            tools: [],
+            generation: { maxTokens: 512 },
+          }),
+        )
+        .pipe(
+          Stream.runForEach((event) => {
+            if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+            return Effect.void
+          }),
+          Effect.catchTag("LLM.Error", () => Effect.void),
+        )
+      for (const entity of Mask.parseEntities(chunks.join(""))) vault.add(entity)
+    })
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
       const session = yield* store.get(sessionID)
       if (!session) return yield* Effect.die(`Session not found: ${sessionID}`)
@@ -202,13 +260,16 @@ const layer = Layer.effect(
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       const toolMaterialization = isLastStep ? undefined : yield* tools.materialize(agent.info?.permissions)
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
-      const request = LLM.request({
+      const privacy = yield* privacyService.get()
+      const vault = privacy.mode === "off" ? undefined : vaultFor(session.id)
+      const unmasked = LLM.request({
         model,
         http: {
           headers: {
             "x-session-affinity": session.id,
             "X-Session-Id": session.id,
             ...(session.parentID ? { "x-parent-session-id": session.parentID } : {}),
+            ...(APP_NAME ? { "x-redrob-app": APP_NAME } : {}),
           },
         },
         providerOptions: { openai: { promptCacheKey } },
@@ -219,6 +280,12 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })
+      if (vault && privacy.mode === "model" && privacy.model) {
+        const fresh = vault.fresh(Mask.readableTexts(unmasked))
+        if (fresh.length > 0) yield* learnEntities(session, vault, privacy.model, fresh.join("\n"))
+      }
+      const request = vault ? Mask.maskRequest(vault, unmasked) : unmasked
+      const unmaskEvent = vault ? Mask.unmaskEvents(vault) : undefined
       if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
         return yield* Effect.die(continueAfterCompaction(currentStep))
       const startSnapshot = yield* snapshots.capture()
@@ -236,7 +303,11 @@ const layer = Layer.effect(
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
         withPublication(publisher.publish(event, outputPaths))
       let overflowFailure: ProviderErrorEvent | undefined
-      const providerStream = llm.stream(request).pipe(
+      const providerStream = (
+        unmaskEvent
+          ? llm.stream(request).pipe(Stream.flatMap((event) => Stream.fromIterable(unmaskEvent(event))))
+          : llm.stream(request)
+      ).pipe(
         Stream.runForEach((event) =>
           Effect.gen(function* () {
             if (overflowFailure || publisher.hasProviderError()) return
@@ -433,6 +504,7 @@ export const node = makeLocationNode({
     SkillGuidance.node,
     ReferenceGuidance.node,
     Config.node,
+    Privacy.node,
     Snapshot.node,
     Database.node,
   ],

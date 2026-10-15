@@ -37,7 +37,17 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const flags = yield* RuntimeFlags.Service
 
     const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
-      return { backgroundSubagents: flags.experimentalBackgroundSubagents }
+      return {
+        backgroundSubagents: flags.experimentalBackgroundSubagents,
+        // Declared so a caller can negotiate instead of pinning an engine version.
+        // A downstream app reads this, sees what this engine's `/v1/chat/completions`
+        // supports, and degrades explicitly rather than discovering a gap by getting
+        // a 400 mid-feature. `version` is the contract revision, not the engine's.
+        chatCompletions: { version: 1, callerTools: true, stream: true },
+        // One shared daemon per user (`redrob serve --register`, `/api/clients`). An app that sees this
+        // attaches instead of starting an engine of its own.
+        sharedDaemon: { version: 1 },
+      }
     })
 
     const getConsole = Effect.fn("ExperimentalHttpApi.console")(function* () {

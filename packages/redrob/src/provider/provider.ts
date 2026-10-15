@@ -17,6 +17,7 @@ import { Env } from "../env"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { iife } from "@/util/iife"
 import { Global } from "@redrob-code/core/global"
+import { SharedAccount } from "@redrob-code/core/shared-account"
 import path from "path"
 import { pathToFileURL } from "url"
 import { Effect, Layer, Context, Schema, Types } from "effect"
@@ -211,7 +212,11 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const ok =
         hasKey ||
         Boolean(yield* dep.auth(input.id)) ||
-        Boolean((yield* dep.config()).provider?.["redrob"]?.options?.apiKey)
+        Boolean((yield* dep.config()).provider?.["redrob"]?.options?.apiKey) ||
+        // Redrob Launcher's shared sign-in is a real credential too: with it present the SDK gets the
+        // key (merged in by `list` as source `launcher`), not the "public" placeholder a host app reads
+        // as "not connected".
+        Boolean(yield* Effect.promise(() => SharedAccount.apiKey()))
 
       // Without a credential the SDK still needs a non-empty apiKey to instantiate, so it gets a
       // placeholder. What used to happen here was that every model priced above 0 was deleted from
@@ -1109,7 +1114,12 @@ export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 export const Info = Schema.Struct({
   id: ProviderV2.ID,
   name: Schema.String,
-  source: Schema.Literals(["env", "config", "custom", "api"]),
+  /**
+   * Where the provider's credential came from. `launcher` is Redrob Launcher's shared `account.json`,
+   * the sign-in for the whole computer, used only when nothing of this app's own is present; a host app
+   * reads it off `GET /provider` to show "Signed in with Redrob Launcher".
+   */
+  source: Schema.Literals(["env", "config", "custom", "api", "launcher"]),
   env: Schema.Array(Schema.String),
   key: optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),
@@ -1745,6 +1755,18 @@ const layer = Layer.effect(
           }
         }
 
+        // load Redrob Launcher's shared account - the LAST fallback for the console key. Only when this
+        // app holds nothing of its own: no REDROB_API_KEY, no auth.json entry, no config apiKey. Read
+        // fresh on every list(), never cached, so a launcher sign-in or sign-out lands on the next call.
+        {
+          const providerID = ProviderV2.ID.redrob
+          const own = providers[providerID]?.key || cfg.provider?.["redrob"]?.options?.apiKey
+          if (!disabled.has(providerID) && !own) {
+            const shared = yield* Effect.promise(() => SharedAccount.apiKey())
+            if (shared) mergeProvider(providerID, { source: "launcher", key: shared })
+          }
+        }
+
         // plugin auth loader - database now has entries for config providers
         for (const plugin of plugins) {
           if (!plugin.auth) continue
@@ -2172,7 +2194,10 @@ const layer = Layer.effect(
       const configured = Object.keys(cfg.provider ?? {})
       const provider = Object.values(s.providers).find((p) => configured.length === 0 || configured.includes(p.id))
       if (!provider) return yield* new NoProvidersError()
-      const [model] = sort(Object.values(provider.models))
+      const [model] =
+        provider.id === ProviderV2.ID.redrob && provider.models[REDROB_DEFAULT_MODEL]
+          ? [provider.models[REDROB_DEFAULT_MODEL]]
+          : sort(Object.values(provider.models))
       if (!model) return yield* new NoModelsError({ providerID: provider.id })
       return {
         providerID: provider.id,
@@ -2186,9 +2211,27 @@ const layer = Layer.effect(
 
 const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro"]
 const smallModelFamilyPriority = ["gemini-flash", "gpt-nano", "claude-haiku"]
+// An image-generation model answers a plain chat turn with an error, so it must never be picked as a
+// default. "gemini-3-pro" in `priority` also matches "gemini-3-pro-image-preview", which made that
+// model the default for the redrob provider and every first message failed with a 404.
+// Capabilities are read when the caller passes full model records; bare {id} rows fall back to the id.
+const IMAGE_MODEL_ID = /(^|[-/_.])image([-/_.]|$)/
+export function isChatModel(model: {
+  id: string
+  capabilities?: { output?: { text?: boolean; image?: boolean } }
+}) {
+  const output = model.capabilities?.output
+  if (output?.text === false || output?.image === true) return false
+  return !IMAGE_MODEL_ID.test(model.id)
+}
+
+// Redrob's own router. When the redrob provider lists it, it is the default.
+export const REDROB_DEFAULT_MODEL = "auto"
+
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(
     models,
+    [(model) => (isChatModel(model) ? 0 : 1), "asc"],
     [(model) => priority.findIndex((filter) => model.id.includes(filter)), "desc"],
     [(model) => (model.id.includes("latest") ? 0 : 1), "asc"],
     [(model) => model.id, "desc"],

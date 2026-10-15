@@ -26,6 +26,7 @@ export const groupNames = {
   "server.provider": "providers",
   "server.integration": "integrations",
   "server.credential": "credentials",
+  "server.privacy": "privacy",
   "server.permission": "permissions",
   "server.fs": "files",
   "server.command": "commands",
@@ -33,6 +34,7 @@ export const groupNames = {
   "server.event": "events",
   "server.pty": "ptys",
   "server.question": "questions",
+  "server.browser": "browserRequests",
   "server.reference": "references",
   "server.projectCopy": "projectCopies",
 } as const
@@ -48,6 +50,9 @@ export const endpointNames = {
   "permission.saved.list": "listSaved",
   "permission.saved.remove": "removeSaved",
   "question.request.list": "listRequests",
+  // PA-10: both browser endpoints end in ".list", and the client method name is the last
+  // dot segment, so the location-wide one needs an explicit name or generation fails.
+  "browser.request.list": "listRequests",
 } as const
 
 export const omitEndpoints = new Set(["fs.read", "pty.connect", "pty.connectToken"])

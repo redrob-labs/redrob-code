@@ -11,6 +11,7 @@ import { Tool } from "@/tool/tool"
 import * as Truncate from "@/tool/truncate"
 import { MessageID, SessionID } from "@/session/schema"
 import { Cause, Effect, Exit, Layer, Schema } from "effect"
+import { unansweredBrowserLayer } from "./browser-channel"
 
 const ctx: Tool.Context = {
   sessionID: SessionID.make("ses_code-mode"),
@@ -60,6 +61,7 @@ function harness(input: {
       tools: () => Effect.succeed(input.mcpTools),
       clients: () => Effect.succeed(Object.fromEntries(input.servers.map((name) => [name, {} as any]))),
     }),
+    unansweredBrowserLayer(),
   )
 }
 
@@ -256,7 +258,7 @@ describe("code mode execute", () => {
     expect(output.metadata.toolCalls).toEqual([])
   })
 
-  test("Object.keys(tools) enumerates the MCP server and CodeMode namespaces", async () => {
+  test("Object.keys(tools) enumerates the MCP server, domain, and CodeMode namespaces", async () => {
     const tool = await build({
       github_list_issues: mcpTool("list_issues", () => ""),
       linear_search: mcpTool("search", () => ""),
@@ -267,7 +269,13 @@ describe("code mode execute", () => {
         ctx,
       ),
     )
-    expect(JSON.parse(output.output)).toEqual({ namespaces: ["github", "linear", "$codemode"], count: 3 })
+    // The K-1 domain namespaces (`channel`, `page`) and K-3's document namespaces (`docx`,
+    // `pdf`, `pptx`, `xlsx`) are part of the language, so they are always present alongside
+    // whatever MCP servers are connected.
+    expect(JSON.parse(output.output)).toEqual({
+      namespaces: ["github", "linear", "channel", "page", "docx", "pdf", "pptx", "xlsx", "$codemode"],
+      count: 9,
+    })
   })
 
   test("calls a namespaced MCP tool and flows its text result back into the program", async () => {

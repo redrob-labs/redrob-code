@@ -57,6 +57,10 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
       tag: ${{ steps.compute.outputs.tag }}
       upstream: ${{ steps.compute.outputs.upstream }}
+      # The one commit this release is. Every later job checks THIS out, not `develop`:
+      # a merge that lands while the build runs must not make the tag point at code the
+      # binaries were not built from (it did, once, with a merge two minutes after dispatch).
+      sha: ${{ steps.compute.outputs.sha }}
     steps:
       # Tags are the version state, so this job needs them. `fetch-tags` alone is not
       # enough with a shallow checkout: the tag objects arrive without the commits they
@@ -109,6 +113,7 @@ jobs:
           upstream="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
           echo "::notice::releasing v$version (built on opencode v$upstream)"
 
@@ -118,7 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: develop
+          ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-bun
@@ -235,7 +240,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cli-macos-signed
+          name: release-macos
           path: dist/redrob-darwin-*.zip
 
       # `if: always()` so a failed notarization still takes the private key off the runner.
@@ -249,37 +254,27 @@ jobs:
   sign-windows:
     needs: [version, build]
     runs-on: windows-latest
-    outputs:
-      # Carried to `publish` so the release notes state what actually happened. Notes that
-      # claim a signature the run did not produce are worse than no claim: a reader has no
-      # way to tell, and the whole point of saying "signed" is that it can be relied on.
-      signed: ${{ steps.result.outputs.signed }}
-      # Separate from `signed`: the binaries can be signed while the installer is not, and the
-      # notes must not round one up into the other.
-      installer: ${{ steps.installer-result.outputs.installer }}
-      # WHICH method signed, not just whether something did. The notes used to name Azure
-      # Trusted Signing unconditionally while this repository signs with the organization
-      # Authenticode certificate, so every published release claimed a method it had not
-      # used. `signed` cannot carry that -- it is a boolean about success -- and a reader has
-      # no way to check, which is exactly the failure the comment above warns about.
-      method: ${{ steps.config.outputs.method }}
+    # `release` is the environment the organization's federated credential names
+    # (repo:redrob-labs@<org id>/<repo>@<id>:environment:release); any other name is refused.
+    environment: release
+    permissions:
+      contents: read
+      # The OIDC token `azure/login` exchanges for the Artifact Signing credential.
+      id-token: write
     env:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-      AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-      AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      REDROB_WINDOWS_BINARIES: >-
+        dist/redrob-windows-arm64/bin/redrob.exe
+        dist/redrob-windows-x64/bin/redrob.exe
+        dist/redrob-windows-x64-baseline/bin/redrob.exe
+      REDROB_WINDOWS_INSTALLER: dist/redrob-code-x64-setup.exe
     steps:
-      # This job used to download the build and nothing else, because signing needs only the
-      # artifact. The installer definition lives in the repository, so it needs a checkout -- and
-      # without one `ISCC` was handed a path to a file that was never on the runner. Sparse, because
-      # cloning this whole repository to read one .iss file is a minute of clone for nothing.
+      # Only the installer definition is needed from the repository; the signing recipe is the
+      # organization's (redrob-labs/.github/actions/sign-windows), not a copy kept here. Sparse,
+      # because cloning this whole repository to read one directory is a minute of clone for nothing.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          sparse-checkout: installer
+          sparse-checkout: |
+            installer
           sparse-checkout-cone-mode: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -287,189 +282,41 @@ jobs:
           name: cli-unsigned
           path: dist
 
-      # There are two ways to sign here and the choice is made once, up front, so no later
-      # step re-derives it and a half-configured method is reported as such rather than
-      # failing inside an Azure login with an unrelated message.
-      #
-      # Azure Trusted Signing is preferred when configured: the key never reaches the
-      # runner. The organization Authenticode PFX is the fallback, and it does put a private
-      # key on the runner, which is why it is second and why the file is deleted immediately
-      # after use.
-      - name: Detect the signing configuration
-        id: config
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          azure_present=0
-          azure_missing=()
-          for name in \
-            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
-            AZURE_ARTIFACT_SIGNING_ENDPOINT AZURE_ARTIFACT_SIGNING_ACCOUNT \
-            AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE; do
-            if [ -n "${!name:-}" ]; then azure_present=$((azure_present + 1)); else azure_missing+=("$name"); fi
-          done
-
-          pfx_present=0
-          pfx_missing=()
-          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
-            if [ -n "${!name:-}" ]; then pfx_present=$((pfx_present + 1)); else pfx_missing+=("$name"); fi
-          done
-
-          # A PARTIAL configuration is a mistake, not a choice, so it is fatal either way --
-          # silently falling back from a half-configured Azure to a PFX would hide the
-          # mistake and sign with something other than what was intended.
-          if [ "$azure_present" -gt 0 ] && [ "$azure_present" -lt 6 ]; then
-            echo "::error::partial Azure signing configuration; missing: ${azure_missing[*]}"
-            exit 1
-          fi
-          if [ "$pfx_present" -eq 1 ]; then
-            echo "::error::partial Authenticode configuration; missing: ${pfx_missing[*]}"
-            exit 1
-          fi
-
-          if [ "$azure_present" -eq 6 ]; then
-            echo "method=azure" >> "$GITHUB_OUTPUT"
-            echo "::notice::signing Windows binaries with Azure Trusted Signing"
-          elif [ "$pfx_present" -eq 2 ]; then
-            echo "method=pfx" >> "$GITHUB_OUTPUT"
-            echo "::notice::signing Windows binaries with the organization Authenticode certificate"
-          else
-            echo "method=none" >> "$GITHUB_OUTPUT"
-            echo "::warning::no Windows signing method is configured; the binaries will be unsigned"
-          fi
-
-      - name: Azure login
-        if: steps.config.outputs.method == 'azure'
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+      # Azure Artifact Signing, authenticated with OpenID Connect: the job's GitHub token is
+      # exchanged for an Azure token against the organization's app registration, whose federated
+      # credential accepts `repo:redrob-labs@<org id>/*:environment:release`. No certificate file
+      # and no client secret exist anywhere. The login comes AFTER the download and right BEFORE
+      # signing: GitHub's OIDC token lives minutes, and a login done earlier left signtool without
+      # a usable credential.
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign with Azure Trusted Signing
-        id: sign-azure
-        continue-on-error: true
-        if: steps.config.outputs.method == 'azure'
-        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+      # The shared action signs, then reads every file back (`signtool verify /pa`, Status Valid,
+      # signer CN `McKinley Rice, Inc.`) and prints `<file> signed by CN=...`. With the three
+      # ARTIFACT_SIGNING_* secrets all unset it warns and leaves the files unsigned; half-set is an
+      # error. A failed signature fails the job: a release never ships an unsigned Windows binary
+      # behind a green check.
+      - name: Sign the binaries
+        uses: redrob-labs/.github/actions/sign-windows@main
         with:
-          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-          files: |
-            ${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe
-            ${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe
-            ${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe
-          exclude-environment-credential: true
-          exclude-workload-identity-credential: true
-          exclude-managed-identity-credential: true
-          exclude-shared-token-cache-credential: true
-          exclude-visual-studio-credential: true
-          exclude-visual-studio-code-credential: true
-          exclude-azure-cli-credential: false
-          exclude-azure-powershell-credential: true
-          exclude-azure-developer-cli-credential: true
-          exclude-interactive-browser-credential: true
-
-      # The fallback. Unlike Trusted Signing this puts a private key on the runner, so the
-      # PFX is written, imported, and deleted within the one step -- `finally` so a signing
-      # failure does not leave it behind.
-      - name: Sign with the organization Authenticode certificate
-        id: sign-pfx
-        continue-on-error: true
-        if: steps.config.outputs.method == 'pfx'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $pfx = Join-Path $env:RUNNER_TEMP "redrob-code-signing.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
-            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
-            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
-            $files = @(
-              "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
-              "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
-              "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
-            )
-            foreach ($file in $files) {
-              # Timestamped, so the signature outlives the certificate's own validity.
-              $result = Set-AuthenticodeSignature -FilePath $file -Certificate $cert `
-                -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
-              if (-not $result.SignerCertificate) {
-                throw "Authenticode signing failed for ${file}: $($result.StatusMessage)"
-              }
-            }
-          } finally {
-            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          }
-
-      # Reads the signature back off the artifacts rather than trusting the signing step's
-      # exit code. This is what makes "signed" in the release notes a checked claim: the
-      # previous release said Windows was signed while nothing had signed it.
-      - name: Verify the Windows signatures
-        id: verify
-        continue-on-error: true
-        if: steps.config.outputs.method != 'none'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $files = @(
-            "${{ github.workspace }}\dist\redrob-windows-arm64\bin\redrob.exe",
-            "${{ github.workspace }}\dist\redrob-windows-x64\bin\redrob.exe",
-            "${{ github.workspace }}\dist\redrob-windows-x64-baseline\bin\redrob.exe"
-          )
-          foreach ($file in $files) {
-            $sig = Get-AuthenticodeSignature $file
-            if (-not $sig.SignerCertificate) {
-              throw "no Authenticode signer certificate on ${file}"
-            }
-            # A runner does not trust the organization's own CA chain, so `NotTrusted` and
-            # `UnknownError` are expected for the PFX path and mean "signed, chain not
-            # verifiable here" rather than "unsigned". Trusted Signing must be outright Valid.
-            $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
-            if ($accepted -notcontains $sig.Status.ToString()) {
-              throw "unexpected signature status on ${file}: $($sig.Status) $($sig.StatusMessage)"
-            }
-            Write-Host "$([IO.Path]::GetFileName($file)): $($sig.Status), signer $($sig.SignerCertificate.Subject)"
-          }
-
-      - name: Record the signing outcome
-        id: result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          method="${{ steps.config.outputs.method }}"
-          case "$method" in
-            azure) signed="${{ steps.sign-azure.outcome }}" ;;
-            pfx)   signed="${{ steps.sign-pfx.outcome }}" ;;
-            *)     signed="skipped" ;;
-          esac
-          # Both the signing step AND the read-back have to succeed. Either alone can be
-          # green while the artifacts are unsigned.
-          if [ "$signed" = "success" ] && [ "${{ steps.verify.outcome }}" = "success" ]; then
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Windows binaries signed via $method and verified"
-          else
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::the Windows binaries in this release are NOT signed"
-          fi
+          files: ${{ env.REDROB_WINDOWS_BINARIES }}
+          description: Redrob Code
+          url: https://github.com/${{ github.repository }}
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          account: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          cert-profile: ${{ secrets.ARTIFACT_SIGNING_CERT_PROFILE }}
 
       # ── The installer ─────────────────────────────────────────────────────────────────────
       #
-      # Built HERE rather than in `build`, and specifically after the signing steps above, because
+      # Built HERE rather than in `build`, and specifically after the signing step above, because
       # the installer embeds the binary: building it earlier would wrap an unsigned redrob.exe in a
       # signed installer, so Windows would accept the download and then ship an unsigned program.
-      # Signing is therefore two-stage -- payload first, wrapper second -- and both stages are read
-      # back before the release notes are allowed to claim either.
+      # Signing is therefore two-stage -- payload first, wrapper second.
       - name: Build the Windows installer
-        id: installer
-        # continue-on-error, like every other step in this job. The installer is an ADDITION to the
-        # release; a failure here must not stop the binaries being repacked and uploaded. The first
-        # run proved the point -- the build failed and took Repack and the upload with it, so a
-        # missing installer would have meant no Windows assets at all.
-        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -488,91 +335,25 @@ jobs:
           if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
           Write-Host "built $((Get-Item $setup).Length) bytes"
 
-      - name: Sign the installer with Azure Trusted Signing
-        id: sign-installer-azure
-        continue-on-error: true
-        if: steps.config.outputs.method == 'azure'
-        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+      # A fresh login right before the second signing point, for the same reason as the first:
+      # the installer build above takes minutes, and the credential must not be assumed to have
+      # outlived it.
+      - name: Log in to Azure again (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          endpoint: ${{ env.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ env.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ env.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-          files: |
-            ${{ github.workspace }}\dist\redrob-code-x64-setup.exe
-          exclude-environment-credential: true
-          exclude-workload-identity-credential: true
-          exclude-managed-identity-credential: true
-          exclude-shared-token-cache-credential: true
-          exclude-visual-studio-credential: true
-          exclude-visual-studio-code-credential: true
-          exclude-azure-cli-credential: false
-          exclude-azure-powershell-credential: true
-          exclude-azure-developer-cli-credential: true
-          exclude-interactive-browser-credential: true
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign the installer with the organization Authenticode certificate
-        id: sign-installer-pfx
-        continue-on-error: true
-        if: steps.config.outputs.method == 'pfx'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $pfx = Join-Path $env:RUNNER_TEMP "redrob-installer-signing.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CSC_LINK))
-            $password = ConvertTo-SecureString $env:WIN_CSC_KEY_PASSWORD -AsPlainText -Force
-            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-            if (-not $cert.Thumbprint) { throw "the organization PFX did not import" }
-            $result = Set-AuthenticodeSignature `
-              -FilePath "${{ github.workspace }}\dist\redrob-code-x64-setup.exe" `
-              -Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
-            if (-not $result.SignerCertificate) {
-              throw "Authenticode signing failed for the installer: $($result.StatusMessage)"
-            }
-          } finally {
-            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          }
-
-      # Read back, on the same terms as the binaries: an unsigned installer is the one file a user
-      # actually double-clicks, so it is the last thing that should be trusted on an exit code.
-      - name: Verify the installer signature
-        id: verify-installer
-        continue-on-error: true
-        if: steps.config.outputs.method != 'none'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
-          $sig = Get-AuthenticodeSignature $setup
-          if (-not $sig.SignerCertificate) { throw "no Authenticode signer certificate on the installer" }
-          $accepted = if ("${{ steps.config.outputs.method }}" -eq "azure") { @("Valid") } else { @("Valid", "UnknownError", "NotTrusted") }
-          if ($accepted -notcontains $sig.Status.ToString()) {
-            throw "unexpected signature status on the installer: $($sig.Status) $($sig.StatusMessage)"
-          }
-          Write-Host "redrob-code-x64-setup.exe: $($sig.Status), signer $($sig.SignerCertificate.Subject)"
-
-      - name: Record the installer signing outcome
-        id: installer-result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          method="${{ steps.config.outputs.method }}"
-          case "$method" in
-            azure) signed="${{ steps.sign-installer-azure.outcome }}" ;;
-            pfx)   signed="${{ steps.sign-installer-pfx.outcome }}" ;;
-            *)     signed="skipped" ;;
-          esac
-          if [ "${{ steps.installer.outcome }}" != "success" ]; then
-            echo "installer=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::the Windows installer was not built"
-          elif [ "$signed" = "success" ] && [ "${{ steps.verify-installer.outcome }}" = "success" ]; then
-            echo "installer=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Windows installer signed via $method and verified"
-          else
-            echo "installer=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::the Windows installer in this release is NOT signed"
-          fi
+      - name: Sign the installer
+        uses: redrob-labs/.github/actions/sign-windows@main
+        with:
+          files: ${{ env.REDROB_WINDOWS_INSTALLER }}
+          description: Redrob Code
+          url: https://github.com/${{ github.repository }}
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          account: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          cert-profile: ${{ secrets.ARTIFACT_SIGNING_CERT_PROFILE }}
 
       - name: Repack
         shell: bash
@@ -586,19 +367,23 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cli-windows-signed
+          name: release-windows
           path: |
             dist/redrob-windows-*.zip
             dist/redrob-code-x64-setup.exe
+          if-no-files-found: error
 
-  publish:
+  # The assets only this repository knows how to shape: the Linux archives, the Redrob Launcher
+  # copies, the `VERSION` marker and the build provenance. Checksums, the launcher manifest and the
+  # release itself are the organization's job (`publish` below).
+  assets:
     needs: [version, build, sign-macos, sign-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: develop
-          fetch-depth: 0
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 1
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -607,17 +392,14 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: cli-macos-signed
-          path: assets
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: cli-windows-signed
-          path: assets
+          pattern: release-*
+          path: signed
+          merge-multiple: true
 
       - name: Pack the Linux binaries
         run: |
           set -euo pipefail
+          mkdir -p assets
           cd unsigned
           for directory in redrob-linux-*; do
             [ -d "$directory" ] || continue
@@ -633,30 +415,29 @@ jobs:
             tar -czf "../assets/${directory}.tar.gz" -C "$directory/bin" .
           done
 
-      - name: Checksums
-        working-directory: assets
+      # Redrob Launcher installs only `<stem>-<version>-<os>-<arch>[-portable].<ext>` with its own
+      # os-arch spellings (`linux-x86_64`, `macos-aarch64`), which none of the names above are. The
+      # names above stay -- install.sh, `redrob upgrade`, Homebrew, AUR and the Dockerfile download
+      # them verbatim -- and the launcher's are added beside them. See the script's header for the
+      # layout inside; `test/installation/launcher-assets.test.ts` guards both.
+      #
+      # Bun alone, without the repository's dependencies: the script imports nothing but Bun and
+      # Node built-ins, and `bun install` here would cost minutes for nothing.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Add the Redrob Launcher assets
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          # The installer is included deliberately: it is the file a Windows user actually
-          # double-clicks, so it is the one that most needs a published digest. Guarded with a
-          # glob test rather than assumed, because the installer step is `continue-on-error`
-          # and a release without it must still produce checksums for everything else.
-          set -- redrob-code-x64-setup.exe
-          if [ -e "$1" ]; then
-            sha256sum redrob-*.zip redrob-*.tar.gz redrob-code-x64-setup.exe > SHA256SUMS
-          else
-            echo "::warning::no installer present; SHA256SUMS will not cover one"
-            sha256sum redrob-*.zip redrob-*.tar.gz > SHA256SUMS
-          fi
-          cat SHA256SUMS
+          bun ./packages/redrob/script/launcher-assets.ts \
+            --version "$VERSION" --unsigned unsigned --signed signed --out assets
 
       # The marker install.sh and `redrob upgrade` read to answer "what is the newest
-      # version". Written AFTER the checksums so it is deliberately not one of the files
-      # SHA256SUMS covers: it names a version rather than carrying a payload, and the
-      # archive it points at is checksum-verified once fetched.
-      #
-      # `releases/latest/download/VERSION` resolves to whichever release is newest, so no
-      # client has to hardcode a tag and nothing here consults the GitHub API, which is
+      # version". `releases/latest/download/VERSION` resolves to whichever release is newest,
+      # so no client has to hardcode a tag and nothing here consults the GitHub API, which is
       # rate limited to 60 requests an hour for an anonymous caller.
       - name: Write the latest-version marker
         working-directory: assets
@@ -671,98 +452,46 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
+            signed/redrob-*.zip
             assets/redrob-*.zip
             assets/redrob-*.tar.gz
 
-      - name: Create the release
-        if: ${{ !inputs.dry_run }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux-and-launcher
+          path: assets/*
+          if-no-files-found: error
+
+  # The release is dispatch-driven, so the workflow creates the tag itself: `publish` below
+  # releases exactly this tag at exactly the commit `version` resolved.
+  tag:
+    needs: [version, build, sign-macos, sign-windows, assets]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Create and push the tag
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
           UPSTREAM: ${{ needs.version.outputs.upstream }}
-          WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
-          WINDOWS_INSTALLER: ${{ needs.sign-windows.outputs.installer }}
-          WINDOWS_SIGNING_METHOD: ${{ needs.sign-windows.outputs.method }}
         run: |
           set -euo pipefail
           # An annotated tag records a tagger, and a bare runner has no git identity, so
           # `git tag -a` fails with "empty ident name" AFTER the build, the signing and the
           # notarization have all succeeded -- the most expensive possible place to
           # discover it. The tag stays annotated rather than lightweight because it is what
-          # a release points at and it should say who made it and when.
+          # a release points at and it should say who made it and when, and its message
+          # carries the upstream version the release notes no longer state.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          {
-            echo "Built on [opencode v$UPSTREAM](https://github.com/anomalyco/opencode/releases/tag/v$UPSTREAM)."
-            echo
-            echo "Redrob Code has its own version line. This number is not upstream's and does"
-            echo "not track it: what this build is based on is recorded in \`UPSTREAM_VERSION\`"
-            echo "and stated above. See \`docs/VERSIONING.md\`."
-            echo
-            echo "## Installing"
-            echo
-            echo "macOS and Linux:"
-            echo
-            echo '```sh'
-            echo "curl -fsSL https://console.redrob.ai/code/install.sh | sh"
-            echo '```'
-            echo
-            echo "Windows, in PowerShell:"
-            echo
-            echo '```powershell'
-            echo "irm https://console.redrob.ai/code/install.ps1 | iex"
-            echo '```'
-            echo
-            echo "These releases are the only place builds are published. There is no CDN"
-            echo "mirror, and an install from before 0.1.0 does not upgrade into this line:"
-            echo "run the command above again to move onto it."
-            echo
-            echo "## Verifying"
-            echo
-            echo "macOS binaries are signed with a Developer ID certificate and notarized."
-            if [ "$WINDOWS_INSTALLER" = "true" ]; then
-              echo "Windows has a signed installer: download \`redrob-code-x64-setup.exe\` and run it."
-              echo "It installs to \`%LOCALAPPDATA%\\Redrob\\bin\`, adds that to your user PATH, and"
-              echo "needs no Administrator rights. Open a NEW terminal afterwards -- an already-open"
-              echo "one still holds the old PATH."
-              echo
-            fi
-            if [ "$WINDOWS_SIGNED" = "true" ]; then
-              # Named from what the run actually did. An unrecognised value is described
-              # without naming a method rather than guessed at: a wrong provenance claim is
-              # worse than a vaguer true one, because a reader cannot tell it is wrong.
-              case "${WINDOWS_SIGNING_METHOD:-}" in
-                azure)
-                  echo "Windows binaries are signed through Azure Trusted Signing."
-                  ;;
-                pfx)
-                  echo "Windows binaries are signed with the Redrob Authenticode certificate."
-                  ;;
-                *)
-                  echo "Windows binaries are signed. Verify the signature with \`signtool verify /pa\`"
-                  echo "or against the provenance attestation below."
-                  ;;
-              esac
-            else
-              echo "**Windows binaries in this release are NOT signed**, so Windows will show a"
-              echo "SmartScreen warning on first run. Verify the archive against \`SHA256SUMS\`"
-              echo "and the provenance attestation below before running it."
-            fi
-            echo
-            echo "Every archive carries build provenance attesting it was produced by this"
-            echo "workflow, which a code signature alone does not establish -- a signature says"
-            echo "the key was used, not where:"
-            echo
-            echo '```sh'
-            echo "gh attestation verify redrob-darwin-arm64.zip --repo ${{ github.repository }}"
-            echo '```'
-            echo
-            echo "Checksums are in \`SHA256SUMS\`."
-          } > notes.md
           git tag -a "$TAG" -m "Redrob Code $TAG (built on opencode v$UPSTREAM)" 2>/dev/null || \
             echo "tag $TAG already exists locally"
           # A release that fails after tagging must be retryable. Without this a single
-          # transient failure in the steps below leaves the version permanently unusable:
+          # transient failure in the publish job leaves the version permanently unusable:
           # the tag exists, so every retry dies on push before reaching the release.
           #
           # The tag is named explicitly. `--tags` and `--follow-tags` would push whatever
@@ -770,59 +499,7 @@ jobs:
           # decided to publish ends up published.
           git push origin "refs/tags/$TAG" 2>/dev/null || echo "tag $TAG is already on the remote"
 
-          # The release is created EMPTY and the assets are uploaded one at a time, each
-          # retried. `gh release create "$TAG" assets/*` uploads all twenty in one command and
-          # rolls the whole release back when any single one fails, so a transient 5xx on the
-          # nineteenth asset discards a run that has already spent forty minutes building,
-          # signing and notarizing. That is not hypothetical: v0.1.0 lost two consecutive
-          # attempts that way, to `504 Gateway Timeout` and `500 Error creating asset temp dir`
-          # on different assets.
-          #
-          # Splitting it also collapses the create and re-run paths into one: an existing
-          # release has its notes replaced and its assets clobbered, which is what a retry
-          # needs anyway.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::notice::release $TAG exists; replacing its notes and assets"
-            gh release edit "$TAG" --notes-file notes.md
-          else
-            gh release create "$TAG" --title "$TAG" --notes-file notes.md
-          fi
-
-          failed=()
-          for asset in assets/*; do
-            [ -f "$asset" ] || continue
-            uploaded=false
-            for attempt in 1 2 3; do
-              if gh release upload "$TAG" "$asset" --clobber; then
-                uploaded=true
-                break
-              fi
-              echo "::warning::upload of $(basename "$asset") failed on attempt $attempt"
-              sleep $((attempt * 10))
-            done
-            if [ "$uploaded" = false ]; then
-              failed+=("$(basename "$asset")")
-            fi
-          done
-
-          if [ ${#failed[@]} -ne 0 ]; then
-            echo "::error::these assets did not upload after three attempts: ${failed[*]}"
-            echo "The release and tag exist, so re-running this job resumes rather than restarts."
-            exit 1
-          fi
-
-          # A release missing an archive installs nothing on that platform while looking
-          # published, so the asset list is checked rather than assumed.
-          published="$(gh release view "$TAG" --json assets --jq '.assets | length')"
-          expected="$(find assets -maxdepth 1 -type f | wc -l | tr -d ' ')"
-          if [ "$published" != "$expected" ]; then
-            echo "::error::release $TAG has $published assets, expected $expected"
-            exit 1
-          fi
-          echo "::notice::release $TAG published with $published assets"
-
       - name: Point at the promotion to main
-        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
@@ -836,11 +513,10 @@ jobs:
           # can approve its own, which is worth more than the convenience of not clicking
           # a link. So this prints the link and a person opens it.
           #
-          # Compared against the remote rather than a local ref: this job checks out
-          # `develop` alone, so `origin/main` does not exist here and a
-          # `git log origin/main..HEAD` would come back empty and read as "nothing to
-          # promote" -- passing for the wrong reason, which is how the previous version of
-          # this step silently did nothing.
+          # Compared against the remote rather than a local ref: this job checks out one
+          # commit, so `origin/main` does not exist here and a `git log origin/main..HEAD`
+          # would come back empty and read as "nothing to promote" -- passing for the wrong
+          # reason, which is how the previous version of this step silently did nothing.
           main_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
           if [ -z "$main_sha" ]; then
             echo "::notice::no main branch yet; create it from $TAG to start tracking released state"
@@ -854,9 +530,27 @@ jobs:
           {
             echo "### Promote \`develop\` to \`main\` for $TAG"
             echo
-            echo "The release is published. \`main\` still points at \`${main_sha:0:9}\`, so what"
+            echo "The release is being published. \`main\` still points at \`${main_sha:0:9}\`, so what"
             echo "the repository says is *released* has not moved yet."
             echo
             echo "[Open the promotion pull request]($url)"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::release published; promote develop to main at $url"
+          echo "::notice::promote develop to main at $url"
+
+  # Checksums (`SHA256SUMS.txt`), the launcher manifest (`redrob-launcher.json`) and the release
+  # itself, one way for every redrob-labs repository. Published as latest; a version carrying a `-`
+  # is a prerelease. Not on a dry run, and not when any build job failed, was cancelled or skipped.
+  # The tag is passed explicitly because this workflow runs from a dispatch, not from a tag push.
+  publish:
+    needs: [version, build, sign-macos, sign-windows, assets, tag]
+    if: always() && !inputs.dry_run && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped')
+    uses: redrob-labs/.github/.github/workflows/release-publish.yml@main
+    permissions:
+      contents: write
+    with:
+      version: ${{ needs.version.outputs.version }}
+      title: Redrob Code
+      launcher_manifest: true
+      publish: true
+      tag: ${{ needs.version.outputs.tag }}
+      target: ${{ needs.version.outputs.sha }}

@@ -36,6 +36,7 @@ import { Global } from "@redrob-code/core/global"
 import { ProjectV2 } from "@redrob-code/core/project"
 import { Filesystem } from "@/util/filesystem"
 import { ConfigPlugin } from "@/config/plugin"
+import { ConfigPaths } from "@/config/paths"
 import { ConfigPluginV1 } from "@redrob-code/core/v1/config/plugin"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
@@ -1430,6 +1431,43 @@ it.instance("local .redrob config can override MCP from project config", () =>
 
     const config = yield* Config.use.get()
     expect(config.mcp?.docs?.enabled).toBe(true)
+  }),
+)
+
+it.instance("loads app-managed directory config from the state dir, below the project's own files", () =>
+  Effect.gen(function* () {
+    const test = yield* TestInstance
+    const dir = ConfigPaths.directoryConfigDir(test.directory)
+    expect(dir.startsWith(path.join(Global.Path.state, "directories"))).toBe(true)
+    expect(ConfigPaths.directoryKey(test.directory)).toBe(ConfigPaths.directoryKey(test.directory + path.sep))
+    expect(ConfigPaths.directoryKey(test.directory)).not.toBe(ConfigPaths.directoryKey(path.join(test.directory, "x")))
+
+    yield* FSUtil.use.ensureDir(dir)
+    yield* writeConfigEffect(
+      dir,
+      {
+        $schema: "https://code.redrob.ai/config.json",
+        snapshot: false,
+        mcp: {
+          docs: { type: "remote", url: "https://docs.example.com/mcp", enabled: false },
+          app: { type: "remote", url: "https://app.example.com/mcp", enabled: true },
+        },
+      },
+      "redrob.json",
+    )
+    yield* writeConfigEffect(test.directory, {
+      $schema: "https://code.redrob.ai/config.json",
+      mcp: { docs: { type: "remote", url: "https://docs.example.com/mcp", enabled: true } },
+    })
+
+    try {
+      const config = yield* Config.use.get()
+      expect(config.snapshot).toBe(false)
+      expect(config.mcp?.app?.enabled).toBe(true)
+      expect(config.mcp?.docs?.enabled).toBe(true)
+    } finally {
+      yield* Effect.promise(() => fs.rm(dir, { recursive: true, force: true }))
+    }
   }),
 )
 

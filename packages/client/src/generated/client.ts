@@ -1,5 +1,12 @@
 import type {
   HealthGetOutput,
+  ServerClientsListOutput,
+  ServerClientsAttachInput,
+  ServerClientsAttachOutput,
+  ServerClientsHeartbeatInput,
+  ServerClientsHeartbeatOutput,
+  ServerClientsDetachInput,
+  ServerClientsDetachOutput,
   LocationGetInput,
   LocationGetOutput,
   AgentsListInput,
@@ -67,6 +74,10 @@ import type {
   CredentialsUpdateOutput,
   CredentialsRemoveInput,
   CredentialsRemoveOutput,
+  PrivacyGetInput,
+  PrivacyGetOutput,
+  PrivacySetInput,
+  PrivacySetOutput,
   PermissionsListRequestsInput,
   PermissionsListRequestsOutput,
   PermissionsListSavedInput,
@@ -108,6 +119,14 @@ import type {
   QuestionsReplyOutput,
   QuestionsRejectInput,
   QuestionsRejectOutput,
+  BrowserRequestsListRequestsInput,
+  BrowserRequestsListRequestsOutput,
+  BrowserRequestsListInput,
+  BrowserRequestsListOutput,
+  BrowserRequestsReplyInput,
+  BrowserRequestsReplyOutput,
+  BrowserRequestsRefuseInput,
+  BrowserRequestsRefuseOutput,
   ReferencesListInput,
   ReferencesListOutput,
   ProjectCopiesCreateInput,
@@ -116,6 +135,8 @@ import type {
   ProjectCopiesRemoveOutput,
   ProjectCopiesRefreshInput,
   ProjectCopiesRefreshOutput,
+  ServerChatCompletionsInput,
+  ServerChatCompletionsOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -255,6 +276,47 @@ export function make(options: ClientOptions) {
       get: (requestOptions?: RequestOptions) =>
         request<HealthGetOutput>(
           { method: "GET", path: `/api/health`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+    },
+    "server.clients": {
+      list: (requestOptions?: RequestOptions) =>
+        request<ServerClientsListOutput>(
+          { method: "GET", path: `/api/clients`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      attach: (input: ServerClientsAttachInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsAttachOutput>(
+          {
+            method: "POST",
+            path: `/api/clients`,
+            body: { app: input["app"], pid: input["pid"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      heartbeat: (input: ServerClientsHeartbeatInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsHeartbeatOutput>(
+          {
+            method: "POST",
+            path: `/api/clients/${encodeURIComponent(input.clientID)}/heartbeat`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      detach: (input: ServerClientsDetachInput, requestOptions?: RequestOptions) =>
+        request<ServerClientsDetachOutput>(
+          {
+            method: "DELETE",
+            path: `/api/clients/${encodeURIComponent(input.clientID)}`,
+            successStatus: 204,
+            declaredStatuses: [401, 400],
+            empty: true,
+          },
           requestOptions,
         ),
     },
@@ -693,6 +755,33 @@ export function make(options: ClientOptions) {
           requestOptions,
         ),
     },
+    privacy: {
+      get: (input?: PrivacyGetInput, requestOptions?: RequestOptions) =>
+        request<PrivacyGetOutput>(
+          {
+            method: "GET",
+            path: `/api/privacy`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      set: (input: PrivacySetInput, requestOptions?: RequestOptions) =>
+        request<PrivacySetOutput>(
+          {
+            method: "PUT",
+            path: `/api/privacy`,
+            query: { location: input["location"] },
+            body: { mode: input["mode"], model: input["model"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
     permissions: {
       listRequests: (input?: PermissionsListRequestsInput, requestOptions?: RequestOptions) =>
         request<PermissionsListRequestsOutput>(
@@ -963,6 +1052,55 @@ export function make(options: ClientOptions) {
           requestOptions,
         ),
     },
+    browserRequests: {
+      listRequests: (input?: BrowserRequestsListRequestsInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsListRequestsOutput>(
+          {
+            method: "GET",
+            path: `/api/browser/request`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      list: (input: BrowserRequestsListInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: BrowserRequestsListOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser`,
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      reply: (input: BrowserRequestsReplyInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsReplyOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser/${encodeURIComponent(input.requestID)}/reply`,
+            body: { value: input["value"] },
+            successStatus: 204,
+            declaredStatuses: [404, 400, 401],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      refuse: (input: BrowserRequestsRefuseInput, requestOptions?: RequestOptions) =>
+        request<BrowserRequestsRefuseOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/browser/${encodeURIComponent(input.requestID)}/refuse`,
+            body: { reason: input["reason"] },
+            successStatus: 204,
+            declaredStatuses: [404, 400, 401],
+            empty: true,
+          },
+          requestOptions,
+        ),
+    },
     references: {
       list: (input?: ReferencesListInput, requestOptions?: RequestOptions) =>
         request<ReferencesListOutput>(
@@ -1013,6 +1151,36 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [400, 401],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    "server.chat": {
+      completions: (input: ServerChatCompletionsInput, requestOptions?: RequestOptions) =>
+        request<ServerChatCompletionsOutput>(
+          {
+            method: "POST",
+            path: `/v1/chat/completions`,
+            body: {
+              model: input["model"],
+              messages: input["messages"],
+              tools: input["tools"],
+              tool_choice: input["tool_choice"],
+              stream: input["stream"],
+              max_tokens: input["max_tokens"],
+              max_completion_tokens: input["max_completion_tokens"],
+              temperature: input["temperature"],
+              top_p: input["top_p"],
+              stop: input["stop"],
+              seed: input["seed"],
+              frequency_penalty: input["frequency_penalty"],
+              presence_penalty: input["presence_penalty"],
+              reasoning_effort: input["reasoning_effort"],
+              user: input["user"],
+            },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
           },
           requestOptions,
         ),

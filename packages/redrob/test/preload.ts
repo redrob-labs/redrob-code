@@ -35,6 +35,10 @@ process.env["XDG_DATA_HOME"] = path.join(dir, "share")
 process.env["XDG_CACHE_HOME"] = path.join(dir, "cache")
 process.env["XDG_CONFIG_HOME"] = path.join(dir, "config")
 process.env["XDG_STATE_HOME"] = path.join(dir, "state")
+// Redrob Launcher's shared account.json is the console key's last fallback. XDG_CONFIG_HOME above already
+// moves it on Linux; the override moves it on every platform, so a signed-in launcher on a developer's
+// machine never satisfies a "no credential" branch here.
+process.env["REDROB_SHARED_DIR"] = path.join(dir, "shared")
 process.env["REDROB_DISABLE_MODELS_FETCH"] = "true"
 // Feed the provider tests a realistic multi-provider catalog (with paid redrob models) through
 // the test-only fixture seam instead of the console /models network fetch.

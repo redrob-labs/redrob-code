@@ -793,7 +793,9 @@ function defaultModelFromConfig(
   // a default. Configured model, redrob provider, then sorted best model keep
   // the protocol response deterministic without extra session/message reads.
   const redrobProvider = providers[ProviderV2.ID.make("redrob")]
-  const redrobModel = redrobProvider ? Provider.sort(Object.values(redrobProvider.models))[0] : undefined
+  const redrobModel = redrobProvider
+    ? (redrobProvider.models[Provider.REDROB_DEFAULT_MODEL] ?? Provider.sort(Object.values(redrobProvider.models))[0])
+    : undefined
   if (redrobProvider && redrobModel) return { providerID: redrobProvider.id, modelID: redrobModel.id }
 
   const best = Provider.sort(Object.values(providers).flatMap((provider) => Object.values(provider.models)))[0]

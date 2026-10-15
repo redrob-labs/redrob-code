@@ -10,24 +10,46 @@ export const AcpCommand = effectCmd({
   command: "acp",
   describe: "start ACP (Agent Client Protocol) server",
   builder: (yargs) => {
-    return withNetworkOptions(yargs).option("cwd", {
-      describe: "working directory",
-      type: "string",
-      default: process.cwd(),
-    })
+    return withNetworkOptions(yargs)
+      .option("cwd", {
+        describe: "working directory",
+        type: "string",
+        default: process.cwd(),
+      })
+      .option("attach", {
+        describe:
+          "use the user's shared engine (start it if needed) instead of running one inside this process; one daemon serves every app",
+        type: "boolean",
+        default: false,
+      })
   },
   handler: Effect.fn("Cli.acp")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("@/server/server"))
     const { ACP } = yield* Effect.promise(() => import("@/acp/agent"))
     ACPProfile.mark("cli.acp.handler")
     process.env.REDROB_CLIENT = "acp"
-    const opts = yield* resolveNetworkOptions(args)
-    const server = yield* Effect.promise(() => ACPProfile.measure("cli.acp.server.listen", () => Server.listen(opts)))
-
-    const sdk = createRedrobClient({
-      baseUrl: `http://${server.hostname}:${server.port}`,
-      headers: ServerAuth.headers(),
-    })
+    // --attach: this process is only the ACP face; the engine is the shared daemon. Without it the
+    // engine runs in here, as it always has. The attachment is what keeps the daemon from counting
+    // this session as idle time; it is released when the host closes stdin.
+    let detach: (() => Promise<void>) | undefined
+    const sdk = args.attach
+      ? yield* Effect.promise(async () => {
+          const { Daemon } = await import("@/daemon/connect")
+          const connection = await Daemon.connectOrStart()
+          const attachment = await Daemon.attach(connection, process.env.REDROB_APP?.trim() || "acp")
+          detach = attachment.detach
+          return createRedrobClient({ baseUrl: connection.url, headers: connection.headers })
+        })
+      : yield* Effect.gen(function* () {
+          const opts = yield* resolveNetworkOptions(args)
+          const server = yield* Effect.promise(() =>
+            ACPProfile.measure("cli.acp.server.listen", () => Server.listen(opts)),
+          )
+          return createRedrobClient({
+            baseUrl: `http://${server.hostname}:${server.port}`,
+            headers: ServerAuth.headers(),
+          })
+        })
 
     const input = new WritableStream<Uint8Array>({
       write(chunk) {
@@ -69,5 +91,6 @@ export const AcpCommand = effectCmd({
           process.stdin.on("error", reject)
         }),
     )
+    if (detach) yield* Effect.promise(() => detach!())
   }),
 })

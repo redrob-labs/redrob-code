@@ -53,7 +53,7 @@ import { MoveSession } from "@redrob-code/core/control-plane/move-session"
 import { Database } from "@redrob-code/core/database/database"
 import { AppNodeBuilderV1 } from "@/effect/app-node-builder-v1"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
-import { httpClient } from "@redrob-code/core/effect/app-node-platform"
+import { httpClient, llmClient } from "@redrob-code/core/effect/app-node-platform"
 import { EventV2 } from "@redrob-code/core/event"
 import { ModelsDev } from "@redrob-code/core/models-dev"
 import { Npm } from "@redrob-code/core/npm"
@@ -249,6 +249,10 @@ const app = LayerNode.group([
   SessionShare.node,
   InstanceStore.node,
   httpClient,
+  // `/v1/chat/completions` (handlers from @redrob-code/server) calls the model with no session in
+  // between, so it needs the LLM client in the route tree itself; only group members are exposed
+  // to handlers. Missing in v0.6.4: every call died with "Service not found: @redrob/LLMClient".
+  llmClient,
   EventV2.node,
   ProjectV2.node,
   ProjectCopy.node,

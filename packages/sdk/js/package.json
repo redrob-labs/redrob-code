@@ -4,6 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redrob-labs/redrob-code.git",
+    "directory": "packages/sdk/js"
+  },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
@@ -17,7 +22,8 @@
     "./v2/client": "./src/v2/client.ts",
     "./v2/gen/client": "./src/v2/gen/client/index.ts",
     "./v2/server": "./src/v2/server.ts",
-    "./v2/types": "./src/v2/gen/types.gen.ts"
+    "./v2/types": "./src/v2/gen/types.gen.ts",
+    "./daemon": "./src/daemon.ts"
   },
   "files": [
     "dist"

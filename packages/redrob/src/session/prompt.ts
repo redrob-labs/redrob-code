@@ -1292,11 +1292,33 @@ const layer = Layer.effect(
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
+            /*
+             * K-2's arming, finally called.
+             *
+             * The prompt text is every text part of the user's last message joined, not
+             * just the first: a message with an attachment between two sentences would
+             * otherwise arm on half of what the user said.
+             *
+             * The URL is deliberately NOT fetched. Arming by URL glob needs the active
+             * tab, and the only way to get it is a browser request -- a round trip on
+             * every single message, which with no extension attached spends the request
+             * deadline before the model sees anything. A twenty second pause before each
+             * reply is a worse product than URL arming is a better one. Keywords arm
+             * today; the URL half arms once a session carries its tab URL as state the
+             * engine already holds, rather than as a question it has to ask.
+             */
+            const armedSkills = yield* sys.armedSkills(agent, {
+              prompt: (lastUserMsg?.parts ?? [])
+                .filter((part) => part.type === "text")
+                .map((part) => (part.type === "text" ? part.text : ""))
+                .join("\n"),
+            })
             const system = [
               ...env,
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
+              ...(armedSkills ? [armedSkills] : []),
               ANSWER_OPTIONS_PROMPT,
             ]
             const format = lastUser.format ?? { type: "text" as const }

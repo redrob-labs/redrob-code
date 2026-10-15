@@ -13,6 +13,8 @@ import {
   type Services,
 } from "../tool-runtime.js"
 import { ToolError } from "../tool-error.js"
+import { isDefinition as isToolDefinition } from "../tool.js"
+import { identifierSegment } from "../tool-schema.js"
 import type {
   DataValue,
   Diagnostic,
@@ -599,6 +601,85 @@ const collectPatternNames = (pattern: AstNode, out: Array<string> = []): Array<s
   return out
 }
 
+/**
+ * Builds the builtin global scope for one interpreter. Extracted from the Interpreter
+ * constructor so `BUILTIN_GLOBAL_NAMES` is derived from the same code that seeds the
+ * bindings: a builtin added here cannot silently become available as a host global name.
+ */
+const seedBuiltinGlobals = (): Map<string, Binding> => {
+  const globalScope = new Map<string, Binding>()
+  globalScope.set("tools", { mutable: false, value: new ToolReference([]) })
+  globalScope.set("Promise", { mutable: false, value: new PromiseNamespace() })
+  globalScope.set("undefined", { mutable: false, value: undefined })
+  globalScope.set("Object", { mutable: false, value: new GlobalNamespace("Object") })
+  globalScope.set("Math", { mutable: false, value: new GlobalNamespace("Math") })
+  globalScope.set("JSON", { mutable: false, value: new GlobalNamespace("JSON") })
+  globalScope.set("Number", { mutable: false, value: new CoercionFunction("Number") })
+  globalScope.set("String", { mutable: false, value: new CoercionFunction("String") })
+  globalScope.set("Boolean", { mutable: false, value: new CoercionFunction("Boolean") })
+  globalScope.set("Array", { mutable: false, value: new GlobalNamespace("Array") })
+  globalScope.set("console", { mutable: false, value: new GlobalNamespace("console") })
+  globalScope.set("parseInt", { mutable: false, value: new CoercionFunction("parseInt") })
+  globalScope.set("parseFloat", { mutable: false, value: new CoercionFunction("parseFloat") })
+  globalScope.set("Date", { mutable: false, value: new GlobalNamespace("Date") })
+  globalScope.set("RegExp", { mutable: false, value: new GlobalNamespace("RegExp") })
+  globalScope.set("Map", { mutable: false, value: new GlobalNamespace("Map") })
+  globalScope.set("Set", { mutable: false, value: new GlobalNamespace("Set") })
+  globalScope.set("URL", { mutable: false, value: new GlobalNamespace("URL") })
+  globalScope.set("URLSearchParams", { mutable: false, value: new GlobalNamespace("URLSearchParams") })
+  globalScope.set("encodeURI", { mutable: false, value: new UriFunction("encodeURI") })
+  globalScope.set("encodeURIComponent", { mutable: false, value: new UriFunction("encodeURIComponent") })
+  globalScope.set("decodeURI", { mutable: false, value: new UriFunction("decodeURI") })
+  globalScope.set("decodeURIComponent", { mutable: false, value: new UriFunction("decodeURIComponent") })
+  // Error constructors are real values, so `x instanceof Error` works and `Error("msg")`
+  // (with or without `new`) constructs a branded { name, message } error object.
+  for (const name of errorConstructors) {
+    globalScope.set(name, { mutable: false, value: new ErrorConstructorReference(name) })
+  }
+  // NaN/Infinity flow as ordinary in-sandbox values (normalized to null only at the data
+  // boundary - see copyOut), so their global bindings must exist too, e.g. `reduce(max, -Infinity)`.
+  globalScope.set("NaN", { mutable: false, value: NaN })
+  globalScope.set("Infinity", { mutable: false, value: Infinity })
+  return globalScope
+}
+
+/**
+ * Every name the interpreter seeds into the builtin global scope. A host global
+ * (see `ExecuteOptions.globals`) may not shadow one of these.
+ */
+export const BUILTIN_GLOBAL_NAMES: ReadonlySet<string> = new Set(seedBuiltinGlobals().keys())
+
+/**
+ * Validates the names a host asks to bind as bare globals. A global is an alias for a
+ * top-level namespace of the tool tree, so it must name one, must not shadow a builtin
+ * global, and must be a plain identifier (a bare binding cannot be written in bracket
+ * notation). A duplicate is refused rather than deduplicated: a repeated name in a host's
+ * list is a configuration mistake worth surfacing.
+ *
+ * Lives here, beside `seedBuiltinGlobals`, so the reserved-name check reads the same set
+ * the interpreter actually seeds.
+ */
+export const assertValidGlobals = <R>(tools: HostTools<R>, globals: ReadonlyArray<string>): void => {
+  const seen = new Set<string>()
+  for (const name of globals) {
+    if (!identifierSegment.test(name)) {
+      throw new Error(`Global '${name}' is not a plain identifier and cannot be bound as a global.`)
+    }
+    if (BUILTIN_GLOBAL_NAMES.has(name)) {
+      throw new Error(`Global '${name}' collides with a builtin global.`)
+    }
+    if (seen.has(name)) throw new Error(`Global '${name}' is listed more than once.`)
+    seen.add(name)
+    if (!Object.hasOwn(tools, name)) {
+      throw new Error(`Global '${name}' is not a top-level namespace of the tool tree.`)
+    }
+    const namespace = tools[name]
+    if (typeof namespace === "function" || isToolDefinition(namespace)) {
+      throw new Error(`Global '${name}' must be a namespace of tools, not a tool itself.`)
+    }
+  }
+}
+
 class Interpreter<R> {
   private scopes: Array<Map<string, Binding>>
   private readonly invokeTool: (path: ReadonlyArray<string>, args: Array<unknown>) => Effect.Effect<unknown, unknown, R>
@@ -618,46 +699,28 @@ class Interpreter<R> {
     invokeTool: (path: ReadonlyArray<string>, args: Array<unknown>) => Effect.Effect<unknown, unknown, R>,
     toolKeys: (path: ReadonlyArray<string>) => ReadonlyArray<string>,
     logs: Array<string> = [],
+    /**
+     * Host tool namespaces additionally bound at the top level, so a program writes
+     * `page.text()` instead of `tools.page.text()`. Each name resolves to the same tool
+     * path, so there is one implementation and one authorization point, not two.
+     */
+    hostGlobals: ReadonlyArray<string> = [],
   ) {
-    const globalScope = new Map<string, Binding>()
+    const globalScope = seedBuiltinGlobals()
     this.scopes = [globalScope]
     this.invokeTool = invokeTool
     this.toolKeys = toolKeys
     this.logs = logs
     this.lastValue = undefined
     this.callPermits = Semaphore.makeUnsafe(TOOL_CALL_CONCURRENCY)
-    globalScope.set("tools", { mutable: false, value: new ToolReference([]) })
-    globalScope.set("Promise", { mutable: false, value: new PromiseNamespace() })
-    globalScope.set("undefined", { mutable: false, value: undefined })
-    globalScope.set("Object", { mutable: false, value: new GlobalNamespace("Object") })
-    globalScope.set("Math", { mutable: false, value: new GlobalNamespace("Math") })
-    globalScope.set("JSON", { mutable: false, value: new GlobalNamespace("JSON") })
-    globalScope.set("Number", { mutable: false, value: new CoercionFunction("Number") })
-    globalScope.set("String", { mutable: false, value: new CoercionFunction("String") })
-    globalScope.set("Boolean", { mutable: false, value: new CoercionFunction("Boolean") })
-    globalScope.set("Array", { mutable: false, value: new GlobalNamespace("Array") })
-    globalScope.set("console", { mutable: false, value: new GlobalNamespace("console") })
-    globalScope.set("parseInt", { mutable: false, value: new CoercionFunction("parseInt") })
-    globalScope.set("parseFloat", { mutable: false, value: new CoercionFunction("parseFloat") })
-    globalScope.set("Date", { mutable: false, value: new GlobalNamespace("Date") })
-    globalScope.set("RegExp", { mutable: false, value: new GlobalNamespace("RegExp") })
-    globalScope.set("Map", { mutable: false, value: new GlobalNamespace("Map") })
-    globalScope.set("Set", { mutable: false, value: new GlobalNamespace("Set") })
-    globalScope.set("URL", { mutable: false, value: new GlobalNamespace("URL") })
-    globalScope.set("URLSearchParams", { mutable: false, value: new GlobalNamespace("URLSearchParams") })
-    globalScope.set("encodeURI", { mutable: false, value: new UriFunction("encodeURI") })
-    globalScope.set("encodeURIComponent", { mutable: false, value: new UriFunction("encodeURIComponent") })
-    globalScope.set("decodeURI", { mutable: false, value: new UriFunction("decodeURI") })
-    globalScope.set("decodeURIComponent", { mutable: false, value: new UriFunction("decodeURIComponent") })
-    // Error constructors are real values, so `x instanceof Error` works and `Error("msg")`
-    // (with or without `new`) constructs a branded { name, message } error object.
-    for (const name of errorConstructors) {
-      globalScope.set(name, { mutable: false, value: new ErrorConstructorReference(name) })
+    for (const name of hostGlobals) {
+      // Validated by ToolRuntime.assertValidGlobals before construction; a collision
+      // here would silently replace a builtin, so refuse rather than overwrite.
+      if (BUILTIN_GLOBAL_NAMES.has(name)) {
+        throw new Error(`Host global '${name}' collides with a builtin global.`)
+      }
+      globalScope.set(name, { mutable: false, value: new ToolReference([name]) })
     }
-    // NaN/Infinity flow as ordinary in-sandbox values (normalized to null only at the data
-    // boundary - see copyOut), so their global bindings must exist too, e.g. `reduce(max, -Infinity)`.
-    globalScope.set("NaN", { mutable: false, value: NaN })
-    globalScope.set("Infinity", { mutable: false, value: Infinity })
   }
 
   run(program: ProgramNode): Effect.Effect<unknown, unknown, R> {
@@ -3365,7 +3428,7 @@ export const executeWithLimits = <const Tools extends Record<string, unknown>>(
 
   const operation = Effect.gen(function* () {
     const program = parseProgram(options.code)
-    const interpreter = new Interpreter<Services<Tools>>(tools.invoke, tools.keys, logs)
+    const interpreter = new Interpreter<Services<Tools>>(tools.invoke, tools.keys, logs, options.globals ?? [])
     const value = yield* interpreter.run(program)
     const result = copyOut(copyIn(value, "Execution result"), true) as DataValue
     return {

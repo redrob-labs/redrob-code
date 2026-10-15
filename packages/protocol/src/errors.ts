@@ -95,6 +95,23 @@ export class QuestionNotFoundError extends Schema.TaggedErrorClass<QuestionNotFo
   { httpApiStatus: 404 },
 ) {}
 
+/**
+ * PA-10: a browser request the engine is no longer waiting on.
+ *
+ * Distinct from `QuestionNotFoundError` because the common cause is different and worth
+ * telling apart in a client's logs: a browser request that expired on the engine's deadline
+ * leaves a client holding an id it will be refused for, which is correct and not a bug in
+ * the client.
+ */
+export class BrowserRequestNotFoundError extends Schema.TaggedErrorClass<BrowserRequestNotFoundError>()(
+  "BrowserRequestNotFoundError",
+  {
+    requestID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
 export class ForbiddenError extends Schema.TaggedErrorClass<ForbiddenError>()(
   "ForbiddenError",
   { message: Schema.String },
@@ -105,6 +122,15 @@ export class PtyNotFoundError extends Schema.TaggedErrorClass<PtyNotFoundError>(
   "PtyNotFoundError",
   {
     ptyID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
+export class ClientNotFoundError extends Schema.TaggedErrorClass<ClientNotFoundError>()(
+  "ClientNotFoundError",
+  {
+    clientID: Schema.String,
     message: Schema.String,
   },
   { httpApiStatus: 404 },

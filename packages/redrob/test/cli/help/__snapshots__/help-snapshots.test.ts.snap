@@ -18,7 +18,9 @@ Options:
       --mdns-domain  custom domain name for mDNS service (default: redrob.local)
                                                                   [string] [default: "redrob.local"]
       --cors         additional domains to allow for CORS                      [array] [default: []]
-      --cwd          working directory [string] [default: "<HOME>"]"
+      --cwd          working directory [string] [default: "<HOME>"]
+      --attach       use the user's shared engine (start it if needed) instead of running one inside
+                     this process; one daemon serves every app            [boolean] [default: false]"
 `;
 
 exports[`redrob CLI help-text snapshots every documented command emits stable help text: redrob mcp --help 1`] = `
@@ -219,7 +221,11 @@ Options:
                                                                           [boolean] [default: false]
       --mdns-domain  custom domain name for mDNS service (default: redrob.local)
                                                                   [string] [default: "redrob.local"]
-      --cors         additional domains to allow for CORS                      [array] [default: []]"
+      --cors         additional domains to allow for CORS                      [array] [default: []]
+      --register     run as the user's shared daemon: draw a secret, write ~/.redrob/run/server.json
+                     for other Redrob apps to find, exit when idle        [boolean] [default: false]
+      --idle-exit    with --register: minutes with no attached app before exiting (0 = stay up)
+                                                                              [number] [default: 10]"
 `;
 
 exports[`redrob CLI help-text snapshots every documented command emits stable help text: redrob models --help 1`] = `

@@ -8,6 +8,18 @@ import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
+import {
+  DOMAIN_GLOBALS,
+  bridgedPage,
+  domainTools,
+  sessionChannel,
+  unavailableChannel,
+  unavailablePage,
+} from "./domain"
+import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
+import * as Documents from "./document"
+import { InstanceRef } from "@/effect/instance-ref"
+import { assertExternalDirectoryEffect } from "./external-directory"
 
 export const CODE_MODE_TOOL = "execute"
 
@@ -57,10 +69,16 @@ function groupByServer(mcpTools: Record<string, MCP.McpTool>, servers: readonly 
 
 export function describeCatalog(mcpTools: Record<string, MCP.McpTool>, servers: readonly string[]): string {
   return CodeMode.make({
-    tools: toolTree(
-      [...groupByServer(mcpTools, servers).values()].flat(),
-      () => () => Effect.fail(toolError("Tool preview is not executable.")),
-    ),
+    tools: {
+      ...toolTree(
+        [...groupByServer(mcpTools, servers).values()].flat(),
+        () => () => Effect.fail(toolError("Tool preview is not executable.")),
+      ),
+      // The preview must list the same domain globals a live execution binds, so the
+      // description a model reads matches the scope it will actually run in.
+      ...domainTools({ page: unavailablePage(), channel: unavailableChannel() }),
+    },
+    globals: DOMAIN_GLOBALS,
   }).instructions()
 }
 
@@ -192,6 +210,10 @@ export const CodeModeTool = Tool.define(
     const agents = yield* Agent.Service
     const sessions = yield* Session.Service
     const plugin = yield* Plugin.Service
+    // Resolved here with the other location services, not inside `execute`: the tool
+    // contract requires `execute` to need nothing from the context, so pulling the service
+    // per call would put it back in the effect's requirements and fail to typecheck.
+    const browser = yield* BrowserRequestV1.Service
 
     const init: Tool.DefWithoutID<typeof Parameters, Metadata> = {
       description: DESCRIPTION,
@@ -213,6 +235,42 @@ export const CodeModeTool = Tool.define(
 
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
+        // K-1 domain objects for this execution. `channel` posts into the session that owns
+        // the run; `page` (PA-10) resolves through the browser channel — each call is
+        // published as a pending request on the event stream and settled by the attached
+        // browser client. With no client attached the request expires on the service's
+        // deadline and the call refuses by name, which is the same outcome the earlier
+        // `unavailablePage` gave and for a reason the message states.
+        const page = bridgedPage({ browser, sessionID: ctx.sessionID })
+        const channel = sessionChannel({ sessions, sessionID: ctx.sessionID, messageID: ctx.messageID })
+        // K-3 document objects. Unlike `page`, these DO work in the engine process: a write
+        // lands a real file. The guard is the same external-directory check the `write` tool
+        // uses, so a program cannot drop a document outside the instance directory without
+        // the user being asked.
+        //
+        // `InstanceRef` is read directly rather than through `InstanceState.context`, which
+        // DIES when no instance is bound. A code-mode execution with no instance is a real
+        // configuration — the tool is reachable from harnesses that bind none — and the right
+        // answer there is to resolve relative paths against the process directory, not to
+        // kill the tool over a document global the program may never touch.
+        const instance = yield* InstanceRef
+        const documents = Documents.documents({
+          directory: instance?.directory ?? process.cwd(),
+          guard: (filepath) =>
+            assertExternalDirectoryEffect(ctx, filepath).pipe(
+              Effect.asVoid,
+              Effect.catchCause((cause) => {
+                const error = Cause.squash(cause)
+                return Effect.fail(
+                  new Documents.DocumentFailureError({
+                    object: "document",
+                    operation: "write",
+                    reason: `writing ${filepath} was not permitted: ${error instanceof Error ? error.message : String(error)}`,
+                  }),
+                )
+              }),
+            ),
+        })
         const publish = () =>
           ctx.metadata({ title: CODE_MODE_TOOL, metadata: { toolCalls: calls.map((c) => ({ ...c })) } })
 
@@ -237,7 +295,11 @@ export const CodeModeTool = Tool.define(
           )
 
         const runtime = CodeMode.make({
-          tools: toolTree(catalog, callTool),
+          // Domain namespaces are spread last deliberately: a connected MCP server named
+          // `page` must not shadow the typed domain object a skill document is written
+          // against. The domain objects are part of the language; the MCP catalog is not.
+          tools: { ...toolTree(catalog, callTool), ...domainTools({ page, channel, documents }) },
+          globals: DOMAIN_GLOBALS,
           onToolCallStart: ({ index, name, input }) =>
             Effect.suspend(() => {
               const shown = (() => {

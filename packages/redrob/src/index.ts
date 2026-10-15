@@ -8,10 +8,12 @@ import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
+import { ModelsLocalCommand } from "./cli/cmd/models-local"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
+import { ServiceCommand } from "./cli/cmd/service"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
@@ -90,7 +92,9 @@ const cli = yargs(args)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ServeCommand)
+  .command(ServiceCommand)
   .command(ModelsCommand)
+  .command(ModelsLocalCommand)
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)

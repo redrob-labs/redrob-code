@@ -15,6 +15,9 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  BrowserRequestRefusal,
+  BrowserRequestReply,
+  ChatCompletionRequest,
   CommandListErrors,
   CommandListResponses,
   Config as Config3,
@@ -130,6 +133,7 @@ import type {
   PermissionRuleset,
   PermissionV2Reply,
   PermissionV2Source,
+  PrivacySettings,
   ProjectCommands,
   ProjectCurrentErrors,
   ProjectCurrentResponses,
@@ -175,6 +179,10 @@ import type {
   QuestionReplyErrors,
   QuestionReplyResponses,
   QuestionV2Reply,
+  RedrobSpeechErrors,
+  RedrobSpeechResponses,
+  RedrobTranscribeErrors,
+  RedrobTranscribeResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -263,8 +271,26 @@ import type {
   TuiShowToastResponses,
   TuiSubmitPromptErrors,
   TuiSubmitPromptResponses,
+  V1BrowserRequestListErrors,
+  V1BrowserRequestListResponses,
+  V1ChatCompletionsErrors,
+  V1ChatCompletionsResponses,
+  V1SessionBrowserListErrors,
+  V1SessionBrowserListResponses,
+  V1SessionBrowserRefuseErrors,
+  V1SessionBrowserRefuseResponses,
+  V1SessionBrowserReplyErrors,
+  V1SessionBrowserReplyResponses,
   V2AgentListErrors,
   V2AgentListResponses,
+  V2ClientsAttachErrors,
+  V2ClientsAttachResponses,
+  V2ClientsDetachErrors,
+  V2ClientsDetachResponses,
+  V2ClientsHeartbeatErrors,
+  V2ClientsHeartbeatResponses,
+  V2ClientsListErrors,
+  V2ClientsListResponses,
   V2CommandListErrors,
   V2CommandListResponses,
   V2CredentialRemoveErrors,
@@ -305,6 +331,10 @@ import type {
   V2PermissionSavedListResponses,
   V2PermissionSavedRemoveErrors,
   V2PermissionSavedRemoveResponses,
+  V2PrivacyGetErrors,
+  V2PrivacyGetResponses,
+  V2PrivacySetErrors,
+  V2PrivacySetResponses,
   V2ProjectCopyCreateErrors,
   V2ProjectCopyCreateResponses,
   V2ProjectCopyRefreshErrors,
@@ -502,6 +532,84 @@ export class Auth extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<AuthSetResponses, AuthSetErrors, ThrowOnError>({
       url: "/auth/{providerID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Redrob extends HeyApiClient {
+  /**
+   * Speak text
+   *
+   * Turn text into mp3 speech through the Redrob gateway, billed to the connected Redrob account.
+   */
+  public speech<ThrowOnError extends boolean = false>(
+    parameters?: {
+      text?: string
+      voice?: string
+      model?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "text" },
+            { in: "body", key: "voice" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RedrobSpeechResponses, RedrobSpeechErrors, ThrowOnError>({
+      url: "/redrob/speech",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Transcribe speech
+   *
+   * Turn recorded speech into text through the Redrob gateway, billed to the connected Redrob account.
+   */
+  public transcribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      audio?: string
+      format?: "wav" | "mp3" | "flac" | "m4a" | "ogg" | "webm" | "aac"
+      language?: string
+      model?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "audio" },
+            { in: "body", key: "format" },
+            { in: "body", key: "language" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RedrobTranscribeResponses, RedrobTranscribeErrors, ThrowOnError>({
+      url: "/redrob/transcribe",
       ...options,
       ...params,
       headers: {
@@ -5041,6 +5149,93 @@ export class Health extends HeyApiClient {
   }
 }
 
+export class Clients extends HeyApiClient {
+  /**
+   * List attached apps
+   *
+   * The apps attached to this engine and how long it has been idle.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2ClientsListResponses, V2ClientsListErrors, ThrowOnError>({
+      url: "/api/clients",
+      ...options,
+    })
+  }
+
+  /**
+   * Attach an app
+   *
+   * Tell the engine an app depends on it. Send a heartbeat at least every ttlMs/2 while it runs.
+   */
+  public attach<ThrowOnError extends boolean = false>(
+    parameters?: {
+      app?: string
+      pid?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "app" },
+            { in: "body", key: "pid" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2ClientsAttachResponses, V2ClientsAttachErrors, ThrowOnError>({
+      url: "/api/clients",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Keep an attachment alive
+   *
+   * 404 when the attachment expired or was never made; attach again.
+   */
+  public heartbeat<ThrowOnError extends boolean = false>(
+    parameters: {
+      clientID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "clientID" }] }])
+    return (options?.client ?? this.client).post<V2ClientsHeartbeatResponses, V2ClientsHeartbeatErrors, ThrowOnError>({
+      url: "/api/clients/{clientID}/heartbeat",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Detach an app
+   *
+   * The app no longer depends on the engine.
+   */
+  public detach<ThrowOnError extends boolean = false>(
+    parameters: {
+      clientID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "clientID" }] }])
+    return (options?.client ?? this.client).delete<V2ClientsDetachResponses, V2ClientsDetachErrors, ThrowOnError>({
+      url: "/api/clients/{clientID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Location extends HeyApiClient {
   /**
    * Get location
@@ -6374,6 +6569,68 @@ export class Credential extends HeyApiClient {
   }
 }
 
+export class Privacy extends HeyApiClient {
+  /**
+   * Read the PII masking setting
+   *
+   * What personal data may leave this machine inside a model request.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<V2PrivacyGetResponses, V2PrivacyGetErrors, ThrowOnError>({
+      url: "/api/privacy",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Change the PII masking setting
+   *
+   * Takes effect on the next message and is written to the user's global redrob.json, so it holds across restarts and apps.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+      privacySettings: PrivacySettings
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { key: "privacySettings", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<V2PrivacySetResponses, V2PrivacySetErrors, ThrowOnError>({
+      url: "/api/privacy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Request extends HeyApiClient {
   /**
    * List pending permission requests
@@ -7051,6 +7308,11 @@ export class V2 extends HeyApiClient {
     return (this._health ??= new Health({ client: this.client }))
   }
 
+  private _clients?: Clients
+  get clients(): Clients {
+    return (this._clients ??= new Clients({ client: this.client }))
+  }
+
   private _location?: Location
   get location(): Location {
     return (this._location ??= new Location({ client: this.client }))
@@ -7089,6 +7351,11 @@ export class V2 extends HeyApiClient {
   private _credential?: Credential
   get credential(): Credential {
     return (this._credential ??= new Credential({ client: this.client }))
+  }
+
+  private _privacy?: Privacy
+  get privacy(): Privacy {
+    return (this._privacy ??= new Privacy({ client: this.client }))
   }
 
   private _permission?: Permission3
@@ -7137,6 +7404,198 @@ export class V2 extends HeyApiClient {
   }
 }
 
+export class Request3 extends HeyApiClient {
+  /**
+   * List pending browser requests
+   *
+   * Retrieve browser actions awaiting a client for a location. A client that reconnects uses this to recover requests published while it was away.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<
+      V1BrowserRequestListResponses,
+      V1BrowserRequestListErrors,
+      ThrowOnError
+    >({
+      url: "/api/browser/request",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Browser extends HeyApiClient {
+  private _request?: Request3
+  get request(): Request3 {
+    return (this._request ??= new Request3({ client: this.client }))
+  }
+}
+
+export class Browser2 extends HeyApiClient {
+  /**
+   * List session browser requests
+   *
+   * Retrieve browser actions awaiting a client, owned by a session.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      V1SessionBrowserListResponses,
+      V1SessionBrowserListErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Answer a pending browser request
+   *
+   * Settle a browser action with the value it produced. The value is typed per action, so answering with the wrong shape is reported to the engine's caller rather than read as a fact about the page.
+   */
+  public reply<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+      browserRequestReply: BrowserRequestReply
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "requestID" },
+            { key: "browserRequestReply", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V1SessionBrowserReplyResponses,
+      V1SessionBrowserReplyErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Refuse a pending browser request
+   *
+   * Report that the action could not be performed, with the reason. Refusing is faster and more honest than letting the request expire on the engine's deadline.
+   */
+  public refuse<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+      browserRequestRefusal: BrowserRequestRefusal
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "requestID" },
+            { key: "browserRequestRefusal", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V1SessionBrowserRefuseResponses,
+      V1SessionBrowserRefuseErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/browser/{requestID}/refuse",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Session4 extends HeyApiClient {
+  private _browser?: Browser2
+  get browser(): Browser2 {
+    return (this._browser ??= new Browser2({ client: this.client }))
+  }
+}
+
+export class Chat extends HeyApiClient {
+  /**
+   * Create a chat completion
+   *
+   * OpenAI-compatible inference against the engine's own credential and provider registry. Declaring `tools` makes the caller responsible for executing them: the turn ends with finish_reason tool_calls and the results come back as role:tool messages. `stream: true` returns text/event-stream instead of this JSON body. Failures use OpenAI's error envelope -- {error:{message,type,code,param}} -- with 400 invalid_request_error, 401 authentication_error (code engine_not_authenticated, the only status a client should offer a sign-in action for), 429 rate_limit_error or insufficient_quota, and 502 api_error. They are written by the handler rather than declared as endpoint errors, because this is a raw handler and the envelope carries no discriminator field for codegen to branch on.
+   */
+  public completions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      chatCompletionRequest?: ChatCompletionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "chatCompletionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V1ChatCompletionsResponses, V1ChatCompletionsErrors, ThrowOnError>({
+      url: "/v1/chat/completions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class V1 extends HeyApiClient {
+  private _browser?: Browser
+  get browser(): Browser {
+    return (this._browser ??= new Browser({ client: this.client }))
+  }
+
+  private _session?: Session4
+  get session(): Session4 {
+    return (this._session ??= new Session4({ client: this.client }))
+  }
+
+  private _chat?: Chat
+  get chat(): Chat {
+    return (this._chat ??= new Chat({ client: this.client }))
+  }
+}
+
 export class RedrobClient extends HeyApiClient {
   public static readonly __registry = new HeyApiRegistry<RedrobClient>()
 
@@ -7148,6 +7607,11 @@ export class RedrobClient extends HeyApiClient {
   private _auth?: Auth
   get auth(): Auth {
     return (this._auth ??= new Auth({ client: this.client }))
+  }
+
+  private _redrob?: Redrob
+  get redrob(): Redrob {
+    return (this._redrob ??= new Redrob({ client: this.client }))
   }
 
   private _app?: App
@@ -7278,5 +7742,10 @@ export class RedrobClient extends HeyApiClient {
   private _v2?: V2
   get v2(): V2 {
     return (this._v2 ??= new V2({ client: this.client }))
+  }
+
+  private _v1?: V1
+  get v1(): V1 {
+    return (this._v1 ??= new V1({ client: this.client }))
   }
 }

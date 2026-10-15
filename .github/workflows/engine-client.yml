@@ -1,0 +1,40 @@
+# The Rust client for the shared daemon (crates/engine-client). Runs only when the crate or
+# this file changes: the rest of the repository is TypeScript and does not need a Rust toolchain.
+name: engine-client
+
+on:
+  pull_request:
+    paths:
+      - "crates/engine-client/**"
+      - ".github/workflows/engine-client.yml"
+  push:
+    branches: [develop, main]
+    paths:
+      - "crates/engine-client/**"
+      - ".github/workflows/engine-client.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: engine-client (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: crates/engine-client
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/engine-client
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked

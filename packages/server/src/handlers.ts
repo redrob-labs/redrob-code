@@ -11,16 +11,21 @@ import { SkillHandler } from "./handlers/skill"
 import { EventHandler } from "./handlers/event"
 import { AgentHandler } from "./handlers/agent"
 import { HealthHandler } from "./handlers/health"
+import { ClientsHandler } from "./handlers/clients"
 import { PtyHandler } from "./handlers/pty"
+import { BrowserRequestHandler } from "./handlers/browser-request"
 import { QuestionHandler } from "./handlers/question"
 import { ReferenceHandler } from "./handlers/reference"
 import { LocationHandler } from "./handlers/location"
 import { IntegrationHandler } from "./handlers/integration"
 import { CredentialHandler } from "./handlers/credential"
+import { PrivacyHandler } from "./handlers/privacy"
 import { ProjectCopyHandler } from "./handlers/project-copy"
+import { ChatCompletionHandler } from "./handlers/chat-completion"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
+  ClientsHandler,
   LocationHandler,
   AgentHandler,
   SessionHandler,
@@ -30,6 +35,7 @@ export const handlers = Layer.mergeAll(
   VariantHandler,
   IntegrationHandler,
   CredentialHandler,
+  PrivacyHandler,
   PermissionHandler,
   FileSystemHandler,
   CommandHandler,
@@ -37,6 +43,8 @@ export const handlers = Layer.mergeAll(
   EventHandler,
   PtyHandler,
   QuestionHandler,
+  BrowserRequestHandler,
   ReferenceHandler,
   ProjectCopyHandler,
+  ChatCompletionHandler,
 )

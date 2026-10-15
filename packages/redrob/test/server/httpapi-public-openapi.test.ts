@@ -10,6 +10,8 @@ type OpenApiSchema = {
   readonly enum?: readonly unknown[]
   readonly properties?: Record<string, OpenApiSchema>
   readonly required?: readonly string[]
+  /** Element schema of an array property, e.g. a chunk's `choices`. */
+  readonly items?: OpenApiSchema
   readonly contentSchema?: OpenApiSchema
   readonly contentMediaType?: string
 }
@@ -70,6 +72,49 @@ function isBuiltInEndpointError(name: string) {
 }
 
 describe("PublicApi OpenAPI v2 errors", () => {
+  test("documents both content types on the chat-completions 200", () => {
+    // The route answers with JSON or with text/event-stream depending on `stream`, and
+    // HttpApi can only declare one success schema. Without the patch the spec describes
+    // only the JSON, so a generated client looks for choices[].message.content on a
+    // streaming response and finds nothing on every frame -- a chunk carries
+    // choices[].delta instead.
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    const response = spec.paths["/v1/chat/completions"]?.post?.responses?.["200"]
+
+    expect(Object.keys(response?.content ?? {}).sort()).toEqual(["application/json", "text/event-stream"])
+    // Both, not one replacing the other: dropping the JSON would lie in the other direction.
+    expect(response?.content?.["application/json"]).toBeDefined()
+    expect(response?.description).toContain("[DONE]")
+  })
+
+  test("the chat-completions SSE ref resolves to a registered component", () => {
+    // A $ref to a schema no endpoint references dangles unless it is registered through
+    // HttpApi.AdditionalSchemas. A dangling ref generates a client with a missing type
+    // rather than failing loudly, so this is the assertion that keeps the patch honest.
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    const ref = spec.paths["/v1/chat/completions"]?.post?.responses?.["200"]?.content?.[
+      "text/event-stream"
+    ]?.schema?.$ref
+
+    expect(ref).toBe("#/components/schemas/ChatCompletionChunk")
+    expect(Object.keys(spec.components.schemas)).toContain("ChatCompletionChunk")
+  })
+
+  test("a chunk is shaped as a delta, not as a complete message", () => {
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    const chunk = spec.components.schemas.ChatCompletionChunk
+    const choice = chunk?.properties?.choices?.items as OpenApiSchema | undefined
+
+    expect(choice?.properties?.delta).toBeDefined()
+    // The discriminator differs from the non-streaming object, which is the whole reason a
+    // separate schema was needed.
+    expect(chunk?.properties?.object?.enum).toEqual(["chat.completion.chunk"])
+    // Every delta field is optional: the first frame carries only role, middle frames only
+    // content, and the terminator an empty delta. Requiring content would reject the
+    // terminator.
+    expect(choice?.properties?.delta?.required ?? []).toEqual([])
+  })
+
   test("includes plugin-facing core schemas", () => {
     const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
 

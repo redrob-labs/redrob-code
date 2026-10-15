@@ -2,6 +2,7 @@ import { describe, expect } from "bun:test"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { Effect, Layer } from "effect"
 import { Skill } from "../../src/skill"
+import { SkillArming } from "@redrob-code/core/skill/arming"
 import { Discovery } from "../../src/skill/discovery"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
@@ -315,6 +316,97 @@ description: A skill in the .claude/skills directory.
           expect(error._tag).toBe("Skill.NotFoundError")
           expect(error.name).toBe("missing-skill")
           expect(error.message).toContain('Skill "missing-skill" not found.')
+        }),
+      { git: true },
+    ),
+  )
+
+  it.live("carries a disk skill's autoInject block through to the arming matcher", () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Bun.write(
+              path.join(dir, ".redrob", "skill", "armed-skill", "SKILL.md"),
+              `---
+name: armed-skill
+description: A skill that declares its own arming.
+autoInject:
+  keywords:
+    - rollback
+    - "incident report"
+  url:
+    - status.example.com/**
+---
+
+# Armed Skill
+
+Instructions here.
+`,
+            ),
+          )
+          yield* Effect.promise(() =>
+            Bun.write(
+              path.join(dir, ".redrob", "skill", "plain-skill", "SKILL.md"),
+              `---
+name: plain-skill
+description: A skill with no arming block.
+---
+
+# Plain Skill
+`,
+            ),
+          )
+
+          const skill = yield* Skill.Service
+          const list = (yield* skill.all()).filter((s) => s.location !== "<built-in>")
+          const armable = list.find((x) => x.name === "armed-skill")!
+          const plain = list.find((x) => x.name === "plain-skill")!
+
+          // The loader used to drop this field entirely, which left K-2's matcher with
+          // nothing to match on: every skill looked like `plain-skill`.
+          expect(armable.autoInject?.keywords).toEqual(["rollback", "incident report"])
+          expect(armable.autoInject?.url).toEqual(["status.example.com/**"])
+          expect(plain.autoInject).toBeUndefined()
+
+          // End to end through the real matcher, on the real loaded values.
+          expect(SkillArming.armedNames({ skills: list, prompt: "time to ROLLBACK" })).toEqual(["armed-skill"])
+          expect(
+            SkillArming.armedNames({ skills: list, prompt: "nothing here", url: "status.example.com/incidents/4" }),
+          ).toEqual(["armed-skill"])
+          expect(SkillArming.armedNames({ skills: list, prompt: "nothing here" })).toEqual([])
+        }),
+      { git: true },
+    ),
+  )
+
+  it.live("keeps a skill whose autoInject block is malformed, minus the arming", () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Bun.write(
+              path.join(dir, ".redrob", "skill", "broken-skill", "SKILL.md"),
+              `---
+name: broken-skill
+description: Arming block in a shape the schema rejects.
+autoInject: "rollback"
+---
+
+# Broken Skill
+`,
+            ),
+          )
+
+          const skill = yield* Skill.Service
+          const item = (yield* skill.all()).find((x) => x.name === "broken-skill")
+
+          // The documented failure mode: the skill still loads and stays selectable by
+          // name, and only the arming behaviour is lost. Dropping the whole file would
+          // lose a working skill over an optional key.
+          expect(item).toBeDefined()
+          expect(item!.content).toContain("Broken Skill")
+          expect(item!.autoInject).toBeUndefined()
         }),
       { git: true },
     ),

@@ -21,6 +21,14 @@ export type InvalidRequestError = {
 export const isInvalidRequestError = (value: unknown): value is InvalidRequestError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidRequestError"
 
+export type ClientNotFoundError = {
+  readonly _tag: "ClientNotFoundError"
+  readonly clientID: string
+  readonly message: string
+}
+export const isClientNotFoundError = (value: unknown): value is ClientNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ClientNotFoundError"
+
 export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
 export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
@@ -94,6 +102,14 @@ export type QuestionNotFoundError = {
 export const isQuestionNotFoundError = (value: unknown): value is QuestionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "QuestionNotFoundError"
 
+export type BrowserRequestNotFoundError = {
+  readonly _tag: "BrowserRequestNotFoundError"
+  readonly requestID: string
+  readonly message: string
+}
+export const isBrowserRequestNotFoundError = (value: unknown): value is BrowserRequestNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "BrowserRequestNotFoundError"
+
 export type ProjectCopyError = {
   readonly name: "ProjectCopyError"
   readonly data: { readonly message: string; readonly forceRequired?: boolean | undefined }
@@ -102,6 +118,46 @@ export const isProjectCopyError = (value: unknown): value is ProjectCopyError =>
   typeof value === "object" && value !== null && "name" in value && value["name"] === "ProjectCopyError"
 
 export type HealthGetOutput = { readonly healthy: true }
+
+export type ServerClientsListOutput = {
+  readonly clients: ReadonlyArray<{
+    readonly id: string
+    readonly app: string
+    readonly pid?: number | undefined
+    readonly attachedAt: number
+    readonly lastSeen: number
+  }>
+  readonly ttlMs: number
+  readonly idleForMs?: number | undefined
+  readonly idleExitAfterMs?: number | undefined
+}
+
+export type ServerClientsAttachInput = {
+  readonly app: { readonly app: string; readonly pid?: number | undefined }["app"]
+  readonly pid?: { readonly app: string; readonly pid?: number | undefined }["pid"]
+}
+
+export type ServerClientsAttachOutput = {
+  readonly id: string
+  readonly app: string
+  readonly pid?: number | undefined
+  readonly attachedAt: number
+  readonly lastSeen: number
+}
+
+export type ServerClientsHeartbeatInput = { readonly clientID: { readonly clientID: string }["clientID"] }
+
+export type ServerClientsHeartbeatOutput = {
+  readonly id: string
+  readonly app: string
+  readonly pid?: number | undefined
+  readonly attachedAt: number
+  readonly lastSeen: number
+}
+
+export type ServerClientsDetachInput = { readonly clientID: { readonly clientID: string }["clientID"] }
+
+export type ServerClientsDetachOutput = void
 
 export type LocationGetInput = {
   readonly location?: {
@@ -2364,6 +2420,24 @@ export type CredentialsRemoveInput = {
 
 export type CredentialsRemoveOutput = void
 
+export type PrivacyGetInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type PrivacyGetOutput = { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }
+
+export type PrivacySetInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly mode: { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }["mode"]
+  readonly model?: { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }["model"]
+}
+
+export type PrivacySetOutput = { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }
+
 export type PermissionsListRequestsInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
@@ -2609,6 +2683,8 @@ export type SkillsListOutput = {
     readonly name: string
     readonly description?: string
     readonly slash?: boolean
+    readonly icon?: string
+    readonly autoInject?: { readonly keywords?: ReadonlyArray<string>; readonly url?: ReadonlyArray<string> }
     readonly location: string
     readonly content: string
   }>
@@ -2821,6 +2897,83 @@ export type QuestionsRejectInput = {
 
 export type QuestionsRejectOutput = void
 
+export type BrowserRequestsListRequestsInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type BrowserRequestsListRequestsOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly sessionID: string
+    readonly command:
+      | { readonly action: "page.url" }
+      | { readonly action: "page.text" }
+      | {
+          readonly action: "page.query"
+          readonly selector: string
+          readonly limit?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      | { readonly action: "page.click"; readonly selector: string }
+      | { readonly action: "page.type"; readonly selector: string; readonly text: string; readonly submit?: boolean }
+      | { readonly action: "page.navigate"; readonly url: string }
+  }>
+}
+
+export type BrowserRequestsListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type BrowserRequestsListOutput = {
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly sessionID: string
+    readonly command:
+      | { readonly action: "page.url" }
+      | { readonly action: "page.text" }
+      | {
+          readonly action: "page.query"
+          readonly selector: string
+          readonly limit?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      | { readonly action: "page.click"; readonly selector: string }
+      | { readonly action: "page.type"; readonly selector: string; readonly text: string; readonly submit?: boolean }
+      | { readonly action: "page.navigate"; readonly url: string }
+  }>
+}["data"]
+
+export type BrowserRequestsReplyInput = {
+  readonly sessionID: { readonly sessionID: string; readonly requestID: string }["sessionID"]
+  readonly requestID: { readonly sessionID: string; readonly requestID: string }["requestID"]
+  readonly value: {
+    readonly value:
+      | { readonly type: "string"; readonly value: string }
+      | {
+          readonly type: "nodes"
+          readonly value: ReadonlyArray<{
+            readonly selector: string
+            readonly text: string
+            readonly attributes: { readonly [x: string]: string }
+          }>
+        }
+      | { readonly type: "void" }
+  }["value"]
+}
+
+export type BrowserRequestsReplyOutput = void
+
+export type BrowserRequestsRefuseInput = {
+  readonly sessionID: { readonly sessionID: string; readonly requestID: string }["sessionID"]
+  readonly requestID: { readonly sessionID: string; readonly requestID: string }["requestID"]
+  readonly reason: { readonly reason: string }["reason"]
+}
+
+export type BrowserRequestsRefuseOutput = void
+
 export type ReferencesListInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
@@ -2881,3 +3034,677 @@ export type ProjectCopiesRefreshInput = {
 }
 
 export type ProjectCopiesRefreshOutput = void
+
+export type ServerChatCompletionsInput = {
+  readonly model: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["model"]
+  readonly messages: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["messages"]
+  readonly tools?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["tools"]
+  readonly tool_choice?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["tool_choice"]
+  readonly stream?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["stream"]
+  readonly max_tokens?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["max_tokens"]
+  readonly max_completion_tokens?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["max_completion_tokens"]
+  readonly temperature?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["temperature"]
+  readonly top_p?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["top_p"]
+  readonly stop?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["stop"]
+  readonly seed?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["seed"]
+  readonly frequency_penalty?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["frequency_penalty"]
+  readonly presence_penalty?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["presence_penalty"]
+  readonly reasoning_effort?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["reasoning_effort"]
+  readonly user?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+  }["user"]
+}
+
+export type ServerChatCompletionsOutput = {
+  readonly id: string
+  readonly object: "chat.completion"
+  readonly created: number
+  readonly model: string
+  readonly choices: ReadonlyArray<{
+    readonly index: number
+    readonly message: {
+      readonly role: "assistant"
+      readonly content: string | null
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly reasoning_content?: string | undefined
+    }
+    readonly finish_reason: string | null
+  }>
+  readonly usage?:
+    | { readonly prompt_tokens: number; readonly completion_tokens: number; readonly total_tokens: number }
+    | undefined
+}

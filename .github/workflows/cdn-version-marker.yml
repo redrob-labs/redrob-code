@@ -1,0 +1,89 @@
+name: CDN version marker
+
+# Keeps `https://cdn.redrob.ai/code/latest/version` equal to the newest GitHub release.
+#
+# Builds live on GitHub Releases, not on the CDN, since 0.1.0. The marker still matters:
+# every `redrob` from the 0.0.x line asks it what the newest version is before running the
+# Console installer, and while it said `0.0.12` those installs believed they were current
+# and `redrob upgrade` did nothing. Writing the marker on each release is what lets them
+# move; the installer they then run downloads from GitHub.
+#
+# The bucket name and the keys are the organisation's CDN variables, the same ones
+# redrob-shape and redrob-browser-agent publish with.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to write (no leading v). Empty = the newest non-prerelease GitHub release.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cdn-version-marker
+  cancel-in-progress: false
+
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REDROB_CDN_BUCKET: ${{ vars.REDROB_CDN_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.REDROB_CDN_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.REDROB_CDN_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: us-east-1
+      REQUESTED: ${{ inputs.version }}
+    steps:
+      - name: resolve the version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED" ]; then
+            version="${REQUESTED#v}"
+          elif [ "${{ github.event_name }}" = "release" ] && [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+          else
+            version="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-pre-releases --exclude-drafts \
+              --json tagName -q '[.[] | .tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | .[0]')"
+            version="${version#v}"
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::not a release version: '$version'"; exit 1 ;;
+          esac
+          # The marker never goes backwards: a re-published old release must not demote it.
+          current="$(curl --fail --silent --location https://cdn.redrob.ai/code/latest/version || true)"
+          if [ -n "$current" ] && [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n1)" != "$version" ]; then
+            echo "::notice::marker is $current, newer than $version; leaving it."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: write code/latest/version
+        if: ${{ steps.version.outputs.skip != 'true' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REDROB_CDN_BUCKET" ]; then
+            echo "::error::REDROB_CDN_BUCKET is not set"; exit 1
+          fi
+          printf '%s\n' "$VERSION" > version
+          aws s3 cp version "s3://${REDROB_CDN_BUCKET}/code/latest/version" \
+            --content-type "text/plain" --cache-control "public, max-age=300" --no-progress
+          # The CDN key can write the bucket but not read it (HeadObject is 403), so the upload's
+          # own exit status is the proof. The CDN in front has no cache-control on the old object,
+          # so it may serve the previous marker for up to its default TTL (a day); that is reported,
+          # not failed.
+          echo "OK s3://${REDROB_CDN_BUCKET}/code/latest/version = $VERSION"
+          cdn="$(curl --fail --silent --location https://cdn.redrob.ai/code/latest/version || true)"
+          if [ "$cdn" != "$VERSION" ]; then
+            echo "::notice::cdn.redrob.ai still serves '$cdn'; it refreshes when the cached copy expires."
+          fi
