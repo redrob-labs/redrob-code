@@ -67,7 +67,7 @@ the file and the reason. A malformed frontmatter block drops the whole document.
 name: release-notes
 description: Use when drafting release notes from a tag range, or when the user asks what changed between two versions.
 slash: true
-icon: https://code.redrob.ai/icon/release-notes.svg
+icon: https://console.redrob.ai/code/icon/release-notes.svg
 autoInject:
   keywords:
     - release notes

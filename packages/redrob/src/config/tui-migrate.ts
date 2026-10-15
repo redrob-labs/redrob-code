@@ -7,8 +7,7 @@ import { Flag } from "@redrob-code/core/flag/flag"
 import { Global } from "@redrob-code/core/global"
 import { Filesystem } from "@/util/filesystem"
 import * as ConfigPaths from "@/config/paths"
-
-const TUI_SCHEMA_URL = "https://code.redrob.ai/tui.json"
+import { TUI_SCHEMA_URL } from "@redrob-code/core/links"
 
 const decodeTheme = Schema.decodeUnknownOption(Schema.String)
 const decodeRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))

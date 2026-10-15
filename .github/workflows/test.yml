@@ -75,7 +75,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
           git config --global user.name "redrob"
 
       - name: Run engine tests
@@ -109,7 +109,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
           git config --global user.name "redrob"
 
       # Not sharded: 933 tests in ~22s. Splitting it would cost more in runner setup than
@@ -120,6 +120,12 @@ jobs:
 
       - name: Check generated client
         working-directory: packages/client
+        run: bun run check:generated
+
+      # The JSON Schemas the Console serves (config.json, tui.json, theme.json) are committed under
+      # packages/redrob/schema and regenerated from the live Effect schemas; a stale copy fails here.
+      - name: Check generated schemas
+        working-directory: packages/redrob
         run: bun run check:generated
 
   httpapi:
@@ -148,7 +154,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
           git config --global user.name "redrob"
 
       # Its own job rather than a step after the tests: ~1m38s that has no reason to sit
@@ -224,7 +230,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
           git config --global user.name "redrob"
 
       - name: Run engine tests
@@ -259,7 +265,7 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config --global user.email "bot@code.redrob.ai"
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
           git config --global user.name "redrob"
 
       - name: Run core tests

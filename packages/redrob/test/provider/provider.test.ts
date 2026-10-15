@@ -1313,8 +1313,8 @@ it.instance(
   Effect.gen(function* () {
     const providers = yield* list
     expect(providers[ProviderV2.ID.make("nvidia")].options.headers).toEqual({
-      "HTTP-Referer": "https://code.redrob.ai/",
-      "X-Title": "redrob",
+      "HTTP-Referer": "https://console.redrob.ai/code",
+      "X-Title": "Redrob Code",
       "X-BILLING-INVOKE-ORIGIN": "RedrobCode",
     })
   }),
@@ -1326,8 +1326,8 @@ it.instance(
   Effect.gen(function* () {
     const providers = yield* list
     expect(providers[ProviderV2.ID.make("nvidia")].options.headers).toEqual({
-      "HTTP-Referer": "https://code.redrob.ai/",
-      "X-Title": "redrob",
+      "HTTP-Referer": "https://console.redrob.ai/code",
+      "X-Title": "Redrob Code",
       "X-BILLING-INVOKE-ORIGIN": "RedrobCode",
     })
   }),

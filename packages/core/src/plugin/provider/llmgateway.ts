@@ -15,8 +15,8 @@ export const LLMGatewayPlugin = define({
           if (item.provider.api.url !== "https://api.llmgateway.io/v1") continue
           if (!(yield* integrations.get(Integration.ID.make(item.provider.id)))) continue
           evt.provider.update(item.provider.id, (provider) => {
-            provider.request.headers["HTTP-Referer"] = "https://code.redrob.ai/"
-            provider.request.headers["X-Title"] = "redrob"
+            provider.request.headers["HTTP-Referer"] = "https://console.redrob.ai/code"
+            provider.request.headers["X-Title"] = "Redrob Code"
             provider.request.headers["X-Source"] = "redrob"
           })
         }

@@ -101,7 +101,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   meta = {
     description = "The open source coding agent";
-    homepage = "https://code.redrob.ai";
+    homepage = "https://console.redrob.ai/code";
     license = lib.licenses.mit;
     mainProgram = "redrob";
     inherit (node_modules.meta) platforms;

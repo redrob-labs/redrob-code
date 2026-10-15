@@ -41,7 +41,7 @@ function withProject<A, E, R>(source: string, self: Effect.Effect<A, E, R>) {
             path.join(test.directory, "redrob.json"),
             JSON.stringify(
               {
-                $schema: "https://code.redrob.ai/config.json",
+                $schema: "https://console.redrob.ai/code/config.json",
                 plugin: [pathToFileURL(file).href],
               },
               null,

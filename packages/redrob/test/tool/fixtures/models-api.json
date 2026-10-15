@@ -33607,9 +33607,9 @@
     "id": "redrob-go",
     "env": ["REDROB_API_KEY"],
     "npm": "@ai-sdk/openai-compatible",
-    "api": "https://code.redrob.ai/go/v1",
+    "api": "https://console.redrob.ai/api/backend/v1",
     "name": "Redrob Console Go",
-    "doc": "https://code.redrob.ai/docs",
+    "doc": "https://console.redrob.ai/docs",
     "models": {
       "deepseek-v4-flash": {
         "id": "deepseek-v4-flash",
@@ -90323,9 +90323,9 @@
     "id": "redrob",
     "env": ["REDROB_API_KEY"],
     "npm": "@ai-sdk/openai-compatible",
-    "api": "https://code.redrob.ai/v1",
+    "api": "https://console.redrob.ai/api/backend/v1",
     "name": "Redrob Console",
-    "doc": "https://code.redrob.ai/docs",
+    "doc": "https://console.redrob.ai/docs",
     "models": {
       "ring-2.6-1t-free": {
         "id": "ring-2.6-1t-free",

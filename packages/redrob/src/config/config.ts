@@ -20,6 +20,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/
 import { EffectFlock } from "@redrob-code/core/util/effect-flock"
 import { containsPath, type InstanceContext } from "../project/instance-context"
 import { ConfigV1 } from "@redrob-code/core/v1/config/config"
+import { CONFIG_SCHEMA_URL } from "@redrob-code/core/links"
 import { RemoteAuthError } from "@redrob-code/core/v1/config/error"
 import { ConfigPermissionV1 } from "@redrob-code/core/v1/config/permission"
 import { ConfigPluginV1 } from "@redrob-code/core/v1/config/plugin"
@@ -223,8 +224,8 @@ const layer = Layer.effect(
 
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
       if (!data.$schema) {
-        data.$schema = "https://code.redrob.ai/config.json"
-        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://code.redrob.ai/config.json",')
+        data.$schema = CONFIG_SCHEMA_URL
+        const updated = text.replace(/^\s*\{/, `{\n  "$schema": "${CONFIG_SCHEMA_URL}",`)
         yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
       }
       return data
@@ -245,7 +246,7 @@ const layer = Layer.effect(
         const file = globalConfigFile()
         if (!existsSync(file)) {
           yield* fs
-            .writeWithDirs(file, JSON.stringify({ $schema: "https://code.redrob.ai/config.json" }, null, 2))
+            .writeWithDirs(file, JSON.stringify({ $schema: CONFIG_SCHEMA_URL }, null, 2))
             .pipe(Effect.catch(() => Effect.void))
         }
       }
@@ -260,7 +261,7 @@ const layer = Layer.effect(
             .then(async (mod) => {
               const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
-              result["$schema"] = "https://code.redrob.ai/config.json"
+              result["$schema"] = CONFIG_SCHEMA_URL
               result = mergeConfig(result, rest)
               await fsNode.writeFile(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
               await fsNode.unlink(legacy)
@@ -374,7 +375,7 @@ const layer = Layer.effect(
                 })
               : {}
             const remoteConfig = mergeConfig(isRecord(wellknown.config) ? wellknown.config : {}, fetchedConfig)
-            if (!remoteConfig.$schema) remoteConfig.$schema = "https://code.redrob.ai/config.json"
+            if (!remoteConfig.$schema) remoteConfig.$schema = CONFIG_SCHEMA_URL
             const source = wellknownURL
             const next = yield* loadConfig(
               JSON.stringify(remoteConfig),

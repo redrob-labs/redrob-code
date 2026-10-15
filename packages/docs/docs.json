@@ -30,7 +30,7 @@
           {
             "group": "Getting started",
             "pages": ["index", "quickstart", "development"],
-            "openapi": "https://code.redrob.ai/openapi.json"
+            "openapi": "https://console.redrob.ai/code/openapi.json"
           }
         ]
       }
