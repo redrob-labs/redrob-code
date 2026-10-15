@@ -4,6 +4,7 @@ import { Parser } from "htmlparser2"
 import * as Tool from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
+import { DEFAULT_MAX_CHARS, focus } from "./webfetch-focus"
 import { isImageAttachment } from "@/util/media"
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
@@ -19,6 +20,13 @@ export const Parameters = Schema.Struct({
     })
     .pipe(Schema.withDecodingDefault(Effect.succeed("markdown" as const))),
   timeout: Schema.optional(Schema.Number).annotate({ description: "Optional timeout in seconds (max 120)" }),
+  query: Schema.optional(Schema.String).annotate({
+    description:
+      "What you are looking for on the page (keywords). Only the lines around matches are returned, which keeps a long page cheap to read.",
+  }),
+  max_chars: Schema.optional(Schema.Number).annotate({
+    description: `Maximum characters to return (default ${DEFAULT_MAX_CHARS}). Longer content is cut with a note.`,
+  }),
 })
 
 export const WebFetchTool = Tool.define(
@@ -126,29 +134,25 @@ export const WebFetchTool = Tool.define(
           const content = new TextDecoder().decode(arrayBuffer)
 
           // Handle content based on requested format and actual content type
+          const trim = (text: string) => focus(text, params.query, params.max_chars)
           switch (params.format) {
             case "markdown":
               if (contentType.includes("text/html")) {
-                const markdown = convertHTMLToMarkdown(content)
-                return {
-                  output: markdown,
-                  title,
-                  metadata: {},
-                }
+                return { output: trim(convertHTMLToMarkdown(content)), title, metadata: {} }
               }
-              return { output: content, title, metadata: {} }
+              return { output: trim(content), title, metadata: {} }
 
             case "text":
               if (contentType.includes("text/html")) {
-                return { output: extractTextFromHTML(content), title, metadata: {} }
+                return { output: trim(extractTextFromHTML(content)), title, metadata: {} }
               }
-              return { output: content, title, metadata: {} }
+              return { output: trim(content), title, metadata: {} }
 
             case "html":
-              return { output: content, title, metadata: {} }
+              return { output: trim(content), title, metadata: {} }
 
             default:
-              return { output: content, title, metadata: {} }
+              return { output: trim(content), title, metadata: {} }
           }
         }).pipe(Effect.orDie),
     }
