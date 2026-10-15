@@ -771,7 +771,7 @@ export const dict: Record<TuiI18nKey, string> = {
   "tip.agent_cycle": "{{shortcut}} 키를 누르면 Build 에이전트와 Plan 에이전트를 번갈아 사용할 수 있습니다",
   "tip.undo": "{highlight}/undo{/highlight}로 마지막 메시지와 파일 변경을 되돌립니다",
   "tip.redo": "{highlight}/redo{/highlight}로 되돌린 메시지와 파일 변경을 복원합니다",
-  "tip.share": "{highlight}/share{/highlight}를 실행하면 공개 code.redrob.ai 링크가 만들어집니다",
+  "tip.share": "{highlight}/share{/highlight}를 실행하면 공개 공유 링크가 만들어집니다",
   "tip.drag_drop": "이미지나 PDF를 터미널로 끌어다 놓으면 컨텍스트로 추가됩니다",
   "tip.paste_images": "{{shortcut}} 키를 누르면 클립보드의 이미지를 프롬프트에 붙여넣습니다",
   "tip.editor": "{{command}} 명령으로 외부 편집기에서 메시지를 작성할 수 있습니다",

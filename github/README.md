@@ -56,12 +56,11 @@ Run the following command in the terminal from your GitHub repo:
 Redrob Code github install
 ```
 
-This will walk you through installing the GitHub app, creating the workflow, and setting up secrets.
+This will walk you through creating the workflow and setting up secrets. The agent acts with the repository's own `GITHUB_TOKEN`; there is no GitHub App to install.
 
 ### Manual Setup
 
-1. Install the GitHub app https://github.com/apps/redrob-agent. Make sure it is installed on the target repository.
-2. Add the following workflow file to `.github/workflows/redrob.yml` in your repo. Set the appropriate `model` and required API keys in `env`.
+1. Add the following workflow file to `.github/workflows/redrob.yml` in your repo. Set the appropriate `model` and required API keys in `env`.
 
    ```yml
    name: Redrob Code
@@ -79,7 +78,9 @@ This will walk you through installing the GitHub app, creating the workflow, and
          contains(github.event.comment.body, '/redrob')
        runs-on: ubuntu-latest
        permissions:
-         id-token: write
+         contents: write
+         pull-requests: write
+         issues: write
        steps:
           - name: Checkout repository
             uses: actions/checkout@v6
@@ -91,13 +92,14 @@ This will walk you through installing the GitHub app, creating the workflow, and
            uses: redrob-labs/redrob-code/github@latest
            env:
              ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            with:
              model: anthropic/claude-sonnet-4-20250514
-             use_github_token: true
+             token: ${{ secrets.GITHUB_TOKEN }}
    ```
 
-3. Store the API keys in secrets. In your organization or project **settings**, expand **Secrets and variables** on the left and select **Actions**. Add the required API keys.
+   `token` defaults to the workflow's own `GITHUB_TOKEN`; pass a personal access token instead when the agent must act as a user (for example to trigger other workflows with its pushes).
+
+2. Store the API keys in secrets. In your organization or project **settings**, expand **Secrets and variables** on the left and select **Actions**. Add the required API keys.
 
 ## Support
 
@@ -127,7 +129,7 @@ To test locally:
    - `MODEL`: The model used by Redrob Code. Same as the `MODEL` defined in the GitHub workflow.
    - `ANTHROPIC_API_KEY`: Your model provider API key. Same as the keys defined in the GitHub workflow.
    - `GITHUB_RUN_ID`: Dummy value to emulate GitHub action environment.
-   - `MOCK_TOKEN`: A GitHub personal access token. This token is used to verify you have `admin` or `write` access to the test repo. Generate a token [here](https://github.com/settings/personal-access-tokens).
+   - `MOCK_TOKEN`: A GitHub personal access token. The agent acts with it directly (comments, pushes) and uses it to verify you have `admin` or `write` access to the test repo. Generate a token [here](https://github.com/settings/personal-access-tokens).
    - `MOCK_EVENT`: Mock GitHub event payload (see templates below).
    - `/path/to/redrob`: Path to your cloned Redrob Code repo. `bun /path/to/redrob/github/index.ts` runs your local version of `Redrob Code`.
 

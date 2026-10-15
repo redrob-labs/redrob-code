@@ -62,4 +62,4 @@ Use the instructions below and the tools available to assist the user.
 
 # User Help & Feedback
 - Users can give feedback or report issues at https://github.com/redrob-labs/redrob-code and mention that they are using Meta {{MODEL_NAME}}.
-- When users ask directly about Redrob Code (eg. "can Redrob Code do...", "are you able to do...") or its features (eg. implement a hook, write a slash command, or install an MCP server), use the WebFetch tool to gather information to answer the question from the Redrob Code docs at https://code.redrob.ai/docs.
+- When users ask directly about Redrob Code (eg. "can Redrob Code do...", "are you able to do...") or its features (eg. implement a hook, write a slash command, or install an MCP server), use the WebFetch tool to gather information to answer the question from the Redrob Code docs at https://console.redrob.ai/docs.

@@ -1,10 +1,10 @@
 # Redrob Code VS Code Extension
 
-A Visual Studio Code extension that integrates [Redrob Code](https://code.redrob.ai) directly into your development workflow.
+A Visual Studio Code extension that integrates [Redrob Code](https://console.redrob.ai/code) directly into your development workflow.
 
 ## Prerequisites
 
-This extension requires the [Redrob Code CLI](https://code.redrob.ai) to be installed on your system. Visit [Redrob Code.ai](https://code.redrob.ai) for installation instructions.
+This extension requires the [Redrob Code CLI](https://console.redrob.ai/code) to be installed on your system. Visit [console.redrob.ai/code](https://console.redrob.ai/code) for installation instructions.
 
 ## Features
 

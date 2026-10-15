@@ -11,8 +11,8 @@ export const KiloPlugin = define({
           if (item.provider.api.package !== "@ai-sdk/openai-compatible") continue
           if (item.provider.api.url !== "https://api.kilo.ai/api/gateway") continue
           evt.provider.update(item.provider.id, (provider) => {
-            provider.request.headers["HTTP-Referer"] = "https://code.redrob.ai/"
-            provider.request.headers["X-Title"] = "redrob"
+            provider.request.headers["HTTP-Referer"] = "https://console.redrob.ai/code"
+            provider.request.headers["X-Title"] = "Redrob Code"
           })
         }
       }),

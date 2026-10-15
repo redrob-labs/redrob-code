@@ -803,7 +803,7 @@ export const dict = {
   "tip.agent_cycle": "Press {{shortcut}} to cycle between Build and Plan agents",
   "tip.undo": "Use {highlight}/undo{/highlight} to revert the last message and file changes",
   "tip.redo": "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
-  "tip.share": "Run {highlight}/share{/highlight} to create a public code.redrob.ai link",
+  "tip.share": "Run {highlight}/share{/highlight} to create a public share link",
   "tip.drag_drop": "Drag and drop images or PDFs into the terminal as context",
   "tip.paste_images": "Press {{shortcut}} to paste images from your clipboard into the prompt",
   "tip.editor": "Use {{command}} to compose messages in your external editor",

@@ -240,7 +240,7 @@ describe("SessionStatus.Info", () => {
         title: "Free limit reached",
         message: "Subscribe to RedrobCode Go.",
         label: "subscribe",
-        link: "https://code.redrob.ai/go",
+        link: "https://console.redrob.ai/billing",
       },
       next: 500,
     }

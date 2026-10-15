@@ -93,7 +93,7 @@ describe("HttpApi CORS", () => {
     Effect.gen(function* () {
       const handler = webHandler()
 
-      for (const origin of ["https://app.code.redrob.ai", "https://console.redrob.ai"]) {
+      for (const origin of ["https://app.redrob.ai", "https://console.redrob.ai"]) {
         const response = yield* Effect.promise(() =>
           handler(
             new Request(new URL("/global/config", "http://localhost"), { headers: { origin } }),
@@ -108,17 +108,17 @@ describe("HttpApi CORS", () => {
 
   it.live("allows a redrob.ai origin only when explicitly configured", () =>
     Effect.gen(function* () {
-      const handler = webHandler({ cors: ["https://app.code.redrob.ai"] })
+      const handler = webHandler({ cors: ["https://app.redrob.ai"] })
 
       const configured = yield* Effect.promise(() =>
         handler(
           new Request(new URL("/global/config", "http://localhost"), {
-            headers: { origin: "https://app.code.redrob.ai" },
+            headers: { origin: "https://app.redrob.ai" },
           }),
           HttpApiApp.context,
         ),
       )
-      expect(configured.headers.get("access-control-allow-origin")).toBe("https://app.code.redrob.ai")
+      expect(configured.headers.get("access-control-allow-origin")).toBe("https://app.redrob.ai")
 
       const other = yield* Effect.promise(() =>
         handler(

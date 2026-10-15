@@ -488,8 +488,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://code.redrob.ai/",
-            "X-Title": "redrob",
+            "HTTP-Referer": "https://console.redrob.ai/code",
+            "X-Title": "Redrob Code",
             "X-Source": "redrob",
           },
         },
@@ -499,8 +499,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://code.redrob.ai/",
-            "X-Title": "redrob",
+            "HTTP-Referer": "https://console.redrob.ai/code",
+            "X-Title": "Redrob Code",
           },
         },
       }),
@@ -509,8 +509,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: provider.source === "config",
         options: {
           headers: {
-            "HTTP-Referer": "https://code.redrob.ai/",
-            "X-Title": "redrob",
+            "HTTP-Referer": "https://console.redrob.ai/code",
+            "X-Title": "Redrob Code",
             "X-BILLING-INVOKE-ORIGIN": "RedrobCode",
           },
         },
@@ -520,7 +520,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "http-referer": "https://code.redrob.ai/",
+            "http-referer": "https://console.redrob.ai/code",
             "x-title": "redrob",
           },
         },
@@ -625,8 +625,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://code.redrob.ai/",
-            "X-Title": "redrob",
+            "HTTP-Referer": "https://console.redrob.ai/code",
+            "X-Title": "Redrob Code",
           },
         },
       }),
@@ -915,8 +915,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://code.redrob.ai/",
-            "X-Title": "redrob",
+            "HTTP-Referer": "https://console.redrob.ai/code",
+            "X-Title": "Redrob Code",
           },
         },
       }),

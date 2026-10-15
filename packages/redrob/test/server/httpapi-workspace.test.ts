@@ -399,7 +399,7 @@ describe("workspace HttpApi", () => {
             "content-type": "application/json",
             "x-redrob-workspace": "internal",
           },
-          body: JSON.stringify({ $schema: "https://code.redrob.ai/config.json" }),
+          body: JSON.stringify({ $schema: "https://console.redrob.ai/code/config.json" }),
         })
 
         const responseBody = yield* response.text
@@ -416,7 +416,7 @@ describe("workspace HttpApi", () => {
               "content-type": "application/json",
               "x-target-auth": "secret",
             }),
-            body: JSON.stringify({ $schema: "https://code.redrob.ai/config.json" }),
+            body: JSON.stringify({ $schema: "https://console.redrob.ai/code/config.json" }),
           },
         ])
         expect(forwarded[0]?.headers).not.toHaveProperty("x-redrob-directory")
