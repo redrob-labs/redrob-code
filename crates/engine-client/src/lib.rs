@@ -176,14 +176,25 @@ pub fn current() -> Option<Record> {
 }
 
 /// Where the engine binary is, by the engine's own resolution order: `REDROB_CODE_BIN`,
-/// `~/.redrob/bin/redrob`, then `redrob` on PATH.
+/// `~/.redrob/bin/redrob`, then (Windows) the installer's folder `%LOCALAPPDATA%\Redrob\bin`, then
+/// `redrob` on PATH. The Windows installers (the setup.exe and the MSI) put the engine in that
+/// LOCALAPPDATA folder and append it to the user's PATH; a process started before the install
+/// still has the old PATH, so the folder is tried by name.
 pub fn redrob_bin() -> PathBuf {
     if let Some(b) = std::env::var_os("REDROB_CODE_BIN").filter(|v| !v.is_empty()) {
         return PathBuf::from(b);
     }
+    let name = if cfg!(windows) { "redrob.exe" } else { "redrob" };
     if let Some(home) = dirs::home_dir() {
-        let name = if cfg!(windows) { "redrob.exe" } else { "redrob" };
         let p = home.join(".redrob").join("bin").join(name);
+        if p.is_file() {
+            return p;
+        }
+    }
+    if cfg!(windows)
+        && let Some(local) = dirs::data_local_dir()
+    {
+        let p = local.join("Redrob").join("bin").join(name);
         if p.is_file() {
             return p;
         }
