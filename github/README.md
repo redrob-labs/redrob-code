@@ -1,6 +1,6 @@
 # Redrob Code GitHub Action
 
-A GitHub Action that integrates [Redrob Code](https://code.redrob.ai) directly into your GitHub workflow.
+A GitHub Action that integrates [Redrob Code](https://console.redrob.ai/code) directly into your GitHub workflow.
 
 Mention `/redrob` in your comment, and Redrob Code will execute tasks within your GitHub Actions runner.
 
