@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Redrob Code MSI (WiX Toolset v5: `dotnet tool install -g wix` (5.0.2); no extensions).
+  Built by the release workflow:
+
+    wix build installer/windows/redrob-code.wxs -arch x64|arm64
+      -d Version=0.6.6 -d SourceBin=dist/redrob-windows-x64/bin -o dist/redrob-code-0.6.6-windows-x64.msi
+
+  Same install as the Inno Setup `redrob-code.iss` beside it, in the one package format Redrob
+  Launcher installs on Windows: per user (no UAC prompt), into %LOCALAPPDATA%\Redrob\bin, the engine
+  as `redrob.exe` with `redrob-code.exe` beside it (the launcher looks for `<app id>.exe`), and the
+  folder appended to the user's PATH. The launcher reads it back from Add/Remove Programs by
+  DisplayName "Redrob Code" and Publisher "Redrob", and finds the exe through InstallLocation.
+
+  Per-user packages can't use a file as a component's KeyPath (ICE38), so each component is
+  keyed on an HKCU value, and the folders we create are removed on uninstall (ICE64). MSI versions
+  are numeric: a prerelease tag's `-rc.1` is dropped before it gets here.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Redrob Code"
+      Manufacturer="Redrob"
+      Version="$(var.Version)"
+      UpgradeCode="8F4C6A21-9E3B-4D77-A5C8-2B1E7F0D9A64"
+      Scope="perUser"
+      Compressed="yes"
+      Language="1033">
+    <SummaryInformation Description="Redrob Code: the engine every Redrob app runs its AI through" Manufacturer="Redrob" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of Redrob Code is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Property Id="ARPURLINFOABOUT" Value="https://redrob.ai" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/redrob-labs/redrob-code/releases" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/redrob-labs/redrob-code" />
+    <!-- Add/Remove Programs' InstallLocation: the launcher reads it to find redrob-code.exe. -->
+    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="RedrobFolder" Name="Redrob">
+        <Directory Id="INSTALLFOLDER" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Redrob Code" Level="1">
+      <ComponentGroupRef Id="RedrobCodeFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="RedrobCodeFiles" Directory="INSTALLFOLDER">
+      <Component Id="RedrobExe" Guid="7D3F2E51-0C8A-4B6E-9F21-5A6C3D8E1B40">
+        <File Id="RedrobExe" Source="$(var.SourceBin)\redrob.exe" Name="redrob.exe" />
+        <RegistryValue Root="HKCU" Key="Software\Redrob\Redrob Code" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RemoveFolder Id="RemoveRedrobFolder" Directory="RedrobFolder" On="uninstall" />
+      </Component>
+      <!-- The same binary under the app's id, so the launcher (and a shell) can call it by name. -->
+      <Component Id="RedrobCodeExe" Guid="2B9E7C04-6F1D-4A3B-8E5C-0D7A9F2B6C13">
+        <File Id="RedrobCodeExe" Source="$(var.SourceBin)\redrob.exe" Name="redrob-code.exe" />
+        <RegistryValue Root="HKCU" Key="Software\Redrob\Redrob Code" Name="Version" Type="string" Value="$(var.Version)" KeyPath="yes" />
+      </Component>
+      <!-- The user's PATH gains the folder; removed again on uninstall. -->
+      <Component Id="RedrobCodePath" Guid="C4A1D8F6-3E2B-4C7D-9A0E-6B5F1D2C8E97">
+        <RegistryValue Root="HKCU" Key="Software\Redrob\Redrob Code" Name="OnPath" Type="integer" Value="1" KeyPath="yes" />
+        <Environment Id="RedrobCodeOnPath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" Permanent="no" System="no" Separator=";" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
