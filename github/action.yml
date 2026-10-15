@@ -58,7 +58,7 @@ runs:
     - name: Install redrob
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: curl -fsSL https://code.redrob.ai/install | bash
+      run: curl -fsSL https://console.redrob.ai/code/install.sh | sh
 
     - name: Add redrob to PATH
       shell: bash
