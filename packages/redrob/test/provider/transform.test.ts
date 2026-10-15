@@ -2768,7 +2768,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
       providerID: "opencode",
       api: {
         id: "redrob-test",
-        url: "https://api.code.redrob.ai",
+        url: "https://console.redrob.ai/api/backend/v1",
         npm: "@ai-sdk/openai-compatible",
       },
     }
@@ -2802,7 +2802,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
       providerID: "opencode",
       api: {
         id: "redrob-test",
-        url: "https://api.code.redrob.ai",
+        url: "https://console.redrob.ai/api/backend/v1",
         npm: "@ai-sdk/openai-compatible",
       },
     }

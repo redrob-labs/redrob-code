@@ -52,7 +52,7 @@ const bootstrapFixture = Effect.gen(function* () {
     Bun.write(
       path.join(dir, "redrob.json"),
       JSON.stringify({
-        $schema: "https://code.redrob.ai/config.json",
+        $schema: "https://console.redrob.ai/code/config.json",
         plugin: [pathToFileURL(pluginFile).href],
       }),
     ),

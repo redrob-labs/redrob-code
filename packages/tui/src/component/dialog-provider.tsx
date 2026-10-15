@@ -353,7 +353,7 @@ function ApiMethod(props: ApiMethodProps) {
             <box gap={1}>
               <text fg={theme.textMuted}>{language.t("provider.auth.redrob_go.description")}</text>
               <text fg={theme.text}>
-                {language.t("provider.auth.redrob_go.link", { url: "https://code.redrob.ai/go" })}
+                {language.t("provider.auth.redrob_go.link", { url: "https://console.redrob.ai/billing" })}
               </text>
             </box>
           ),

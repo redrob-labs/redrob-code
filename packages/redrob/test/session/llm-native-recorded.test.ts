@@ -328,7 +328,7 @@ const writeConfig = (directory: string, scenario: RecordedScenario, model: Model
   Effect.promise(() =>
     Bun.write(
       path.join(directory, "redrob.json"),
-      JSON.stringify({ $schema: "https://code.redrob.ai/config.json", ...scenario.config(model) }),
+      JSON.stringify({ $schema: "https://console.redrob.ai/code/config.json", ...scenario.config(model) }),
     ),
   )
 

@@ -96,7 +96,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     await Bun.write(
       path.join(dirpath, "redrob.json"),
       JSON.stringify({
-        $schema: "https://code.redrob.ai/config.json",
+        $schema: "https://console.redrob.ai/code/config.json",
         ...options.config,
       }),
     )
@@ -154,7 +154,7 @@ export function tmpdirScoped<E = never, R = never>(options?: {
       yield* Effect.promise(() =>
         fs.writeFile(
           path.join(dir, "redrob.json"),
-          JSON.stringify({ $schema: "https://code.redrob.ai/config.json", ...resolved }),
+          JSON.stringify({ $schema: "https://console.redrob.ai/code/config.json", ...resolved }),
         ),
       )
     }

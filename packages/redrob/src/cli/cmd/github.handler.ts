@@ -1,5 +1,4 @@
 import path from "path"
-import { exec } from "child_process"
 import { Filesystem } from "@/util/filesystem"
 import * as prompts from "@clack/prompts"
 import { map, pipe, sortBy, values } from "remeda"
@@ -140,7 +139,9 @@ type IssueQueryResponse = {
   }
 }
 
-const AGENT_USERNAME = "redrob-agent[bot]"
+// Commits the agent pushes are authored as the Actions bot, which is the identity GITHUB_TOKEN acts as.
+const GIT_AUTHOR_NAME = "github-actions[bot]"
+const GIT_AUTHOR_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 const AGENT_REACTION = "eyes"
 const WORKFLOW_FILE = ".github/workflows/redrob.yml"
 
@@ -165,7 +166,6 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
       UI.empty()
       prompts.intro("Install GitHub agent")
       const app = await getAppInfo()
-      await installGitHubApp()
 
       const providers = await Effect.runPromise(modelsDev.get()).then((p) => {
         // TODO: add guide for copilot, for now just hide it
@@ -200,9 +200,10 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
             `    1. Commit the \`${WORKFLOW_FILE}\` file and push`,
             step2,
             "",
-            "    3. Go to a GitHub issue and comment `/oc summarize` to see the agent in action",
+            "    3. Go to a GitHub issue and comment `/redrob summarize` to see the agent in action",
             "",
-            "   Learn more about the GitHub agent - https://code.redrob.ai/docs/github/#usage-examples",
+            "   The workflow authenticates with the repository's own GITHUB_TOKEN; no GitHub App is involved.",
+            "   Learn more about the GitHub agent - https://console.redrob.ai/docs/github",
           ].join("\n"),
         )
       }
@@ -277,59 +278,6 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
         return model
       }
 
-      async function installGitHubApp() {
-        const s = prompts.spinner()
-        s.start("Installing GitHub app")
-
-        // Get installation
-        const installation = await getInstallation()
-        if (installation) return s.stop("GitHub app already installed")
-
-        // Open browser
-        const url = "https://github.com/apps/redrob-agent"
-        const command =
-          process.platform === "darwin"
-            ? `open "${url}"`
-            : process.platform === "win32"
-              ? `start "" "${url}"`
-              : `xdg-open "${url}"`
-
-        exec(command, (error) => {
-          if (error) {
-            prompts.log.warn(`Could not open browser. Please visit: ${url}`)
-          }
-        })
-
-        // Wait for installation
-        s.message("Waiting for GitHub app to be installed")
-        const MAX_RETRIES = 120
-        let retries = 0
-        do {
-          const installation = await getInstallation()
-          if (installation) break
-
-          if (retries > MAX_RETRIES) {
-            s.stop(
-              `Failed to detect GitHub app installation. Make sure to install the app for the \`${app.owner}/${app.repo}\` repository.`,
-            )
-            throw new UI.CancelledError()
-          }
-
-          retries++
-          await sleep(1000)
-        } while (true) // oxlint-disable-line no-constant-condition
-
-        s.stop("Installed GitHub app")
-
-        async function getInstallation() {
-          return await fetch(
-            `https://api.code.redrob.ai/get_github_app_installation?owner=${app.owner}&repo=${app.repo}`,
-          )
-            .then((res) => res.json())
-            .then((data) => data.installation)
-        }
-      }
-
       async function addWorkflowFiles() {
         const envStr =
           provider === "amazon-bedrock"
@@ -355,10 +303,9 @@ jobs:
       startsWith(github.event.comment.body, '/redrob')
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -368,7 +315,8 @@ jobs:
       - name: Run redrob
         uses: redrob-labs/redrob-code/github@latest${envStr}
         with:
-          model: ${provider}/${model}`,
+          model: ${provider}/${model}
+          token: \${{ secrets.GITHUB_TOKEN }}`,
         )
 
         prompts.log.success(`Added workflow file: "${WORKFLOW_FILE}"`)
@@ -410,7 +358,6 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     const variant = process.env["VARIANT"] || undefined
     const runId = normalizeRunId()
     const share = normalizeShare()
-    const oidcBaseUrl = normalizeOidcBaseUrl()
     const { owner, repo } = context.repo
     // For repo events (schedule, workflow_dispatch), payload has no issue/comment data
     const payload = context.payload as
@@ -430,21 +377,24 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         ? (payload as IssueCommentEvent | IssuesEvent).issue.number
         : (payload as PullRequestEvent | PullRequestReviewCommentEvent).pull_request.number
     const runUrl = `/${owner}/${repo}/actions/runs/${runId}`
-    const shareBaseUrl = isMock ? "https://dev.code.redrob.ai" : "https://code.redrob.ai"
 
-    let appToken: string
+    // The token the workflow handed us: GITHUB_TOKEN or a PAT. There is no Redrob GitHub App and
+    // no token-exchange service, so this is the only credential the agent ever holds.
+    let githubToken: string
     let octoRest: Octokit
     let octoGraph: typeof graphql
     let gitConfig: string
     let session: { id: SessionID; title: string; version: string }
-    let shareId: string | undefined
+    // The share service returns the public URL; nothing here builds one from a base URL.
+    let shareUrl: string | undefined
+    // The reaction this run added, so it can be removed by id instead of by guessing the bot's login.
+    let reactionId: number | undefined
     let exitCode = 0
     let githubClientReady = false
     type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
     const triggerCommentId = isCommentEvent
       ? (payload as IssueCommentEvent | PullRequestReviewCommentEvent).comment.id
       : undefined
-    const useGithubToken = normalizeUseGithubToken()
     const commentType = isCommentEvent
       ? context.eventName === "pull_request_review_comment"
         ? "pr_review"
@@ -472,28 +422,15 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     }
 
     try {
-      if (useGithubToken) {
-        const githubToken = process.env["GITHUB_TOKEN"]
-        if (!githubToken) {
-          throw new Error(
-            "GITHUB_TOKEN environment variable is not set. When using use_github_token, you must provide GITHUB_TOKEN.",
-          )
-        }
-        appToken = githubToken
-      } else {
-        const actionToken = isMock ? args.token! : await getOidcToken()
-        appToken = await exchangeForAppToken(actionToken)
-      }
-      octoRest = new Octokit({ auth: appToken })
+      githubToken = resolveGithubToken()
+      octoRest = new Octokit({ auth: githubToken })
       octoGraph = graphql.defaults({
-        headers: { authorization: `token ${appToken}` },
+        headers: { authorization: `token ${githubToken}` },
       })
       githubClientReady = true
 
       const { userPrompt, promptFiles } = await getUserPrompt()
-      if (!useGithubToken) {
-        await configureGit(appToken)
-      }
+      await configureGit(githubToken)
       // Skip permission check and reactions for repo events (no actor to check, no issue to react to)
       if (isUserEvent) {
         await assertPermissions()
@@ -514,11 +451,11 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         }),
       )
       await subscribeSessionEvents()
-      shareId = await (async () => {
+      shareUrl = await (async () => {
         if (share === false) return
         if (!share && repoData.data.private) return
-        await runLocalEffect(sessionShare.share(session.id))
-        return session.id.slice(-8)
+        const shared = await runLocalEffect(sessionShare.share(session.id))
+        return shared.url
       })()
       console.log("redrob session", session.id)
 
@@ -578,7 +515,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
             const summary = await summarize(response)
             await pushToLocalBranch(summary, uncommittedChanges)
           }
-          const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
+          const hasShared = prData.comments.nodes.some((c) => shareUrl !== undefined && c.body.includes(shareUrl))
           await createComment(`${response}${footer({ image: !hasShared })}`)
           await removeReaction(commentType)
         }
@@ -596,7 +533,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
             const summary = await summarize(response)
             await pushToForkBranch(summary, prData, uncommittedChanges)
           }
-          const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${shareBaseUrl}/s/${shareId}`))
+          const hasShared = prData.comments.nodes.some((c) => shareUrl !== undefined && c.body.includes(shareUrl))
           await createComment(`${response}${footer({ image: !hasShared })}`)
           await removeReaction(commentType)
         }
@@ -655,10 +592,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
       // Also output the clean error message for the action to capture
       //core.setOutput("prepare_error", e.message);
     } finally {
-      if (!useGithubToken) {
-        await restoreGitConfig()
-        await revokeAppToken()
-      }
+      await restoreGitConfig()
     }
     process.exit(exitCode)
 
@@ -687,18 +621,17 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
       throw new Error(`Invalid share value: ${value}. Share must be a boolean.`)
     }
 
-    function normalizeUseGithubToken() {
-      const value = process.env["USE_GITHUB_TOKEN"]
-      if (!value) return false
-      if (value === "true") return true
-      if (value === "false") return false
-      throw new Error(`Invalid use_github_token value: ${value}. Must be a boolean.`)
-    }
-
-    function normalizeOidcBaseUrl(): string {
-      const value = process.env["OIDC_BASE_URL"]
-      if (!value) return "https://api.code.redrob.ai"
-      return value.replace(/\/+$/, "")
+    function resolveGithubToken() {
+      const value = args.token || process.env["GITHUB_TOKEN"]
+      if (value) return value
+      throw new Error(
+        [
+          "No GitHub token was provided.",
+          "Set the GITHUB_TOKEN environment variable (the action does this from its `token` input, which",
+          "defaults to the workflow's own secrets.GITHUB_TOKEN), or pass --token with a personal access token",
+          "that has `contents: write`, `pull-requests: write` and `issues: write`.",
+        ].join(" "),
+      )
     }
 
     function isIssueCommentEvent(
@@ -800,7 +733,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         // Download image
         const res = await fetch(url, {
           headers: {
-            Authorization: `Bearer ${appToken}`,
+            Authorization: `Bearer ${githubToken}`,
             Accept: "application/vnd.github.v3+json",
           },
         })
@@ -983,45 +916,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
       )
     }
 
-    async function getOidcToken() {
-      try {
-        return await core.getIDToken("redrob-github-action")
-      } catch (error) {
-        console.error("Failed to get OIDC token:", error instanceof Error ? error.message : error)
-        throw new Error(
-          "Could not fetch an OIDC token. Make sure to add `id-token: write` to your workflow permissions.",
-          { cause: error },
-        )
-      }
-    }
-
-    async function exchangeForAppToken(token: string) {
-      const response = token.startsWith("github_pat_")
-        ? await fetch(`${oidcBaseUrl}/exchange_github_app_token_with_pat`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ owner, repo }),
-          })
-        : await fetch(`${oidcBaseUrl}/exchange_github_app_token`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
-
-      if (!response.ok) {
-        throw new Error(
-          `App token exchange failed: ${response.status} ${response.statusText} - ${await response.text()}`,
-        )
-      }
-
-      const responseJson = (await response.json()) as { token: string }
-      return responseJson.token
-    }
-
-    async function configureGit(appToken: string) {
+    async function configureGit(token: string) {
       // Do not change git config when running locally
       if (isMock) return
 
@@ -1035,11 +930,11 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         await gitRun(["config", "--local", "--unset-all", config])
       }
 
-      const newCredentials = Buffer.from(`x-access-token:${appToken}`, "utf8").toString("base64")
+      const newCredentials = Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")
 
       await gitRun(["config", "--local", config, `AUTHORIZATION: basic ${newCredentials}`])
-      await gitRun(["config", "--global", "user.name", AGENT_USERNAME])
-      await gitRun(["config", "--global", "user.email", `${AGENT_USERNAME}@users.noreply.github.com`])
+      await gitRun(["config", "--global", "user.name", GIT_AUTHOR_NAME])
+      await gitRun(["config", "--global", "user.email", GIT_AUTHOR_EMAIL])
     }
 
     async function restoreGitConfig() {
@@ -1189,86 +1084,59 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     async function addReaction(commentType?: "issue" | "pr_review") {
       // Only called for non-schedule events, so triggerCommentId is defined
       console.log("Adding reaction...")
-      if (triggerCommentId) {
-        if (commentType === "pr_review") {
-          return await octoRest.rest.reactions.createForPullRequestReviewComment({
+      const created = await (async () => {
+        if (triggerCommentId) {
+          if (commentType === "pr_review") {
+            return await octoRest.rest.reactions.createForPullRequestReviewComment({
+              owner,
+              repo,
+              comment_id: triggerCommentId!,
+              content: AGENT_REACTION,
+            })
+          }
+          return await octoRest.rest.reactions.createForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
             content: AGENT_REACTION,
           })
         }
-        return await octoRest.rest.reactions.createForIssueComment({
+        return await octoRest.rest.reactions.createForIssue({
           owner,
           repo,
-          comment_id: triggerCommentId!,
+          issue_number: issueId!,
           content: AGENT_REACTION,
         })
-      }
-      return await octoRest.rest.reactions.createForIssue({
-        owner,
-        repo,
-        issue_number: issueId!,
-        content: AGENT_REACTION,
-      })
+      })()
+      reactionId = created.data.id
+      return created
     }
 
     async function removeReaction(commentType?: "issue" | "pr_review") {
       // Only called for non-schedule events, so triggerCommentId is defined
       console.log("Removing reaction...")
+      if (reactionId === undefined) return
       if (triggerCommentId) {
         if (commentType === "pr_review") {
-          const reactions = await octoRest.rest.reactions.listForPullRequestReviewComment({
-            owner,
-            repo,
-            comment_id: triggerCommentId!,
-            content: AGENT_REACTION,
-          })
-
-          const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
-          if (!eyesReaction) return
-
           return await octoRest.rest.reactions.deleteForPullRequestComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
-            reaction_id: eyesReaction.id,
+            reaction_id: reactionId,
           })
         }
-
-        const reactions = await octoRest.rest.reactions.listForIssueComment({
-          owner,
-          repo,
-          comment_id: triggerCommentId!,
-          content: AGENT_REACTION,
-        })
-
-        const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
-        if (!eyesReaction) return
-
         return await octoRest.rest.reactions.deleteForIssueComment({
           owner,
           repo,
           comment_id: triggerCommentId!,
-          reaction_id: eyesReaction.id,
+          reaction_id: reactionId,
         })
       }
-
-      const reactions = await octoRest.rest.reactions.listForIssue({
-        owner,
-        repo,
-        issue_number: issueId!,
-        content: AGENT_REACTION,
-      })
-
-      const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
-      if (!eyesReaction) return
-
       await octoRest.rest.reactions.deleteForIssue({
         owner,
         repo,
         issue_number: issueId!,
-        reaction_id: eyesReaction.id,
+        reaction_id: reactionId,
       })
     }
 
@@ -1354,16 +1222,17 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
 
     function footer(opts?: { image?: boolean }) {
       const image = (() => {
-        if (!shareId) return ""
+        if (!shareUrl) return ""
         if (!opts?.image) return ""
 
         const titleAlt = encodeURIComponent(session.title.substring(0, 50))
         const title64 = Buffer.from(session.title.substring(0, 700), "utf8").toString("base64")
+        const shareId = shareUrl.split("/").pop()
 
-        return `<a href="${shareBaseUrl}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/redrob-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
+        return `<a href="${shareUrl}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/redrob-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
       })()
-      const shareUrl = shareId ? `[redrob session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
-      return `\n\n${image}${shareUrl}[github run](${runUrl})`
+      const shareLink = shareUrl ? `[redrob session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+      return `\n\n${image}${shareLink}[github run](${runUrl})`
     }
 
     async function fetchRepo() {
@@ -1589,19 +1458,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
         ...(reviewData.length > 0 ? ["<pull_request_reviews>", ...reviewData, "</pull_request_reviews>"] : []),
         "</pull_request>",
       ].join("\n")
-    }
-
-    async function revokeAppToken() {
-      if (!appToken) return
-
-      await fetch("https://api.github.com/installation/token", {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${appToken}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      })
     }
   })
 })

@@ -82,7 +82,7 @@ describe("K-5 the skill that writes skills", () => {
           "Use when drafting release notes from a tag range, or when the user asks what changed between two versions.",
         )
         expect(skill.slash).toBe(true)
-        expect(skill.icon).toBe("https://code.redrob.ai/icon/release-notes.svg")
+        expect(skill.icon).toBe("https://console.redrob.ai/code/icon/release-notes.svg")
         expect(skill.autoInject).toBeDefined()
         expect(skill.autoInject!.keywords).toEqual(["release notes", "changelog"])
         expect(skill.autoInject!.url).toEqual(["github.com/*/releases/**"])

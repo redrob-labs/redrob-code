@@ -1,5 +1,5 @@
 {
-  "$schema": "https://code.redrob.ai/theme.json",
+  "$schema": "https://console.redrob.ai/code/theme.json",
   "defs": {
     "base03": "#002b36",
     "base02": "#073642",

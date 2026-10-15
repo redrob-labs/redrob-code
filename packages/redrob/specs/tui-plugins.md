@@ -18,7 +18,7 @@ Example:
 
 ```json
 {
-  "$schema": "https://code.redrob.ai/tui.json",
+  "$schema": "https://console.redrob.ai/code/tui.json",
   "theme": "smoke-theme",
   "leader_timeout": 2000,
   "keybinds": {

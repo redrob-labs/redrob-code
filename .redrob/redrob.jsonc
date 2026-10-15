@@ -1,5 +1,5 @@
 {
-  "$schema": "https://code.redrob.ai/config.json",
+  "$schema": "https://console.redrob.ai/code/config.json",
   "provider": {},
   "permission": {},
   "references": {

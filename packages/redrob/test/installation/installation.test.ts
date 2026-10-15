@@ -154,7 +154,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         yield* Installation.use.upgrade("curl", "9.9.9")
         expect(scriptCalls).toEqual([Installation.CONSOLE_INSTALL_SCRIPT_URL])
-        expect(scriptCalls.some((url) => url.includes("code.redrob.ai/install"))).toBe(false)
+        expect(scriptCalls.some((url) => !url.startsWith("https://console.redrob.ai/"))).toBe(false)
         // The name the script reads. `VERSION` is the other installer's variable and this one
         // ignores it, which is an upgrade that silently reinstalls whatever `latest` is.
         expect(scriptEnv[0]?.["REDROB_CODE_VERSION"]).toBe("9.9.9")

@@ -8,7 +8,6 @@ import { isRecord } from "@/util/record"
 export type Err = ReturnType<NamedError["toObject"]>
 
 export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go"
-export const GO_UPSELL_URL = "https://code.redrob.ai/go"
 /**
  * Where a console refusal sends the user. `/limits` shows the tier and its per-minute ceiling;
  * `/api-keys` is where a key's monthly cap is raised; `/billing` is where the account is topped up.
@@ -18,6 +17,8 @@ export const GO_UPSELL_URL = "https://code.redrob.ai/go"
 export const CONSOLE_LIMITS_URL = "https://console.redrob.ai/limits"
 export const CONSOLE_KEYS_URL = "https://console.redrob.ai/api-keys"
 export const CONSOLE_BILLING_URL = "https://console.redrob.ai/billing"
+/** Where the legacy "Go" upsell sends the user: there is no Go storefront, the Console billing page is it. */
+export const GO_UPSELL_URL = CONSOLE_BILLING_URL
 export type RetryReason =
   | "free_tier_limit"
   | "account_rate_limit"
@@ -233,7 +234,6 @@ export function retryable(error: Err, provider: string) {
     }
     if (error.data.responseBody?.includes("GoUsageLimitError")) {
       const body = parseJSON(error.data.responseBody)
-      const workspace = str(body?.metadata?.workspace)
       const limitName = str(body?.metadata?.limitName)
       const retryAfter = num(error.data.responseHeaders?.["retry-after"])
       const resetIn = iife(() => {
@@ -251,7 +251,7 @@ export function retryable(error: Err, provider: string) {
 
       const message = `${limitName ? `${limitName} usage limit` : "Usage limit"} reached. It will reset in ${resetIn}. To continue using this model now, enable usage from your available balance`
 
-      const link = `https://code.redrob.ai/workspace/${workspace}/go`
+      const link = CONSOLE_LIMITS_URL
       return {
         message: `${message} - ${link}`,
         action: {

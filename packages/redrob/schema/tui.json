@@ -1,0 +1,1176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://console.redrob.ai/code/tui.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "theme": {
+      "type": "string"
+    },
+    "keybinds": {
+      "type": "object",
+      "properties": {
+        "leader": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Leader key for keybind combinations"
+        },
+        "app_exit": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Exit the application"
+        },
+        "app_debug": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle debug panel"
+        },
+        "app_console": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle console"
+        },
+        "app_heap_snapshot": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Write heap snapshot"
+        },
+        "app_toggle_animations": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle animations"
+        },
+        "app_toggle_file_context": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle file context"
+        },
+        "app_toggle_diffwrap": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle diff wrapping"
+        },
+        "app_toggle_paste_summary": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle paste summary"
+        },
+        "app_toggle_session_directory_filter": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle session directory filtering"
+        },
+        "command_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List available commands"
+        },
+        "help_show": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open help dialog"
+        },
+        "docs_open": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open documentation"
+        },
+        "diff_open": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open diff viewer"
+        },
+        "diff_close": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Close diff viewer"
+        },
+        "diff_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle diff viewer item"
+        },
+        "diff_expand": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Expand diff viewer item"
+        },
+        "diff_expand_all": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Expand all diff viewer folders"
+        },
+        "diff_collapse": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Collapse diff viewer item"
+        },
+        "diff_switch_focus": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch diff viewer focus"
+        },
+        "diff_next_hunk": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to next diff hunk"
+        },
+        "diff_previous_hunk": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to previous diff hunk"
+        },
+        "diff_next_file": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to next diff file"
+        },
+        "diff_previous_file": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to previous diff file"
+        },
+        "diff_toggle_file_tree": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle diff viewer file tree"
+        },
+        "diff_single_patch": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle single patch view"
+        },
+        "diff_switch_source": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch diff viewer source"
+        },
+        "diff_toggle_view": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle diff viewer split or unified view"
+        },
+        "diff_help": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Show more diff viewer shortcuts"
+        },
+        "editor_open": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open external editor"
+        },
+        "language_switch": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch language"
+        },
+        "theme_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List available themes"
+        },
+        "theme_switch_mode": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch between light and dark theme mode"
+        },
+        "theme_mode_lock": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Lock or unlock theme mode"
+        },
+        "sidebar_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle sidebar"
+        },
+        "scrollbar_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle session scrollbar"
+        },
+        "status_view": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "View status"
+        },
+        "debug_view": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "View debug info"
+        },
+        "session_export": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Export session to editor"
+        },
+        "session_copy": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Copy session transcript"
+        },
+        "session_move": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move session"
+        },
+        "session_new": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Create a new session"
+        },
+        "session_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List all sessions"
+        },
+        "session_timeline": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Show session timeline"
+        },
+        "session_fork": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Fork session from message"
+        },
+        "session_rename": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Rename session"
+        },
+        "session_delete": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete session"
+        },
+        "session_share": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Share current session"
+        },
+        "session_unshare": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Unshare current session"
+        },
+        "session_interrupt": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Interrupt current session"
+        },
+        "session_background": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Background synchronous subagents"
+        },
+        "session_compact": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Compact the session"
+        },
+        "session_toggle_timestamps": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle message timestamps"
+        },
+        "session_toggle_generic_tool_output": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle generic tool output"
+        },
+        "session_queued_prompts": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Manage queued prompts"
+        },
+        "session_child_first": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Go to first child session"
+        },
+        "session_child_cycle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Go to next child session"
+        },
+        "session_child_cycle_reverse": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Go to previous child session"
+        },
+        "session_parent": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Go to parent session"
+        },
+        "session_pin_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Pin or unpin session in the session list"
+        },
+        "session_quick_switch_1": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 1"
+        },
+        "session_quick_switch_2": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 2"
+        },
+        "session_quick_switch_3": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 3"
+        },
+        "session_quick_switch_4": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 4"
+        },
+        "session_quick_switch_5": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 5"
+        },
+        "session_quick_switch_6": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 6"
+        },
+        "session_quick_switch_7": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 7"
+        },
+        "session_quick_switch_8": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 8"
+        },
+        "session_quick_switch_9": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch to session in quick slot 9"
+        },
+        "stash_delete": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete stash entry"
+        },
+        "model_provider_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open provider list from model dialog"
+        },
+        "model_favorite_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle model favorite status"
+        },
+        "model_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List available models"
+        },
+        "model_cycle_recent": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Next recently used model"
+        },
+        "model_cycle_recent_reverse": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Previous recently used model"
+        },
+        "model_cycle_favorite": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Next favorite model"
+        },
+        "model_cycle_favorite_reverse": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Previous favorite model"
+        },
+        "mcp_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List MCP servers"
+        },
+        "provider_connect": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Connect provider"
+        },
+        "console_org_switch": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch console organization"
+        },
+        "agent_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List agents"
+        },
+        "agent_cycle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Next agent"
+        },
+        "agent_cycle_reverse": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Previous agent"
+        },
+        "variant_cycle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Cycle model variants"
+        },
+        "variant_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List model variants"
+        },
+        "messages_page_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages up by one page"
+        },
+        "messages_page_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages down by one page"
+        },
+        "messages_line_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages up by one line"
+        },
+        "messages_line_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages down by one line"
+        },
+        "messages_half_page_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages up by half page"
+        },
+        "messages_half_page_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll messages down by half page"
+        },
+        "messages_first": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Navigate to first message"
+        },
+        "messages_last": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Navigate to last message"
+        },
+        "messages_next": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Navigate to next message"
+        },
+        "messages_previous": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Navigate to previous message"
+        },
+        "messages_last_user": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Navigate to last user message"
+        },
+        "messages_copy": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Copy message"
+        },
+        "messages_undo": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Undo message"
+        },
+        "messages_redo": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Redo message"
+        },
+        "messages_toggle_conceal": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle code block concealment in messages"
+        },
+        "tool_details": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle tool details visibility"
+        },
+        "display_thinking": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle thinking blocks visibility"
+        },
+        "prompt_submit": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Submit prompt"
+        },
+        "prompt_editor_context_clear": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Clear editor context"
+        },
+        "prompt_skills": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open skill selector"
+        },
+        "prompt_stash": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Stash prompt"
+        },
+        "prompt_stash_pop": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Pop stashed prompt"
+        },
+        "prompt_stash_list": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "List stashed prompts"
+        },
+        "workspace_set": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Set workspace"
+        },
+        "input_clear": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Clear input field"
+        },
+        "input_paste": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Paste from clipboard"
+        },
+        "input_submit": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Submit input"
+        },
+        "input_newline": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Insert newline in input"
+        },
+        "input_move_left": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move cursor left in input"
+        },
+        "input_move_right": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move cursor right in input"
+        },
+        "input_move_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move cursor up in input"
+        },
+        "input_move_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move cursor down in input"
+        },
+        "input_select_left": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select left in input"
+        },
+        "input_select_right": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select right in input"
+        },
+        "input_select_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select up in input"
+        },
+        "input_select_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select down in input"
+        },
+        "input_line_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to start of line in input"
+        },
+        "input_line_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to end of line in input"
+        },
+        "input_select_line_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to start of line in input"
+        },
+        "input_select_line_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to end of line in input"
+        },
+        "input_visual_line_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to start of visual line in input"
+        },
+        "input_visual_line_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to end of visual line in input"
+        },
+        "input_select_visual_line_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to start of visual line in input"
+        },
+        "input_select_visual_line_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to end of visual line in input"
+        },
+        "input_buffer_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to start of buffer in input"
+        },
+        "input_buffer_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to end of buffer in input"
+        },
+        "input_select_buffer_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to start of buffer in input"
+        },
+        "input_select_buffer_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select to end of buffer in input"
+        },
+        "input_delete_line": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete line in input"
+        },
+        "input_delete_to_line_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete to end of line in input"
+        },
+        "input_delete_to_line_start": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete to start of line in input"
+        },
+        "input_backspace": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Backspace in input"
+        },
+        "input_delete": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete character in input"
+        },
+        "input_undo": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Undo in input"
+        },
+        "input_redo": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Redo in input"
+        },
+        "input_word_forward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move word forward in input"
+        },
+        "input_word_backward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move word backward in input"
+        },
+        "input_select_word_forward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select word forward in input"
+        },
+        "input_select_word_backward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select word backward in input"
+        },
+        "input_delete_word_forward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete word forward in input"
+        },
+        "input_delete_word_backward": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete word backward in input"
+        },
+        "input_select_all": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select all in input"
+        },
+        "history_previous": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Previous history item"
+        },
+        "history_next": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Next history item"
+        },
+        "dialog.select.prev": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to previous dialog item"
+        },
+        "dialog.select.next": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to next dialog item"
+        },
+        "dialog.select.page_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move up one page in dialog"
+        },
+        "dialog.select.page_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move down one page in dialog"
+        },
+        "dialog.select.home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to first dialog item"
+        },
+        "dialog.select.end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to last dialog item"
+        },
+        "dialog.select.submit": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Submit selected dialog item"
+        },
+        "dialog.prompt.submit": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Submit dialog prompt"
+        },
+        "dialog.mcp.toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle MCP in MCP dialog"
+        },
+        "dialog.move_session.new": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "New project copy"
+        },
+        "dialog.move_session.delete": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Delete project copy"
+        },
+        "dialog.move_session.refresh": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Refresh project copies"
+        },
+        "prompt.autocomplete.prev": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to previous autocomplete item"
+        },
+        "prompt.autocomplete.next": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Move to next autocomplete item"
+        },
+        "prompt.autocomplete.hide": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Hide autocomplete"
+        },
+        "prompt.autocomplete.select": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Select autocomplete item"
+        },
+        "prompt.autocomplete.complete": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Complete autocomplete item"
+        },
+        "permission.prompt.fullscreen": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle permission prompt fullscreen"
+        },
+        "plugins.toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle plugin"
+        },
+        "dialog.plugins.install": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Install plugin from plugin dialog"
+        },
+        "terminal_suspend": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Suspend terminal"
+        },
+        "terminal_title_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle terminal title"
+        },
+        "tips_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle tips on home screen"
+        },
+        "plugin_manager": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Open plugin manager dialog"
+        },
+        "plugin_install": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Install plugin"
+        },
+        "which_key_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle which-key panel"
+        },
+        "which_key_layout_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Switch which-key layout"
+        },
+        "which_key_pending_toggle": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Toggle which-key pending preview"
+        },
+        "which_key_group_previous": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Previous which-key group"
+        },
+        "which_key_group_next": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Next which-key group"
+        },
+        "which_key_scroll_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll which-key up"
+        },
+        "which_key_scroll_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Scroll which-key down"
+        },
+        "which_key_page_up": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Page which-key up"
+        },
+        "which_key_page_down": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Page which-key down"
+        },
+        "which_key_home": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to first which-key binding"
+        },
+        "which_key_end": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Jump to last which-key binding"
+        }
+      },
+      "additionalProperties": false,
+      "description": "TUI keybinding overrides"
+    },
+    "plugin": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        ]
+      }
+    },
+    "plugin_enabled": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "leader_timeout": {
+      "exclusiveMinimum": 0,
+      "description": "Leader key timeout in milliseconds",
+      "type": "integer",
+      "maximum": 9007199254740991
+    },
+    "attention": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "notifications": {
+          "type": "boolean"
+        },
+        "sound": {
+          "type": "boolean"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "NaN"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "Infinity"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "-Infinity"
+              ]
+            }
+          ],
+          "allOf": [
+            {
+              "minimum": 0
+            },
+            {
+              "maximum": 1
+            }
+          ]
+        },
+        "sound_pack": {
+          "type": "string"
+        },
+        "sounds": {
+          "type": "object",
+          "properties": {
+            "default": {
+              "type": "string"
+            },
+            "question": {
+              "type": "string"
+            },
+            "permission": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "done": {
+              "type": "string"
+            },
+            "subagent_done": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Attention notification and sound settings"
+    },
+    "prompt": {
+      "type": "object",
+      "properties": {
+        "max_height": {
+          "exclusiveMinimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991,
+          "description": "Prompt textarea max height"
+        },
+        "max_width": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "enum": [
+                "auto"
+              ]
+            }
+          ],
+          "description": "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Prompt size settings"
+    },
+    "scroll_speed": {
+      "minimum": 0.001,
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string",
+          "enum": [
+            "NaN"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "Infinity"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "-Infinity"
+          ]
+        }
+      ],
+      "description": "TUI scroll speed"
+    },
+    "scroll_acceleration": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable scroll acceleration"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "description": "Scroll acceleration settings"
+    },
+    "diff_style": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "stacked"
+      ],
+      "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column"
+    },
+    "cursor": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "enum": [
+            "block",
+            "underline",
+            "line",
+            "default"
+          ],
+          "description": "Cursor shape. Use 'default' to preserve the terminal setting"
+        },
+        "blinking": {
+          "type": "boolean",
+          "description": "Whether the cursor blinks. Has no effect when style is 'default'"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Terminal cursor settings"
+    },
+    "mouse": {
+      "type": "boolean",
+      "description": "Enable or disable mouse capture (default: true)"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "KeybindsValue": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "enum": [
+            false
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "ctrl": {
+                  "type": "boolean"
+                },
+                "shift": {
+                  "type": "boolean"
+                },
+                "meta": {
+                  "type": "boolean"
+                },
+                "super": {
+                  "type": "boolean"
+                },
+                "hyper": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "ctrl": {
+                          "type": "boolean"
+                        },
+                        "shift": {
+                          "type": "boolean"
+                        },
+                        "meta": {
+                          "type": "boolean"
+                        },
+                        "super": {
+                          "type": "boolean"
+                        },
+                        "hyper": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "event": {
+                  "type": "string",
+                  "enum": [
+                    "press",
+                    "release"
+                  ]
+                },
+                "preventDefault": {
+                  "type": "boolean"
+                },
+                "fallthrough": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "ctrl": {
+                    "type": "boolean"
+                  },
+                  "shift": {
+                    "type": "boolean"
+                  },
+                  "meta": {
+                    "type": "boolean"
+                  },
+                  "super": {
+                    "type": "boolean"
+                  },
+                  "hyper": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "ctrl": {
+                            "type": "boolean"
+                          },
+                          "shift": {
+                            "type": "boolean"
+                          },
+                          "meta": {
+                            "type": "boolean"
+                          },
+                          "super": {
+                            "type": "boolean"
+                          },
+                          "hyper": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "event": {
+                    "type": "string",
+                    "enum": [
+                      "press",
+                      "release"
+                    ]
+                  },
+                  "preventDefault": {
+                    "type": "boolean"
+                  },
+                  "fallthrough": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "key"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "allowComments": true,
+  "allowTrailingCommas": true
+}

@@ -8,7 +8,7 @@ import { BgPulse } from "./bg-pulse"
 import { useBindings } from "../keymap"
 import { useLanguage } from "../context/language"
 
-const GO_URL = "https://code.redrob.ai/go"
+const GO_URL = "https://console.redrob.ai/billing"
 const PAD_X = 3
 const PAD_TOP_OUTER = 1
 const FOREGROUND_ALPHA = 186

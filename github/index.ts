@@ -144,7 +144,8 @@ let octoGraph: typeof graphql
 let commentId: number
 let gitConfig: string
 let session: { id: string; title: string; version: string }
-let shareId: string | undefined
+// The share service answers with the public URL of a shared session; nothing here constructs one.
+let shareUrl: string | undefined
 let exitCode = 0
 type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
 
@@ -153,7 +154,7 @@ try {
   assertPayloadKeyword()
   await assertRedrobConnected()
 
-  accessToken = await getAccessToken()
+  accessToken = getAccessToken()
   octoRest = new Octokit({ auth: accessToken })
   octoGraph = graphql.defaults({
     headers: { authorization: `token ${accessToken}` },
@@ -170,15 +171,15 @@ try {
   const repoData = await fetchRepo()
   session = await client.session.create<true>().then((r) => r.data)
   await subscribeSessionEvents()
-  shareId = await (async () => {
+  shareUrl = await (async () => {
     if (useEnvShare() === false) return
     if (!useEnvShare() && repoData.data.private) return
-    await client.session.share<true>({ path: session })
-    return session.id.slice(-8)
+    const shared = await client.session.share<true>({ path: session })
+    return shared.data.share?.url
   })()
   console.log("Redrob Code session", session.id)
-  if (shareId) {
-    console.log("Share link:", `${useShareUrl()}/s/${shareId}`)
+  if (shareUrl) {
+    console.log("Share link:", shareUrl)
   }
 
   // Handle 3 cases
@@ -196,7 +197,7 @@ try {
         const summary = await summarize(response)
         await pushToLocalBranch(summary)
       }
-      const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${useShareUrl()}/s/${shareId}`))
+      const hasShared = prData.comments.nodes.some((c) => shareUrl !== undefined && c.body.includes(shareUrl))
       await updateComment(`${response}${footer({ image: !hasShared })}`)
     }
     // Fork PR
@@ -208,7 +209,7 @@ try {
         const summary = await summarize(response)
         await pushToForkBranch(summary, prData)
       }
-      const hasShared = prData.comments.nodes.some((c) => c.body.includes(`${useShareUrl()}/s/${shareId}`))
+      const hasShared = prData.comments.nodes.some((c) => shareUrl !== undefined && c.body.includes(shareUrl))
       await updateComment(`${response}${footer({ image: !hasShared })}`)
     }
   }
@@ -248,7 +249,6 @@ try {
 } finally {
   server.close()
   await restoreGitConfig()
-  await revokeAppToken()
 }
 process.exit(exitCode)
 
@@ -386,42 +386,24 @@ function useIssueId() {
   return payload.issue.number
 }
 
-function useShareUrl() {
-  return isMock() ? "https://dev.code.redrob.ai" : "https://code.redrob.ai"
-}
 
-async function getAccessToken() {
-  const { repo } = useContext()
-
+// The action authenticates with a token the workflow hands it: `${{ secrets.GITHUB_TOKEN }}` or a
+// PAT. There is no Redrob GitHub App and no token-exchange service behind it, so a run without a
+// token cannot do anything useful and stops here with the fix spelled out.
+function getAccessToken() {
   const envToken = useEnvGithubToken()
   if (envToken) return envToken
-
-  let response
   if (isMock()) {
-    response = await fetch("https://api.code.redrob.ai/exchange_github_app_token_with_pat", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${useEnvMock().mockToken}`,
-      },
-      body: JSON.stringify({ owner: repo.owner, repo: repo.repo }),
-    })
-  } else {
-    const oidcToken = await core.getIDToken("opencode-github-action")
-    response = await fetch("https://api.code.redrob.ai/exchange_github_app_token", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${oidcToken}`,
-      },
-    })
+    const { mockToken } = useEnvMock()
+    if (mockToken) return mockToken
   }
-
-  if (!response.ok) {
-    const responseJson = (await response.json()) as { error?: string }
-    throw new Error(`App token exchange failed: ${response.status} ${response.statusText} - ${responseJson.error}`)
-  }
-
-  const responseJson = (await response.json()) as { token: string }
-  return responseJson.token
+  throw new Error(
+    [
+      "No GitHub token was provided.",
+      "Pass one to the action: `with: { token: ${{ secrets.GITHUB_TOKEN }} }` (or a personal access token with",
+      "`contents: write`, `pull-requests: write` and `issues: write`).",
+    ].join(" "),
+  )
 }
 
 async function createComment() {
@@ -674,7 +656,7 @@ async function chat(text: string, files: PromptFiles = []) {
   return match.text
 }
 
-async function configureGit(appToken: string) {
+async function configureGit(token: string) {
   // Do not change git config when running locally
   if (isMock()) return
 
@@ -683,7 +665,7 @@ async function configureGit(appToken: string) {
   const ret = await $`git config --local --get ${config}`
   gitConfig = ret.stdout.toString().trim()
 
-  const newCredentials = Buffer.from(`x-access-token:${appToken}`, "utf8").toString("base64")
+  const newCredentials = Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")
 
   await $`git config --local --unset-all ${config}`
   await $`git config --local ${config} "AUTHORIZATION: basic ${newCredentials}"`
@@ -875,16 +857,17 @@ function footer(opts?: { image?: boolean }) {
   const { providerID, modelID } = useEnvModel()
 
   const image = (() => {
-    if (!shareId) return ""
+    if (!shareUrl) return ""
     if (!opts?.image) return ""
 
     const titleAlt = encodeURIComponent(session.title.substring(0, 50))
     const title64 = Buffer.from(session.title.substring(0, 700), "utf8").toString("base64")
+    const shareId = shareUrl.split("/").pop()
 
-    return `<a href="${useShareUrl()}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
+    return `<a href="${shareUrl}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
   })()
-  const shareUrl = shareId ? `[Redrob Code session](${useShareUrl()}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
-  return `\n\n${image}${shareUrl}[github run](${useEnvRunUrl()})`
+  const shareLink = shareUrl ? `[Redrob Code session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+  return `\n\n${image}${shareLink}[github run](${useEnvRunUrl()})`
 }
 
 async function fetchRepo() {
@@ -1107,16 +1090,3 @@ function buildPromptDataForPR(pr: GitHubPullRequest) {
   ].join("\n")
 }
 
-async function revokeAppToken() {
-  if (!accessToken) return
-  console.log("Revoking app token...")
-
-  await fetch("https://api.github.com/installation/token", {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  })
-}

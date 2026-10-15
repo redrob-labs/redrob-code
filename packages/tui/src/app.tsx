@@ -842,7 +842,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "docs.open",
         title: language.t("command.docs.open"),
         run: () => {
-          open("https://code.redrob.ai/docs").catch(() => {})
+          open("https://console.redrob.ai/docs").catch(() => {})
           dialog.clear()
         },
         category: "System",

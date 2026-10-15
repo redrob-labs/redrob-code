@@ -21,10 +21,10 @@ inputs:
     description: "Custom prompt to override the default prompt"
     required: false
 
-  use_github_token:
-    description: "Use GITHUB_TOKEN directly instead of Redrob Code App token exchange. When true, skips OIDC and uses the GITHUB_TOKEN env var."
+  token:
+    description: "GitHub token the agent acts with: the workflow's own GITHUB_TOKEN (the default) or a personal access token with contents, pull-requests and issues write access. There is no GitHub App or token exchange; this token is the only credential."
     required: false
-    default: "false"
+    default: ${{ github.token }}
 
   mentions:
     description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/redrob,/rr,/opencode,/oc' -- the upstream phrases are kept for compatibility"
@@ -32,10 +32,6 @@ inputs:
 
   variant:
     description: "Model variant for provider-specific reasoning effort (e.g., high, max, minimal)"
-    required: false
-
-  oidc_base_url:
-    description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install. Defaults to https://api.code.redrob.ai"
     required: false
 
 runs:
@@ -73,7 +69,6 @@ runs:
         AGENT: ${{ inputs.agent }}
         SHARE: ${{ inputs.share }}
         PROMPT: ${{ inputs.prompt }}
-        USE_GITHUB_TOKEN: ${{ inputs.use_github_token }}
+        GITHUB_TOKEN: ${{ inputs.token }}
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
-        OIDC_BASE_URL: ${{ inputs.oidc_base_url }}

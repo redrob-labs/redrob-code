@@ -74,7 +74,7 @@ describe("plugin.workspace", () => {
           path.join(dir, "redrob.json"),
           JSON.stringify(
             {
-              $schema: "https://code.redrob.ai/config.json",
+              $schema: "https://console.redrob.ai/code/config.json",
               plugin: [pathToFileURL(file).href],
             },
             null,
