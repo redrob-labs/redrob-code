@@ -167,6 +167,39 @@ bridge.stop();
 is the loop. `heartbeat_app` answers `Ok(None)` on a 404 so the caller knows to register
 again.
 
+## Using `redrob-app-bridge` (Rust)
+
+When the app has no MCP server of its own, [`crates/redrob-app-bridge`](../crates/redrob-app-bridge)
+does both steps above in one call: it serves the given tools over streamable HTTP on
+`127.0.0.1` at a free port from a std thread (no async runtime, so an egui app calls it
+from its setup code) and registers through `bridge_app`, heartbeats included. Dropping the
+handle unregisters and stops the server.
+
+```rust
+use redrob_app_bridge::{AppBridge, AppBridgeConfig, Tool};
+use serde_json::json;
+
+let select = Tool::new(
+    "select",
+    "Select the layer with the given name.",
+    json!({ "type": "object", "properties": { "layer": { "type": "string" } }, "required": ["layer"] }),
+    move |args| {
+        let layer = args["layer"].as_str().ok_or("layer is required")?;
+        Ok(format!("selected {layer}")) // Err(text) reaches the agent as isError: true
+    },
+);
+let bridge = AppBridge::start(AppBridgeConfig {
+    version: Some(env!("CARGO_PKG_VERSION").into()),
+    ..AppBridgeConfig::new("shape", vec![select])
+})?;
+log::info!("bridged as {} at {}", bridge.id(), bridge.mcp_url());
+// On quit: bridge.stop(), or just drop it.
+```
+
+The server answers `initialize` (protocol `2025-03-26`), `ping`, `tools/list` and
+`tools/call`; notifications get a `202`. `AppBridge::start_with(&record, config)` takes a
+daemon the app already connected to.
+
 ## From the command line
 
 ```

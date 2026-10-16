@@ -1,0 +1,31 @@
+[package]
+name = "redrob-app-bridge"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/redrob-labs/redrob-code"
+description = "Expose a Rust Redrob app's tools to the shared Redrob Code daemon in one call: a loopback MCP server on a plain thread, registered and kept alive through redrob-engine-client"
+# The Rust side of the app bridge (docs/APP-BRIDGE.md). Sits beside the engine client it builds on
+# so that every Rust Redrob app (Shape, Canvas, Query, Recall, the launcher) bridges the same way.
+# No async runtime: the MCP server is a blocking HTTP loop on its own std thread, so an egui app
+# calls `AppBridge::start` from wherever it already is. Apps depend on it as a git dependency pinned
+# to the engine tag they target:
+#   redrob-app-bridge = { git = "https://github.com/redrob-labs/redrob-code", tag = "v0.6.3" }
+# No crates.io publish yet; flip `publish` when a registry token exists.
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[dependencies]
+redrob-engine-client = { path = "../engine-client" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+# Blocking HTTP/1.1 on a loopback socket: the daemon is the only client and it is on this machine.
+tiny_http = "0.12"
