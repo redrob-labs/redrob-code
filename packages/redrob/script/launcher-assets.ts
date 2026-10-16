@@ -47,14 +47,17 @@ export const STEM = "redrob-code"
 /**
  * The release manifest the launcher reads beside the installers (the launcher's
  * `docs/release-manifest.md`). `schema` is 1; `sharedAccount` is true because every release from
- * here on reads the launcher's shared account file as its last console-key fallback.
+ * here on reads the launcher's shared account file as its last console-key fallback; `icon` names
+ * the square PNG asset of the same release the launcher shows in its catalog -- the 512 px mark
+ * from `packages/identity`, which the release workflow stages beside the installers under this name.
  */
 export const MANIFEST_NAME = "redrob-launcher.json"
-export const MANIFEST = { schema: 1, sharedAccount: true } as const
+export const ICON_NAME = "redrob-code.png"
+export const MANIFEST = { schema: 1, sharedAccount: true, icon: ICON_NAME } as const
 
 /** The manifest's bytes, exactly as the launcher contract spells them, newline-terminated. */
 export function manifestText(): string {
-  return `{ "schema": ${MANIFEST.schema}, "sharedAccount": ${MANIFEST.sharedAccount} }\n`
+  return `{ "schema": ${MANIFEST.schema}, "sharedAccount": ${MANIFEST.sharedAccount}, "icon": "${MANIFEST.icon}" }\n`
 }
 
 /** Writes the manifest into `out` and returns its path. */
