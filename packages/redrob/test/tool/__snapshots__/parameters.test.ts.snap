@@ -387,6 +387,14 @@ exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
       ],
       "type": "string",
     },
+    "max_chars": {
+      "description": "Maximum characters to return (default 12000). Longer content is cut with a note.",
+      "type": "number",
+    },
+    "query": {
+      "description": "What you are looking for on the page (keywords). Only the lines around matches are returned, which keeps a long page cheap to read.",
+      "type": "string",
+    },
     "timeout": {
       "description": "Optional timeout in seconds (max 120)",
       "type": "number",
