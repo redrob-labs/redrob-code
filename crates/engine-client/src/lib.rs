@@ -266,6 +266,210 @@ pub fn stop() -> Result<bool, String> {
     Ok(read_record().is_none())
 }
 
+// ---------------------------------------------------------------------------------------------
+// The app bridge: hand the daemon the app's own MCP tool server. The engine's docs/APP-BRIDGE.md.
+// ---------------------------------------------------------------------------------------------
+
+/// One app whose MCP server the daemon is connected to (`GET /v1/apps`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct App {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "mcpUrl")]
+    pub mcp_url: String,
+    pub pid: u32,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+    #[serde(rename = "registeredAt")]
+    pub registered_at: u64,
+    #[serde(rename = "lastSeen")]
+    pub last_seen: u64,
+}
+
+/// `GET /v1/apps`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Apps {
+    pub apps: Vec<App>,
+    #[serde(rename = "ttlMs")]
+    pub ttl_ms: u64,
+}
+
+/// `POST /v1/apps/register` answered.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppRegistration {
+    pub id: String,
+    /// Heartbeat deadline in ms; send one at least every `ttl_ms / 2`.
+    #[serde(rename = "ttlMs")]
+    pub ttl_ms: u64,
+}
+
+/// What an app tells the daemon about itself when it bridges.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AppRegisterInput {
+    /// The engine exposes the app's tools under MCP server `app:<name>`.
+    pub name: String,
+    /// The app's MCP server. Must be loopback (127.0.0.1, localhost or [::1]) or the engine answers 400.
+    pub mcp_url: String,
+    /// Defaults to this process.
+    pub pid: Option<u32>,
+    pub version: Option<String>,
+    pub tools: Option<Vec<String>>,
+}
+
+impl AppRegisterInput {
+    pub fn new(name: impl Into<String>, mcp_url: impl Into<String>) -> Self {
+        Self { name: name.into(), mcp_url: mcp_url.into(), pid: None, version: None, tools: None }
+    }
+}
+
+fn send_json<T: for<'de> Deserialize<'de>>(record: &Record, method: &str, path: &str, body: Option<&str>) -> Result<Option<T>, String> {
+    let url = format!("{}{}", record.url.trim_end_matches('/'), path);
+    let auth = authorization(&record.secret);
+    let agent = agent();
+    let mut response = match (method, body) {
+        ("POST", Some(json)) => agent.post(&url).header("Authorization", &auth).header("Content-Type", "application/json").send(json),
+        ("POST", None) => agent.post(&url).header("Authorization", &auth).send_empty(),
+        ("DELETE", _) => agent.delete(&url).header("Authorization", &auth).call(),
+        _ => agent.get(&url).header("Authorization", &auth).call(),
+    }
+    .map_err(|e| e.to_string())?;
+    let status = response.status().as_u16();
+    match status {
+        200 => {
+            let text = response.body_mut().read_to_string().map_err(|e| e.to_string())?;
+            serde_json::from_str(&text).map(Some).map_err(|e| e.to_string())
+        }
+        204 => Ok(None),
+        404 => Ok(None),
+        _ => {
+            let text = response.body_mut().read_to_string().unwrap_or_default();
+            Err(format!("{method} {path} answered {status}{}", if text.is_empty() { String::new() } else { format!(": {text}") }))
+        }
+    }
+}
+
+/// `POST /v1/apps/register`: bridge the app. The daemon connects `mcp_url` as MCP server
+/// `app:<name>` for every session until the app unregisters or stops sending heartbeats.
+pub fn register_app(record: &Record, input: &AppRegisterInput) -> Result<AppRegistration, String> {
+    #[derive(Serialize)]
+    struct Body<'a> {
+        name: &'a str,
+        mcp_url: &'a str,
+        pid: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tools: Option<&'a [String]>,
+    }
+    let body = serde_json::to_string(&Body {
+        name: &input.name,
+        mcp_url: &input.mcp_url,
+        pid: input.pid.unwrap_or_else(std::process::id),
+        version: input.version.as_deref(),
+        tools: input.tools.as_deref(),
+    })
+    .map_err(|e| e.to_string())?;
+    send_json(record, "POST", "/v1/apps/register", Some(&body))?.ok_or_else(|| "the engine answered register with no body".to_string())
+}
+
+/// `POST /v1/apps/:id/heartbeat`. `Ok(None)` means the registration is gone (404): register again.
+pub fn heartbeat_app(record: &Record, id: &str) -> Result<Option<App>, String> {
+    send_json(record, "POST", &format!("/v1/apps/{id}/heartbeat"), None)
+}
+
+/// `DELETE /v1/apps/:id`. A registration already gone is not an error.
+pub fn unregister_app(record: &Record, id: &str) -> Result<(), String> {
+    send_json::<serde_json::Value>(record, "DELETE", &format!("/v1/apps/{id}"), None).map(|_| ())
+}
+
+/// `GET /v1/apps`: who is bridged.
+pub fn apps(record: &Record) -> Result<Apps, String> {
+    get_json(record, "/v1/apps")
+}
+
+/// A live bridge: registered, and kept alive by a heartbeat thread until [`AppBridge::stop`] or drop.
+pub struct AppBridge {
+    id: std::sync::Arc<std::sync::Mutex<String>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    record: Record,
+}
+
+impl AppBridge {
+    /// The current registration id; changes when the bridge had to register again.
+    pub fn id(&self) -> String {
+        self.id.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    /// Unregister and stop the heartbeat. Dropping the bridge does the same.
+    pub fn stop(mut self) {
+        self.shutdown();
+    }
+
+    fn shutdown(&mut self) {
+        if self.stop.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        if let Some(thread) = self.thread.take() {
+            thread.thread().unpark();
+            let _ = thread.join();
+        }
+        let id = self.id();
+        if let Err(e) = unregister_app(&self.record, &id) {
+            log::warn!("could not unbridge {id}: {e}");
+        }
+    }
+}
+
+impl Drop for AppBridge {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+/// Register the app's MCP server and keep the registration alive: a heartbeat every third of the
+/// daemon's TTL on a background thread, and a fresh registration when the daemon answers 404 (it
+/// restarted, or dropped us). Call `stop()` (or drop the bridge) when the app quits; an app that
+/// cannot (it crashed) is dropped after the TTL.
+pub fn bridge_app(record: &Record, input: AppRegisterInput) -> Result<AppBridge, String> {
+    let registration = register_app(record, &input)?;
+    let every = Duration::from_millis((registration.ttl_ms / 3).max(5_000));
+    let id = std::sync::Arc::new(std::sync::Mutex::new(registration.id));
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let thread = {
+        let id = id.clone();
+        let stop = stop.clone();
+        let record = record.clone();
+        std::thread::Builder::new()
+            .name(format!("redrob-app-bridge-{}", input.name))
+            .spawn(move || {
+                loop {
+                    std::thread::park_timeout(every);
+                    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    let current = id.lock().map(|g| g.clone()).unwrap_or_default();
+                    match heartbeat_app(&record, &current) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => match register_app(&record, &input) {
+                            Ok(again) => {
+                                if let Ok(mut g) = id.lock() {
+                                    *g = again.id;
+                                }
+                            }
+                            Err(e) => log::warn!("could not bridge {} again: {e}", input.name),
+                        },
+                        Err(e) => log::debug!("app bridge heartbeat failed: {e}"),
+                    }
+                }
+            })
+            .map_err(|e| format!("could not start the heartbeat thread: {e}"))?
+    };
+    Ok(AppBridge { id, stop, thread: Some(thread), record: record.clone() })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
