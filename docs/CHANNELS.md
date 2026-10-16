@@ -62,6 +62,13 @@ except to list key *names*. Transports see it through the `SecretStore` interfac
 (`get`, `set`, `delete`, `keys`), and only their own channel's slice, so the file store can be
 swapped for a keychain later without touching a transport.
 
+Secret key names, per channel:
+
+| Channel | Key | Value |
+| --- | --- | --- |
+| `slack` | `botToken` | Bot user OAuth token (`xoxb-…`) |
+| `slack` | `appToken` | App-level token with `connections:write` (`xapp-…`), for Socket Mode |
+
 ### `sessions.json`
 
 One conversation is one engine session. The key is `<channel>:<conversationId>` -- a Slack
@@ -132,7 +139,7 @@ mpim:history users:read`, bot events `app_mention message.im message.channels`. 
 prints `https://api.slack.com/apps?new_app=1&manifest_yaml=<urlencoded>`, which opens the "create
 app" page pre-filled.
 
-Setting up Slack, once the transport exists:
+Setting up Slack:
 
 ```sh
 redrob channels slack-manifest --url          # open it, create the app, install to the workspace
@@ -141,6 +148,17 @@ redrob channels set-secret slack appToken     # paste xapp-… (Socket Mode, con
 redrob channels allow slack U0123ABCDEF       # your Slack member id
 redrob channels enable slack
 ```
+
+## Transports
+
+### Slack (`@redrob-code/channels-slack`)
+
+Bolt 3 in Socket Mode. Handles `app_mention`, `message.im` and `message.channels` (channels the
+bot was invited to); drops messages with a `bot_id` or `subtype` and the bot's own posts, and
+delivers a mention once even though Slack sends it as two events. `conversationId` is
+`<channel>:<thread_ts ?? ts>` -- one thread is one session -- and replies go into that thread.
+`senderId` is the Slack user id. `maxChunk` 3900, no typing indicator. The manifest YAML lives
+in this package (`manifestYaml`, `manifestUrl()`).
 
 ## Transport contract (for Stage 2)
 
