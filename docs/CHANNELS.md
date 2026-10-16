@@ -62,6 +62,14 @@ except to list key *names*. Transports see it through the `SecretStore` interfac
 (`get`, `set`, `delete`, `keys`), and only their own channel's slice, so the file store can be
 swapped for a keychain later without touching a transport.
 
+Secret keys per channel:
+
+| Channel | Key | Holds |
+| --- | --- | --- |
+| `slack` | `botToken` | bot user OAuth token (`xoxb-…`) |
+| `slack` | `appToken` | app-level token for Socket Mode (`xapp-…`) |
+| `telegram` | `botToken` | the token @BotFather hands out (`packages/channels/telegram/README.md`) |
+
 ### `sessions.json`
 
 One conversation is one engine session. The key is `<channel>:<conversationId>` -- a Slack
