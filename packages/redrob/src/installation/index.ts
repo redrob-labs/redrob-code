@@ -131,7 +131,7 @@ export function isCurlInstall(execPath: string) {
  * directory deliberately, so recognising it is a location check like `isCurlInstall`'s rather than
  * a guess. It is a separate method because the two are not interchangeable at upgrade time: a
  * curl install is replaced by re-running `install.sh`, while this one is replaced by running the
- * next `redrob-code-x64-setup.exe`, and an in-place overwrite of a running `.exe` is not something
+ * next `redrob-code-<version>-windows-x64-setup.exe`, and an in-place overwrite of a running `.exe` is not something
  * Windows permits anyway.
  *
  * Without this the installer's own binary answers `unknown`, which refuses to upgrade at all -- so
@@ -256,7 +256,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             // So this is a refusal WITH a next step, which is different from `unknown`: we know
             // exactly how this install got here and exactly what replaces it.
             return yield* new UpgradeFailedError({
-              stderr: `redrob at ${process.execPath} was installed by the Windows installer, so it is upgraded by running the new installer rather than in place. Download redrob-code-x64-setup.exe for ${target} from ${RELEASE_DOWNLOAD_BASE}/tag/v${target}`,
+              stderr: `redrob at ${process.execPath} was installed by the Windows installer, so it is upgraded by running the new installer rather than in place. Download redrob-code-${target}-windows-x64-setup.exe from ${RELEASE_DOWNLOAD_BASE}/tag/v${target}`,
             })
           default:
             // `unknown`. Re-running install.sh over a binary we did not place would write into

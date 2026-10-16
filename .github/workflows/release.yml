@@ -301,7 +301,7 @@ jobs:
         dist/redrob-windows-x64/bin/redrob.exe
         dist/redrob-windows-x64-baseline/bin/redrob.exe
       REDROB_WINDOWS_INSTALLER: >-
-        dist/redrob-code-x64-setup.exe
+        dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe
         dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64.msi
         dist/redrob-code-${{ needs.version.outputs.version }}-windows-arm64.msi
     steps:
@@ -368,7 +368,7 @@ jobs:
             "/O${{ github.workspace }}\dist" `
             "${{ github.workspace }}\installer\windows\redrob-code.iss"
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
-          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
+          $setup = "${{ github.workspace }}\dist\redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe"
           if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
           Write-Host "built $((Get-Item $setup).Length) bytes"
 
@@ -430,7 +430,7 @@ jobs:
           name: release-windows
           path: |
             dist/redrob-windows-*.zip
-            dist/redrob-code-x64-setup.exe
+            dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe
             dist/redrob-code-*-windows-*.msi
           if-no-files-found: error
 

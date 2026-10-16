@@ -1,6 +1,6 @@
 ; Redrob Code Windows installer.
 ;
-; Produces `redrob-code-x64-setup.exe`: a click-to-run installer, so Windows is not the one
+; Produces `redrob-code-<version>-windows-x64-setup.exe`: a click-to-run installer, so Windows is not the one
 ; platform where the only way in is to paste a PowerShell one-liner. That asymmetry is what this
 ; exists to remove -- kiro.dev hands a Windows user a signed .exe, and until now this project
 ; handed them a `curl` command and an archive whose name did not even exist in the release.
@@ -60,7 +60,10 @@ UninstallDisplayName=Redrob Code
 UninstallFilesDir={localappdata}\Redrob\uninstall
 
 OutputDir=.
-OutputBaseFilename=redrob-code-x64-setup
+; `<repo>-<version>-<os>-<arch>-setup`: the asset-name convention Redrob Launcher parses
+; (`redrob-code-0.6.8-windows-x64-setup.exe`), so a Windows user and the launcher see the same
+; version in the file name as in the release tag.
+OutputBaseFilename=redrob-code-{#AppVersion}-windows-x64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
