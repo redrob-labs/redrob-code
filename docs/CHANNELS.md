@@ -70,6 +70,7 @@ Secret key names, per channel:
 | `slack` | `appToken` | App-level token with `connections:write` (`xapp-…`), for Socket Mode |
 | `telegram` | `botToken` | Token from @BotFather (`packages/channels/telegram/README.md`) |
 | `discord` | `botToken` | the bot token from the Developer Portal's Bot page |
+| `whatsapp` | *(none)* | Pairs by QR code; the session lives in `~/.redrob/channels/whatsapp/` (0700) |
 
 ### `sessions.json`
 
@@ -184,6 +185,20 @@ redrob channels set-secret discord botToken   # paste the token, Ctrl-D
 redrob channels allow discord 123456789012345678   # your Discord user id (Developer Mode -> Copy User ID)
 redrob channels enable discord
 ```
+
+### WhatsApp (`@redrob-code/channels-whatsapp`)
+
+An **unofficial** client over Baileys --
+WhatsApp may ban accounts that use it; see the package README):
+
+```sh
+redrob channels allow whatsapp 821012345678   # the sender's phone number, digits only
+redrob channels enable whatsapp
+```
+
+No secret is set. While unpaired the channel starts anyway and writes the QR code to
+`~/.redrob/channels/whatsapp/qr.png` (also `qr()` / `qrDataUrl()` on the transport); scan it from
+WhatsApp > Linked devices. `conversationId` is the chat JID, `senderId` the phone number.
 
 ## Transport contract (for Stage 2)
 
