@@ -1,15 +1,19 @@
 /**
  * The transports this build of the CLI can run, by channel name.
  *
- * Stage 1 ships the core and no transports, so the map is empty: an enabled channel in
- * `channels.json` shows up in `redrob channels status` as "no transport is available". Stage 2
- * adds one entry per platform, each a lazy factory so a platform SDK is only loaded when its
- * channel is enabled:
- *
- * ```ts
- * slack: () => new SlackTransport(),
- * ```
+ * One entry per platform. Each value is a factory, so a transport (and its platform client) is
+ * only instantiated when that channel is enabled in `channels.json`; a channel with no entry
+ * here shows up in `redrob channels status` as "no transport is available".
  */
 import type { ChannelName, TransportFactory } from "@redrob-code/channels-core"
+import { discordTransport } from "@redrob-code/channels-discord"
+import { slackTransport } from "@redrob-code/channels-slack"
+import { telegramTransport } from "@redrob-code/channels-telegram"
+import { whatsappTransport } from "@redrob-code/channels-whatsapp"
 
-export const channelFactories: Partial<Record<ChannelName, TransportFactory>> = {}
+export const channelFactories: Partial<Record<ChannelName, TransportFactory>> = {
+  slack: slackTransport,
+  telegram: telegramTransport,
+  discord: discordTransport,
+  whatsapp: whatsappTransport,
+}
