@@ -1,8 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@redrob-code/app-bridge",
+  "name": "@redrob-labs/app-bridge",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "https://github.com/redrob-labs/redrob-code.git", "directory": "packages/app-bridge" },
   "type": "module",
   "license": "MIT",
   "exports": {

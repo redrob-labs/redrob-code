@@ -1,4 +1,4 @@
-# @redrob-code/app-bridge
+# @redrob-labs/app-bridge
 
 One call that hands the Redrob daemon agent an app's tools. It serves the tools as an MCP
 server (streamable HTTP, `127.0.0.1`, random free port), finds or starts the shared daemon
@@ -7,7 +7,7 @@ registration alive (re-registering after a daemon restart) and unregisters on `s
 Protocol details: `docs/APP-BRIDGE.md`.
 
 ```ts
-import { startAppBridge } from "@redrob-code/app-bridge"
+import { startAppBridge } from "@redrob-labs/app-bridge"
 import { z } from "zod"
 
 const bridge = await startAppBridge({
