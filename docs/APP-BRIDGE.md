@@ -81,6 +81,33 @@ registration expired or the daemon restarted -- register again. Send one at leas
 }
 ```
 
+## Using `@redrob-code/app-bridge`
+
+The shortest path from JavaScript: `packages/app-bridge` serves the tools and does steps 1 to
+3 below in one call. It starts a streamable-HTTP MCP server on `127.0.0.1` (random free
+port), finds or starts the daemon with `connectOrStart`, registers through `bridgeApp` and
+unregisters on `stop()`.
+
+```ts
+import { startAppBridge } from "@redrob-code/app-bridge"
+import { z } from "zod"
+
+const bridge = await startAppBridge({
+  name: "canvas",
+  version: app.getVersion(),
+  tools: [
+    { name: "select", description: "Select a layer", input: z.object({ id: z.string() }), handler: ({ id }) => canvas.select(id) },
+    { name: "export_png", description: "Export the document as PNG", handler: async () => await canvas.exportPng() },
+  ],
+})
+// bridge.port, bridge.url, bridge.id; bridge.setTools([...]) sends tools/list_changed.
+app.on("before-quit", () => void bridge.stop())
+```
+
+`input` is a zod object schema (validated before the handler runs) or a JSON Schema object;
+a handler answers a string or an MCP `CallToolResult`. See the package README for the
+full API. The sections below are the pieces it is built from.
+
 ## From JavaScript (`@redrob-labs/sdk/daemon`)
 
 ```ts
