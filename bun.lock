@@ -27,6 +27,20 @@
         "turbo": "2.10.2",
       },
     },
+    "packages/channels/core": {
+      "name": "@redrob-code/channels-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@redrob-labs/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/cli": {
       "name": "@redrob-code/cli",
       "version": "0.0.0",
@@ -350,6 +364,7 @@
         "@opentui/solid": "catalog:",
         "@parcel/watcher": "2.5.1",
         "@pierre/diffs": "catalog:",
+        "@redrob-code/channels-core": "workspace:*",
         "@redrob-code/codemode": "workspace:*",
         "@redrob-code/llm": "workspace:*",
         "@redrob-code/plugin": "workspace:*",
@@ -1277,6 +1292,8 @@
     "@protobufjs/pool": ["@protobufjs/pool@1.1.0", "", {}, "sha512-0kELaGSIDBKvcgS4zkjz1PeddatrjYcmMWOlAuAPwAeccUrPHdUqo/J6LiymHHEiJT5NrF1UVwxY14f+fy4WQw=="],
 
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.2", "", {}, "sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug=="],
+
+    "@redrob-code/channels-core": ["@redrob-code/channels-core@workspace:packages/channels/core"],
 
     "@redrob-code/cli": ["@redrob-code/cli@workspace:packages/cli"],
 

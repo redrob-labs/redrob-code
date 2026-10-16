@@ -204,7 +204,10 @@ export class ChannelManager {
       run.connected = true
       this.errors.delete(name)
       try {
-        run.attachment = await attachToDaemon(daemon, `channel:${name}`, {
+        // The SDK's attach() reads only url and headers; the record it types is not needed here
+        // and the daemon's secret is already inside the Authorization header.
+        const connection = daemon as Parameters<typeof attachToDaemon>[0]
+        run.attachment = await attachToDaemon(connection, `channel:${name}`, {
           ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
         })
       } catch (error) {
