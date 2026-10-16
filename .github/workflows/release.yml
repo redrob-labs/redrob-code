@@ -496,6 +496,12 @@ jobs:
           bun ./packages/redrob/script/launcher-assets.ts \
             --version "$VERSION" --unsigned unsigned --signed signed --out assets
 
+      # The icon redrob-launcher.json names: the 512 px mark as one more release asset, so Redrob
+      # Launcher's catalog shows this release's own logo. The shared publish job is told the name
+      # (`launcher_icon`) and writes the manifest with it over every asset.
+      - name: Add the Redrob Launcher icon
+        run: cp packages/identity/mark-512x512.png assets/redrob-code.png
+
       # The marker install.sh and `redrob upgrade` read to answer "what is the newest
       # version". `releases/latest/download/VERSION` resolves to whichever release is newest,
       # so no client has to hardcode a tag and nothing here consults the GitHub API, which is
@@ -614,6 +620,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       title: Redrob Code
       launcher_manifest: true
+      launcher_icon: redrob-code.png
       publish: true
       tag: ${{ needs.version.outputs.tag }}
       target: ${{ needs.version.outputs.sha }}

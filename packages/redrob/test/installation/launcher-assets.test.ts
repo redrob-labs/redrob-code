@@ -107,19 +107,19 @@ describe("launcher asset names", () => {
 
   /**
    * `redrob-launcher.json` is how the launcher learns, without a launcher release, that this release
-   * reads its shared account file (the launcher's `docs/release-manifest.md`). Exactly `{ "schema": 1,
-   * "sharedAccount": true }`: a wrong schema is ignored by the launcher and a false flag hides the
-   * sign-in, both silently, so the bytes are pinned here.
+   * reads its shared account file and which asset is its icon (the launcher's `docs/release-manifest.md`).
+   * Exactly `{ "schema": 1, "sharedAccount": true, "icon": "redrob-code.png" }`: a wrong schema is
+   * ignored by the launcher and a false flag hides the sign-in, both silently, so the bytes are pinned here.
    */
   describe("release manifest", () => {
     test("is the launcher contract, verbatim", () => {
       expect(MANIFEST_NAME).toBe("redrob-launcher.json")
-      expect(manifestText()).toBe('{ "schema": 1, "sharedAccount": true }\n')
+      expect(manifestText()).toBe('{ "schema": 1, "sharedAccount": true, "icon": "redrob-code.png" }\n')
       const parsed = JSON.parse(manifestText())
-      expect(parsed).toEqual({ schema: 1, sharedAccount: true })
+      expect(parsed).toEqual({ schema: 1, sharedAccount: true, icon: "redrob-code.png" })
       expect(parsed.schema).toBe(1)
       expect(parsed.sharedAccount).toBe(true)
-      expect(MANIFEST).toEqual({ schema: 1, sharedAccount: true })
+      expect(MANIFEST).toEqual({ schema: 1, sharedAccount: true, icon: "redrob-code.png" })
     })
 
     test("a release directory without it fails the check", () => {
