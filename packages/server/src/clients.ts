@@ -77,7 +77,9 @@ export function list(): Client[] {
 let lastRequestAt: number | undefined
 let inFlight = 0
 
-const STATUS_PATHS = ["/api/health", "/api/clients"]
+// `/v1/apps` too: a bridged app holds an attachment of its own, so its heartbeats are not what
+// keeps the daemon up, and the launcher polls the list.
+const STATUS_PATHS = ["/api/health", "/api/clients", "/v1/apps"]
 
 /** Whether a request to this path keeps the daemon alive. */
 export function countsAsActivity(path: string): boolean {
