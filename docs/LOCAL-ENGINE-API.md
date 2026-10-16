@@ -248,6 +248,17 @@ run `redrob upgrade` instead of failing with a transport error.
   when a field is removed or its type changes. Without that test "we keep
   compatibility" is a sentence, not a guarantee.
 
+### The app bridge: the engine drives the app
+
+The routes above let an app call the engine. The reverse -- the agent driving a running
+app -- is the app bridge: the app serves its own MCP tool server on loopback and
+registers it with the daemon (`POST /v1/apps/register`, heartbeat, `DELETE`). The
+daemon connects it as MCP server `app:<name>` for every session and drops it when the
+app unregisters or its heartbeats stop; a bridged app also counts as attached, so the
+idle-exit clock does not run while it is up. Only loopback URLs are accepted and
+nothing is written to the user's config. Full contract, payloads and SDK/Rust examples:
+[docs/APP-BRIDGE.md](APP-BRIDGE.md). `redrob apps list` shows who is bridged.
+
 ## 4. Migration
 
 | product                                    | change                                                                                                                       |
