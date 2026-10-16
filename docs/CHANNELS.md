@@ -68,6 +68,7 @@ Secret key names, per channel:
 | --- | --- | --- |
 | `slack` | `botToken` | Bot user OAuth token (`xoxb-…`) |
 | `slack` | `appToken` | App-level token with `connections:write` (`xapp-…`), for Socket Mode |
+| `telegram` | `botToken` | Token from @BotFather (`packages/channels/telegram/README.md`) |
 
 ### `sessions.json`
 
