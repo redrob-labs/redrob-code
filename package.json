@@ -19,6 +19,7 @@
   "workspaces": {
     "packages": [
       "packages/*",
+      "packages/channels/*",
       "packages/sdk/js",
       "packages/slack"
     ],
