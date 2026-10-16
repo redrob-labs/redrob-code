@@ -81,7 +81,7 @@ registration expired or the daemon restarted -- register again. Send one at leas
 }
 ```
 
-## Using `@redrob-labs/app-bridge`
+## Using `@redrob-code/app-bridge`
 
 The shortest path from JavaScript: `packages/app-bridge` serves the tools and does steps 1 to
 3 below in one call. It starts a streamable-HTTP MCP server on `127.0.0.1` (random free
@@ -89,7 +89,7 @@ port), finds or starts the daemon with `connectOrStart`, registers through `brid
 unregisters on `stop()`.
 
 ```ts
-import { startAppBridge } from "@redrob-labs/app-bridge"
+import { startAppBridge } from "@redrob-code/app-bridge"
 import { z } from "zod"
 
 const bridge = await startAppBridge({
