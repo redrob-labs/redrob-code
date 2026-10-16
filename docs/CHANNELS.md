@@ -103,9 +103,33 @@ attached to the daemon as a client named `channel:<name>` (so `GET /api/clients`
 When a reload turns the last channel off, the `--idle-exit` policy is restored. `SIGTERM`/`SIGINT`
 stop the transports before the record is removed.
 
-A channel enabled in the file but with no transport in the build (Stage 1: all of them) is
-reported in `status` as `available: false` with `lastError: "no transport is available for this
-channel in this build"`; it does not keep the daemon up.
+A channel enabled in the file but with no transport in the build is reported in `status` as
+`available: false` with `lastError: "no transport is available for this channel in this build"`;
+it does not keep the daemon up.
+
+## Start at login
+
+A bot that is on must survive a reboot, so the daemon registers itself to start at login while at
+least one channel is enabled (`packages/redrob/src/daemon/autostart.ts`):
+
+| Platform | Registration | Where |
+| --- | --- | --- |
+| Linux | systemd user unit, `enable --now` | `~/.config/systemd/user/redrob-engine.service` |
+| macOS | launchd agent, `launchctl load -w` | `~/Library/LaunchAgents/ai.redrob.engine.plist` |
+| Windows | Task Scheduler task, trigger `ONLOGON`, run level limited | task `Redrob Engine` |
+
+The unit runs `<this redrob binary> serve --register --idle-exit 0`, so the resident daemon is the
+same build as the CLI that installed it. `redrob channels enable` installs the registration the
+first time a channel turns on and `redrob channels disable` removes it when no channel is left
+enabled -- a machine that never enables a channel never gets a resident process. A failure to
+register (no `systemctl` on PATH, for instance) is printed as a warning and does not undo the
+channel change. By hand:
+
+```
+redrob service install      # register and start now
+redrob service uninstall    # remove the registration (Linux/Windows leave a running daemon up; launchd stops it)
+redrob service status       # also says whether login start is registered
+```
 
 ## HTTP
 

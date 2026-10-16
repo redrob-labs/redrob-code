@@ -8,6 +8,7 @@
 import { cmd } from "./cmd"
 import { UI } from "@/cli/ui"
 import { Daemon } from "@/daemon/connect"
+import * as Autostart from "@/daemon/autostart"
 import { Config, FileSecretStore, type ChannelName } from "@redrob-code/channels-core"
 
 const NAMES = Config.CHANNEL_NAMES
@@ -56,6 +57,25 @@ const after = (reloaded: boolean) =>
       ? `${UI.Style.TEXT_DIM}daemon reloaded${UI.Style.TEXT_NORMAL}`
       : `${UI.Style.TEXT_DIM}no running daemon; takes effect on its next start${UI.Style.TEXT_NORMAL}`,
   )
+
+/**
+ * Login start follows the config: the first enabled channel registers it, the last disabled one
+ * removes it. A failure here (no systemctl, no launchctl) is reported, not fatal: the channel
+ * change itself already took.
+ */
+async function syncAutostart(config: Config.ChannelsConfig): Promise<void> {
+  const result = await Autostart.sync(Config.enabledChannels(config).length)
+  if (result.error) {
+    UI.println(`${UI.Style.TEXT_WARNING}login start not updated: ${result.error} (redrob service install)${UI.Style.TEXT_NORMAL}`)
+    return
+  }
+  if (!result.changed) return
+  UI.println(
+    result.state.installed
+      ? `${UI.Style.TEXT_DIM}engine will start at login (${result.state.location})${UI.Style.TEXT_NORMAL}`
+      : `${UI.Style.TEXT_DIM}no channel left on; engine no longer starts at login${UI.Style.TEXT_NORMAL}`,
+  )
+}
 
 export const SLACK_SCOPES = [
   "app_mentions:read",
@@ -177,6 +197,7 @@ export const ChannelsCommand = cmd({
               UI.println(`${UI.Style.TEXT_WARNING}allowlist is empty: nobody can talk to it yet (redrob channels allow ${name} <senderId>)${UI.Style.TEXT_NORMAL}`)
             }
             after(await reload())
+            await syncAutostart(config)
           },
         }),
       )
@@ -187,8 +208,9 @@ export const ChannelsCommand = cmd({
           builder: (yargs) => yargs.positional("name", { type: "string", demandOption: true, choices: NAMES }),
           handler: async (args) => {
             const name = channelName(args.name)
-            await Config.update((c) => Config.setChannel(c, name, { enabled: false }))
+            const config = await Config.update((c) => Config.setChannel(c, name, { enabled: false }))
             after(await reload())
+            await syncAutostart(config)
           },
         }),
       )
