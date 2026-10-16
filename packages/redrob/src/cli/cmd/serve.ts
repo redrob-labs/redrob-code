@@ -70,11 +70,34 @@ export const ServeCommand = effectCmd({
       const idleExitMs = args["idle-exit"] > 0 ? args["idle-exit"] * 60_000 : undefined
       setIdleExitAfterMs(idleExitMs)
 
+      // Chat channels (Slack, Telegram, ...) run inside the daemon. While any is on, the daemon
+      // must stay up for the bot to answer, so idle exit is off for as long as one is running;
+      // it is restored when a reload turns the last one off.
+      const Channels = yield* Effect.promise(() => import("@redrob-code/channels-core"))
+      const ServerChannels = yield* Effect.promise(() => import("@redrob-code/server/channels"))
+      const { channelFactories } = yield* Effect.promise(() => import("../../channels/registry"))
+      const channels = Channels.manager({ daemon: { url: `http://${server.hostname}:${server.port}`, headers: Registry.headers(secret) } })
+      const applyIdlePolicy = () => setIdleExitAfterMs(channels.active ? undefined : idleExitMs)
+      ServerChannels.setController({
+        status: () => channels.status(),
+        reload: async () => {
+          const running = await channels.reload()
+          applyIdlePolicy()
+          return running
+        },
+      })
+      const started = yield* Effect.promise(() => channels.startEnabledChannels(channelFactories).catch(() => []))
+      applyIdlePolicy()
+      if (started.length > 0) console.log(`channels: ${started.join(", ")}`)
+
       let leaving = false
       const leave = (code: number) => {
         if (leaving) return
         leaving = true
-        void Registry.remove(id)
+        void channels
+          .stopAll()
+          .catch(() => undefined)
+          .then(() => Registry.remove(id))
           .catch(() => undefined)
           .then(() => server.stop(true))
           .finally(() => process.exit(code))
@@ -89,6 +112,7 @@ export const ServeCommand = effectCmd({
           if (current && current.id !== id) return leave(0)
           Clients.sweep()
           const idle = Clients.idleFor()
+          if (channels.active) return
           if (idleExitMs !== undefined && idle !== undefined && idle >= idleExitMs) leave(0)
         })
       }, 10_000)

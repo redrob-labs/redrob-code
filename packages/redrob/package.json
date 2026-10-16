@@ -87,6 +87,7 @@
     "@octokit/rest": "catalog:",
     "@openauthjs/openauth": "catalog:",
     "@redrob-code/codemode": "workspace:*",
+    "@redrob-code/channels-core": "workspace:*",
     "@redrob-code/llm": "workspace:*",
     "@redrob-code/plugin": "workspace:*",
     "@redrob-code/protocol": "workspace:*",

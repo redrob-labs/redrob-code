@@ -77,7 +77,7 @@ export function list(): Client[] {
 let lastRequestAt: number | undefined
 let inFlight = 0
 
-const STATUS_PATHS = ["/api/health", "/api/clients"]
+const STATUS_PATHS = ["/api/health", "/api/clients", "/channels/status"]
 
 /** Whether a request to this path keeps the daemon alive. */
 export function countsAsActivity(path: string): boolean {
