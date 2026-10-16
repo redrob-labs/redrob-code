@@ -48,7 +48,7 @@ describe("launcher asset names", () => {
     for (const bad of [
       "redrob-linux-x64.tar.gz", // no version, stem `redrob`
       "redrob-darwin-arm64.zip",
-      "redrob-code-x64-setup.exe", // the launcher does not install an exe
+      "redrob-code-0.5.1-windows-x64-setup.exe", // the launcher does not install an exe
       "redrob-code-v0.5.1-linux-x86_64.tar.gz", // leading v
       "redrob-code-0.5.1-linux-x64.tar.gz", // x64 is not a linux token
       "redrob-code-0.5.1-linux-amd64.tar.gz",
