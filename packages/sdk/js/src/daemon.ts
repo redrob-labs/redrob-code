@@ -250,3 +250,136 @@ export async function attach(
     },
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The app bridge: hand the daemon the app's own MCP tool server. docs/APP-BRIDGE.md.
+// ---------------------------------------------------------------------------------------------
+
+export type BridgedApp = {
+  readonly id: string
+  readonly name: string
+  readonly mcpUrl: string
+  readonly pid: number
+  readonly version?: string
+  readonly tools?: readonly string[]
+  readonly registeredAt: number
+  readonly lastSeen: number
+}
+
+export type BridgedAppList = { readonly apps: readonly BridgedApp[]; readonly ttlMs: number }
+
+export type AppRegistration = { readonly id: string; readonly ttlMs: number }
+
+export type AppRegisterInput = {
+  /** The app's name; the engine exposes its tools under MCP server `app:<name>`. */
+  readonly name: string
+  /** The app's MCP server. Must be loopback (127.0.0.1, localhost or [::1]) or the engine answers 400. */
+  readonly mcpUrl: string
+  readonly pid?: number
+  readonly version?: string
+  readonly tools?: readonly string[]
+}
+
+function appsBase(connection: DaemonConnection): string {
+  return `${connection.url.replace(/\/+$/, "")}/v1/apps`
+}
+
+async function refuse(response: Response, what: string): Promise<never> {
+  const body = await response.text().catch(() => "")
+  throw new Error(`The engine refused to ${what} (${response.status})${body ? `: ${body}` : ""}`)
+}
+
+export const apps = {
+  /** `POST /v1/apps/register`. */
+  async register(
+    connection: DaemonConnection,
+    input: AppRegisterInput,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<AppRegistration> {
+    const response = await fetchImpl(`${appsBase(connection)}/register`, {
+      method: "POST",
+      headers: { ...connection.headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        mcp_url: input.mcpUrl,
+        pid: input.pid ?? process.pid,
+        ...(input.version !== undefined ? { version: input.version } : {}),
+        ...(input.tools !== undefined ? { tools: input.tools } : {}),
+      }),
+    })
+    if (!response.ok) return refuse(response, "bridge the app")
+    return (await response.json()) as AppRegistration
+  },
+
+  /** `POST /v1/apps/:id/heartbeat`. Resolves to undefined on 404: the registration is gone, register again. */
+  async heartbeat(connection: DaemonConnection, id: string, fetchImpl: typeof fetch = fetch): Promise<BridgedApp | undefined> {
+    const response = await fetchImpl(`${appsBase(connection)}/${encodeURIComponent(id)}/heartbeat`, {
+      method: "POST",
+      headers: connection.headers,
+    })
+    if (response.status === 404) return undefined
+    if (!response.ok) return refuse(response, "keep the bridge alive")
+    return (await response.json()) as BridgedApp
+  },
+
+  /** `DELETE /v1/apps/:id`. */
+  async unregister(connection: DaemonConnection, id: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+    const response = await fetchImpl(`${appsBase(connection)}/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: connection.headers,
+    })
+    if (!response.ok && response.status !== 404) return refuse(response, "unbridge the app")
+  },
+
+  /** `GET /v1/apps`. */
+  async list(connection: DaemonConnection, fetchImpl: typeof fetch = fetch): Promise<BridgedAppList> {
+    const response = await fetchImpl(appsBase(connection), { headers: connection.headers })
+    if (!response.ok) return refuse(response, "list bridged apps")
+    return (await response.json()) as BridgedAppList
+  },
+}
+
+export type AppBridge = {
+  /** The current registration id; changes when the bridge had to register again. */
+  readonly id: string
+  /** Unregister and stop the heartbeat. Safe to call twice. */
+  readonly stop: () => Promise<void>
+}
+
+/**
+ * Register the app's MCP server and keep the registration alive: a heartbeat every third of the
+ * daemon's TTL, and a fresh registration when the daemon answers 404 (it restarted, or dropped
+ * us). Call `stop()` when the app quits; an app that cannot (it crashed) is dropped after the TTL.
+ */
+export async function bridgeApp(
+  connection: DaemonConnection,
+  input: AppRegisterInput,
+  options: { readonly fetch?: typeof fetch } = {},
+): Promise<AppBridge> {
+  const fetchImpl = options.fetch ?? fetch
+  const registration = await apps.register(connection, input, fetchImpl)
+  let id = registration.id
+  const every = Math.max(5_000, Math.floor(registration.ttlMs / 3))
+  let stopped = false
+  const beat = async () => {
+    if (stopped) return
+    const alive = await apps.heartbeat(connection, id, fetchImpl).catch(() => null)
+    if (alive === undefined && !stopped) {
+      const again = await apps.register(connection, input, fetchImpl).catch(() => undefined)
+      if (again) id = again.id
+    }
+  }
+  const timer = setInterval(() => void beat(), every)
+  timer.unref?.()
+  return {
+    get id() {
+      return id
+    },
+    stop: async () => {
+      if (stopped) return
+      stopped = true
+      clearInterval(timer)
+      await apps.unregister(connection, id, fetchImpl).catch(() => undefined)
+    },
+  }
+}

@@ -56,6 +56,7 @@ export const ServeCommand = effectCmd({
     if (Registry && secret) {
       const { setIdleExitAfterMs } = yield* Effect.promise(() => import("@redrob-code/server/handlers/clients"))
       const Clients = yield* Effect.promise(() => import("@redrob-code/server/clients"))
+      const Apps = yield* Effect.promise(() => import("@redrob-code/server/apps"))
       const id = Registry.newID()
       yield* Effect.promise(() =>
         Registry.write({
@@ -110,6 +111,8 @@ export const ServeCommand = effectCmd({
       const tick = setInterval(() => {
         void Registry.read().then((current) => {
           if (current && current.id !== id) return leave(0)
+          // Bridged apps first: dropping one detaches its client, which the client sweep then sees.
+          Apps.sweep()
           Clients.sweep()
           const idle = Clients.idleFor()
           if (channels.active) return
