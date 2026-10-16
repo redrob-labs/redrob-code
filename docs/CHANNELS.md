@@ -189,7 +189,7 @@ redrob channels enable discord
 ### WhatsApp (`@redrob-code/channels-whatsapp`)
 
 An **unofficial** client over Baileys --
-WhatsApp may ban accounts that use it; see the package README):
+WhatsApp may ban accounts that use it; see the package README.
 
 ```sh
 redrob channels allow whatsapp 821012345678   # the sender's phone number, digits only
