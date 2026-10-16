@@ -62,6 +62,13 @@ except to list key *names*. Transports see it through the `SecretStore` interfac
 (`get`, `set`, `delete`, `keys`), and only their own channel's slice, so the file store can be
 swapped for a keychain later without touching a transport.
 
+Secret key names per channel:
+
+| Channel | Keys | Notes |
+| --- | --- | --- |
+| `slack` | `botToken`, `appToken` | Socket Mode app |
+| `whatsapp` | *(none)* | pairs by QR code; the session lives in `~/.redrob/channels/whatsapp/` (0700) |
+
 ### `sessions.json`
 
 One conversation is one engine session. The key is `<channel>:<conversationId>` -- a Slack
@@ -141,6 +148,18 @@ redrob channels set-secret slack appToken     # paste xapp-… (Socket Mode, con
 redrob channels allow slack U0123ABCDEF       # your Slack member id
 redrob channels enable slack
 ```
+
+Setting up WhatsApp (`@redrob-code/channels-whatsapp`, an **unofficial** client over Baileys --
+WhatsApp may ban accounts that use it; see the package README):
+
+```sh
+redrob channels allow whatsapp 821012345678   # the sender's phone number, digits only
+redrob channels enable whatsapp
+```
+
+No secret is set. While unpaired the channel starts anyway and writes the QR code to
+`~/.redrob/channels/whatsapp/qr.png` (also `qr()` / `qrDataUrl()` on the transport); scan it from
+WhatsApp > Linked devices. `conversationId` is the chat JID, `senderId` the phone number.
 
 ## Transport contract (for Stage 2)
 
