@@ -69,6 +69,7 @@ Secret key names, per channel:
 | `slack` | `botToken` | Bot user OAuth token (`xoxb-…`) |
 | `slack` | `appToken` | App-level token with `connections:write` (`xapp-…`), for Socket Mode |
 | `telegram` | `botToken` | Token from @BotFather (`packages/channels/telegram/README.md`) |
+| `discord` | `botToken` | the bot token from the Developer Portal's Bot page |
 
 ### `sessions.json`
 
@@ -160,6 +161,29 @@ delivers a mention once even though Slack sends it as two events. `conversationI
 `<channel>:<thread_ts ?? ts>` -- one thread is one session -- and replies go into that thread.
 `senderId` is the Slack user id. `maxChunk` 3900, no typing indicator. The manifest YAML lives
 in this package (`manifestYaml`, `manifestUrl()`).
+
+### Discord (`@redrob-code/channels-discord`)
+
+Package `@redrob-code/channels-discord` (discord.js). A conversation is a Discord channel id: a DM
+channel, a guild text channel, or a thread (threads have their own id). The sender id is the
+author's user id. DMs are always answered; in guild channels and threads the bot answers only when
+it is mentioned, and the mention is removed from the prompt. Messages are capped at 2000
+characters; the bot shows a typing indicator while the engine works.
+
+Gateway intents: `Guilds`, `GuildMessages`, `DirectMessages`, `MessageContent`. **Message Content
+is a Privileged Gateway Intent** and must be switched on in the Developer Portal (Bot page ->
+Privileged Gateway Intents -> Message Content Intent). Without it Discord delivers guild messages
+with empty content and the bot never sees anything to answer. Server Members and Presence are not
+needed.
+
+```sh
+# Developer Portal: New Application -> Bot -> Reset Token; enable Message Content Intent;
+# OAuth2 URL Generator: scope bot, permissions View Channels, Send Messages,
+# Send Messages in Threads, Read Message History; add the bot to the server.
+redrob channels set-secret discord botToken   # paste the token, Ctrl-D
+redrob channels allow discord 123456789012345678   # your Discord user id (Developer Mode -> Copy User ID)
+redrob channels enable discord
+```
 
 ## Transport contract (for Stage 2)
 
