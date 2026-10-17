@@ -34,6 +34,7 @@ import { CrossSpawnSpawner } from "@redrob-code/core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
 import { McpEvent } from "@redrob-code/schema/mcp-event"
 import { McpBrowser } from "./browser"
+import * as Apps from "@redrob-code/server/apps"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -172,6 +173,8 @@ export interface Interface {
     clientName?: string,
   ) => Effect.Effect<Record<string, ResourceTemplateInfo & { client: string }>>
   readonly add: (name: string, mcp: ConfigMCPV1.Info) => Effect.Effect<{ status: Record<string, Status> | Status }>
+  /** Forget a server added at runtime (`add`): disconnect it and drop its tools. Not for configured servers. */
+  readonly remove: (name: string) => Effect.Effect<void>
   readonly connect: (name: string) => Effect.Effect<void, NotFoundError>
   readonly disconnect: (name: string) => Effect.Effect<void, NotFoundError>
   readonly getPrompt: (
@@ -489,6 +492,21 @@ const layer = Layer.effect(
       }
     }
 
+    /**
+     * Every instance state that is up, with a bridge that runs effects in that instance's context.
+     * The app bridge (docs/APP-BRIDGE.md) registers and drops servers from outside any request, so
+     * it has to reach every live instance by hand; the cache keyed by directory cannot be walked.
+     */
+    const live = new Set<{ s: State; bridge: EffectBridge.Shape }>()
+
+    /** The runtime MCP entry for a bridged app: its loopback server, no OAuth, never in the config file. */
+    const bridgedConfig = (app: Apps.App): ConfigMCPV1.Info => ({
+      type: "remote",
+      url: app.mcpUrl,
+      enabled: true,
+      oauth: false,
+    })
+
     const state = yield* InstanceState.make<State>(
       Effect.fn("MCP.state")(function* () {
         const cfg = yield* cfgSvc.get()
@@ -528,8 +546,33 @@ const layer = Layer.effect(
           { concurrency: "unbounded" },
         )
 
+        // Apps bridged before this instance came up get their tools here; ones bridged later
+        // arrive through the registry subscription below.
+        yield* Effect.forEach(
+          Apps.list(),
+          (app) =>
+            Effect.gen(function* () {
+              const key = Apps.mcpName(app.name)
+              const mcp = bridgedConfig(app)
+              s.config[key] = mcp
+              const result = yield* create(key, mcp)
+              s.status[key] = result.status
+              if (result.mcpClient) {
+                s.clients[key] = result.mcpClient
+                s.defs[key] = result.defs!
+                if (result.instructions) s.instructions[key] = result.instructions
+                watch(s, key, result.mcpClient, bridge, mcp.timeout)
+              }
+            }),
+          { concurrency: "unbounded" },
+        )
+
+        const entry = { s, bridge }
+        live.add(entry)
+
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
+            live.delete(entry)
             const clients = Object.values(s.clients)
             s.clients = {}
             s.defs = {}
@@ -657,6 +700,36 @@ const layer = Layer.effect(
       delete s.clients[name]
       s.status[name] = { status: "disabled" }
     })
+
+    const remove = Effect.fn("MCP.remove")(function* (name: string) {
+      const s = yield* InstanceState.get(state)
+      yield* closeClient(s, name)
+      delete s.config[name]
+      delete s.status[name]
+      yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+    })
+
+    // The app bridge: connect a newly registered app for every live instance, and drop it again
+    // when the app unregisters or its heartbeats stop. Runs outside any request, hence the
+    // per-instance bridges. The user's config file is never touched.
+    const unsubscribe = Apps.subscribe((change) => {
+      const key = Apps.mcpName(change.app.name)
+      for (const { bridge } of live) {
+        const update: Effect.Effect<unknown, unknown> =
+          change.kind === "registered"
+            ? add(key, bridgedConfig(change.app)).pipe(Effect.andThen(events.publish(ToolsChanged, { server: key })))
+            : remove(key)
+        bridge.fork(
+          update.pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("app bridge update failed", { server: key, cause: Cause.pretty(cause) }),
+            ),
+            Effect.asVoid,
+          ),
+        )
+      }
+    })
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe))
 
     function requestTimeout(s: State, name: string, configured: McpEntry | undefined, fallback?: number) {
       const staticTimeout = configured && isMcpConfigured(configured) ? configured.timeout : undefined
@@ -978,6 +1051,7 @@ const layer = Layer.effect(
       resources,
       resourceTemplates,
       add,
+      remove,
       connect,
       disconnect,
       getPrompt,

@@ -14,6 +14,8 @@ import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { ServiceCommand } from "./cli/cmd/service"
+import { ChannelsCommand } from "./cli/cmd/channels"
+import { AppsCommand } from "./cli/cmd/apps"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
@@ -93,6 +95,8 @@ const cli = yargs(args)
   .command(UninstallCommand)
   .command(ServeCommand)
   .command(ServiceCommand)
+  .command(ChannelsCommand)
+  .command(AppsCommand)
   .command(ModelsCommand)
   .command(ModelsLocalCommand)
   .command(StatsCommand)
