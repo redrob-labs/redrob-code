@@ -49,11 +49,12 @@ No non-secret `options` are read.
    bots need Discord's approval.) *Server Members* and *Presence* are not needed.
 4. **OAuth2** -> URL Generator: scope `bot`, permissions *View Channels*, *Send Messages*,
    *Send Messages in Threads*, *Read Message History*. Open the URL and add the bot to your server.
-5. Allow yourself and switch the channel on:
+5. Switch the channel on and claim it:
 
 ```sh
-redrob channels allow discord 123456789012345678   # your Discord user id (Settings -> Advanced -> Developer Mode, then right-click -> Copy User ID)
 redrob channels enable discord
+# DM the bot (or mention it) within 15 minutes: the first message makes you its owner
+# (redrob channels allow discord <userId> adds more people later; Developer Mode -> Copy User ID)
 ```
 
 DM the bot, or mention it in a channel it can read. `/new`, `/status` and `/help` work as in every

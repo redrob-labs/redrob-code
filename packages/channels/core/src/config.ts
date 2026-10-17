@@ -10,10 +10,13 @@
  *   "directory": "/path/the/sessions/work/in",
  *   "channels": {
  *     "slack":    { "enabled": true,  "allowlist": ["U0123ABC"] },
- *     "telegram": { "enabled": false, "allowlist": [] }
+ *     "telegram": { "enabled": true,  "allowlist": [], "claimUntil": 1760000000000 }
  *   }
  * }
  * ```
+ *
+ * `claimUntil` is the owner claim window: while it is in the future and the allowlist is empty,
+ * the first person who messages the bot is written into the allowlist and the field is removed.
  */
 import * as Paths from "./paths"
 
@@ -26,8 +29,16 @@ export function isChannelName(value: string): value is ChannelName {
 
 export type ChannelConfig = {
   readonly enabled: boolean
-  /** Sender IDs allowed to talk to the daemon. Empty means nobody. */
+  /**
+   * Sender IDs allowed to talk to the daemon. Empty means nobody -- unless a claim window is open,
+   * in which case the first sender becomes the owner (`claimUntil`).
+   */
   readonly allowlist: readonly string[]
+  /**
+   * Epoch ms until which an empty allowlist may be claimed by the first person who messages the
+   * bot. Set by `openClaim` when a channel is enabled with nobody allowed; cleared by the claim.
+   */
+  readonly claimUntil?: number
   /** Project directory the channel's sessions work in; falls back to the file-level `directory`. */
   readonly directory?: string
   /** Longest reply chunk this channel accepts; the renderer splits at this many characters. */
@@ -61,6 +72,7 @@ function channel(value: unknown): ChannelConfig | undefined {
   return {
     enabled: value.enabled === true,
     allowlist,
+    ...(typeof value.claimUntil === "number" && Number.isFinite(value.claimUntil) ? { claimUntil: value.claimUntil } : {}),
     ...(typeof value.directory === "string" ? { directory: value.directory } : {}),
     ...(typeof value.maxChunk === "number" && value.maxChunk > 0 ? { maxChunk: value.maxChunk } : {}),
     ...(isObject(value.options) ? { options: value.options } : {}),
@@ -106,6 +118,43 @@ export async function update(
 export function setChannel(config: ChannelsConfig, name: ChannelName, patch: Partial<ChannelConfig>): ChannelsConfig {
   const current = config.channels[name] ?? defaultChannel()
   return { ...config, channels: { ...config.channels, [name]: { ...current, ...patch } } }
+}
+
+/** How long after enabling a channel with nobody allowed the first sender may claim it. */
+export const CLAIM_WINDOW_MS = 15 * 60_000
+
+function withoutClaim(config: ChannelConfig): ChannelConfig {
+  const { claimUntil: _dropped, ...rest } = config
+  return rest
+}
+
+/**
+ * Turn a channel on. With an empty allowlist this also opens the owner claim window: the first
+ * person to message the bot within `CLAIM_WINDOW_MS` becomes the only allowed sender. With an
+ * allowlist already set, any stale window is dropped.
+ */
+export function openClaim(config: ChannelsConfig, name: ChannelName, now: number = Date.now()): ChannelsConfig {
+  const current = withoutClaim(config.channels[name] ?? defaultChannel())
+  const next: ChannelConfig =
+    current.allowlist.length === 0 ? { ...current, enabled: true, claimUntil: now + CLAIM_WINDOW_MS } : { ...current, enabled: true }
+  return { ...config, channels: { ...config.channels, [name]: next } }
+}
+
+/** True while nobody is allowed and the claim window has not passed. */
+export function claimOpen(config: ChannelConfig | undefined, now: number = Date.now()): boolean {
+  return !!config && config.allowlist.length === 0 && typeof config.claimUntil === "number" && now < config.claimUntil
+}
+
+/** The owner: the first allowed sender, or undefined while nobody is. */
+export function owner(config: ChannelConfig | undefined): string | undefined {
+  return config?.allowlist[0]
+}
+
+/** Record `senderId` as the owner: first in the allowlist, and the claim window closes. */
+export function claim(config: ChannelsConfig, name: ChannelName, senderId: string): ChannelsConfig {
+  const current = withoutClaim(config.channels[name] ?? defaultChannel())
+  const allowlist = [...new Set([senderId, ...current.allowlist])]
+  return { ...config, channels: { ...config.channels, [name]: { ...current, allowlist } } }
 }
 
 export function enabledChannels(config: ChannelsConfig): ChannelName[] {

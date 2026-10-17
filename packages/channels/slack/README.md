@@ -16,8 +16,9 @@ Read at `start` from the channel secret store, never from the environment:
 redrob channels slack-manifest --url          # create the app from the manifest, install it
 redrob channels set-secret slack botToken
 redrob channels set-secret slack appToken
-redrob channels allow slack U0123ABCDEF       # Slack member id
 redrob channels enable slack
+# DM the bot within 15 minutes: the first message makes you its owner
+# (redrob channels allow slack <memberId> adds more people later)
 ```
 
 No non-secret `options` are read yet.

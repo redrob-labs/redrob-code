@@ -14,6 +14,10 @@ export const ChannelStatus = Schema.Struct({
   /** Whether this build has a transport for the channel at all. */
   available: Schema.Boolean,
   lastError: Schema.optional(Schema.String),
+  /** The owner: the first allowed sender id. Absent while nobody is allowed. */
+  owner: Schema.optional(Schema.String),
+  /** True while the channel is waiting for its owner's first message (claim window open). */
+  claimOpen: Schema.Boolean,
 }).annotate({ identifier: "ChannelStatus" })
 
 export const ChannelStatusList = Schema.Struct({
@@ -31,7 +35,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.channels.status",
         summary: "Chat channel status",
-        description: "Per channel: enabled in channels.json, connected right now, and the last error if any.",
+        description:
+          "Per channel: enabled in channels.json, connected right now, who owns it, whether it is waiting for its owner's first message, and the last error if any.",
       }),
     ),
   )

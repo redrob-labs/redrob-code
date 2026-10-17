@@ -170,6 +170,8 @@ export type ServerChannelsStatusOutput = {
     readonly connected: boolean
     readonly available: boolean
     readonly lastError?: string | undefined
+    readonly owner?: string | undefined
+    readonly claimOpen: boolean
   }>
 }
 

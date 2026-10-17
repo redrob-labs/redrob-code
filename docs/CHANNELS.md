@@ -34,7 +34,7 @@ daemon record.
       "maxChunk": 3900,
       "options": {}
     },
-    "telegram": { "enabled": false, "allowlist": [] }
+    "telegram": { "enabled": true, "allowlist": [], "claimUntil": 1760000000000 }
   }
 }
 ```
@@ -42,11 +42,24 @@ daemon record.
 - `directory` is the project directory new sessions are created in (the engine's
   `x-redrob-directory`). The file-level value is the default; a channel may override it. When
   neither is set, the user's home.
-- `allowlist` is the list of platform sender ids allowed to talk. **Empty means nobody.** A denied
-  sender gets one "You are not allowed to use this bot." reply per daemon start and a warning in
-  the daemon log; nothing reaches the engine.
+- `allowlist` is the list of platform sender ids allowed to talk. The first entry is the
+  **owner**. **Empty means nobody** -- except while the channel is waiting for its owner (below).
+  Once somebody owns it, a denied sender gets one "You are not allowed to use this bot." reply per
+  daemon start and a warning in the daemon log; nothing reaches the engine.
+- `claimUntil` (epoch ms) is the **owner claim window**. `redrob channels enable <name>` and the
+  launcher set it to now + 15 minutes when the allowlist is empty. While it is in the future, the
+  first person who messages the bot is written into the allowlist, the field is removed, and the
+  bot answers "You are now the owner of this bot. Only you can talk to it. Send /new to start a
+  fresh session." and then handles that message normally. After the window has passed, a sender
+  gets (once) "Nobody owns this bot yet. Turn the channel off and on again in Redrob Launcher,
+  then send a message within 15 minutes." The claim takes effect in the running daemon at once; no
+  restart and no reconnect.
 - `maxChunk` caps a reply chunk for this channel (default: the transport's own limit, else 3900).
 - `options` is free-form, non-secret, read by the transport (Stage 2 documents its keys).
+
+Nobody has to look up their own Telegram id, Slack member id, Discord user id or phone number:
+turn the channel on and send it a message. `redrob channels allow <name> <senderId>` is for adding
+**more** people after that (it also closes any open claim window).
 
 Unknown channel names and malformed entries are dropped on load. The CLI edits this file; editing
 it by hand and running `redrob channels enable <name>` (or `POST /channels/reload`) is fine too.
@@ -137,9 +150,13 @@ Both are under the daemon's Basic auth (`redrob:<secret>` from `server.json`) an
 location header. `GET /channels/status` is a status poll and does not count as daemon activity.
 
 ```
-GET  /channels/status  -> { "channels": [ { "name", "enabled", "connected", "available", "lastError"? } ] }
+GET  /channels/status  -> { "channels": [ { "name", "enabled", "connected", "available", "owner"?, "claimOpen", "lastError"? } ] }
 POST /channels/reload  -> { "running": ["slack"] }
 ```
+
+`owner` is the first allowlist entry (absent while nobody is allowed); `claimOpen` is true while
+the channel is waiting for its owner's first message, which is what the launcher shows as
+"waiting for your first message".
 
 `reload` re-reads `channels.json`: newly enabled channels start, disabled ones stop, a channel
 whose entry changed is restarted. An embedded server (no `--register`) answers with empty lists.
@@ -147,18 +164,20 @@ whose entry changed is restarted. An embedded server (no `--register`) answers w
 ## CLI
 
 ```
-redrob channels list                                # configured channels, allowlists, secret key names
+redrob channels list                                # configured channels, owner, secret key names
 redrob channels status [--json]                     # what the running daemon has connected (exit 1 when none)
-redrob channels enable <name>
+redrob channels enable <name>                       # opens a 15-minute owner claim window when nobody is allowed
 redrob channels disable <name>
-redrob channels allow <name> <senderId> [--remove]
+redrob channels allow <name> <senderId> [--remove]  # add MORE people after the owner
 redrob channels set-secret <name> <key> [--value v]  # value from stdin when --value is omitted
 redrob channels slack-manifest [--url]
 ```
 
 `<name>` is one of `slack`, `telegram`, `discord`, `whatsapp`. `enable`, `disable`, `allow` and
 `set-secret` write the file and then `POST /channels/reload` on the running registered daemon;
-with no daemon the change waits for the next start.
+with no daemon the change waits for the next start. `enable` with an empty allowlist prints
+`Waiting for its owner: send any message to the bot within 15 minutes.`; `list` shows
+`owner: <id>` or `owner: (waiting)`.
 
 `slack-manifest` prints the Slack app manifest: bot named **Redrob**, Socket Mode on, bot scopes
 `app_mentions:read chat:write im:history im:read im:write channels:history groups:history
@@ -172,8 +191,9 @@ Setting up Slack:
 redrob channels slack-manifest --url          # open it, create the app, install to the workspace
 redrob channels set-secret slack botToken     # paste xoxb-… , Ctrl-D
 redrob channels set-secret slack appToken     # paste xapp-… (Socket Mode, connections:write), Ctrl-D
-redrob channels allow slack U0123ABCDEF       # your Slack member id
 redrob channels enable slack
+# then DM the bot within 15 minutes: the first message makes you its owner
+# (redrob channels allow slack <memberId> adds more people later)
 ```
 
 ## Transports
@@ -206,8 +226,9 @@ needed.
 # OAuth2 URL Generator: scope bot, permissions View Channels, Send Messages,
 # Send Messages in Threads, Read Message History; add the bot to the server.
 redrob channels set-secret discord botToken   # paste the token, Ctrl-D
-redrob channels allow discord 123456789012345678   # your Discord user id (Developer Mode -> Copy User ID)
 redrob channels enable discord
+# then DM the bot (or mention it) within 15 minutes: the first message makes you its owner
+# (redrob channels allow discord <userId> adds more people later)
 ```
 
 ### WhatsApp (`@redrob-code/channels-whatsapp`)
@@ -216,8 +237,10 @@ An **unofficial** client over Baileys --
 WhatsApp may ban accounts that use it; see the package README.
 
 ```sh
-redrob channels allow whatsapp 821012345678   # the sender's phone number, digits only
 redrob channels enable whatsapp
+# scan the QR code, then send the linked number a message within 15 minutes (from the paired
+# phone itself or another one): the first sender becomes the owner
+# (redrob channels allow whatsapp <digits> adds more people later)
 ```
 
 No secret is set. While unpaired the channel starts anyway and writes the QR code to

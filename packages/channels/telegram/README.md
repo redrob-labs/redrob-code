@@ -6,7 +6,8 @@ Telegram transport for the Redrob Code chat channels (`docs/CHANNELS.md`). Built
 ## Behaviour
 
 - One Telegram chat is one conversation: `conversationId` is the chat id, `senderId` is the
-  Telegram user id (what `redrob channels allow telegram <id>` takes).
+  Telegram user id (what the allowlist holds; the first sender claims it, `redrob channels allow
+  telegram <id>` adds more).
 - Private chats: every text message is forwarded to the core.
 - Groups and supergroups: only messages that mention the bot (`@YourBot`, `/new@YourBot`) or reply
   to one of its messages are forwarded; the mention is stripped before the core sees the text.
@@ -34,8 +35,9 @@ Telegram transport for the Redrob Code chat channels (`docs/CHANNELS.md`). Built
 # @BotFather: /newbot, copy the token. For groups, /setprivacy -> Disable is NOT required:
 # mentions and replies to the bot are delivered with privacy mode on.
 redrob channels set-secret telegram botToken   # paste the token, Ctrl-D
-redrob channels allow telegram 123456789       # your Telegram user id (@userinfobot tells you)
 redrob channels enable telegram
+# message the bot within 15 minutes: the first message makes you its owner
+# (redrob channels allow telegram <userId> adds more people later; @userinfobot tells you an id)
 ```
 
 ## Exports

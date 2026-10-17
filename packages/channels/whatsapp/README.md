@@ -15,8 +15,10 @@ There is no bot token and nothing to put in `secrets.json`. The daemon is linked
 account as a *linked device* by scanning a QR code once:
 
 ```sh
-redrob channels allow whatsapp 821012345678   # the phone number that may talk, digits only
 redrob channels enable whatsapp
+# scan the QR code, then send the linked number a message within 15 minutes (from the paired
+# phone itself or another one): the first sender becomes the owner
+# (redrob channels allow whatsapp <digits> adds more people later)
 ```
 
 While the channel is not paired, `start()` still resolves and the transport exposes the QR code
