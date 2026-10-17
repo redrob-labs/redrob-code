@@ -18,7 +18,17 @@ function channelName(value: string): ChannelName {
   throw new Error(`Unknown channel "${value}"; one of: ${NAMES.join(", ")}`)
 }
 
-type Status = { name: string; enabled: boolean; connected: boolean; available: boolean; lastError?: string }
+type Status = {
+  name: string
+  enabled: boolean
+  connected: boolean
+  available: boolean
+  lastError?: string
+  owner?: string
+  claimOpen?: boolean
+}
+
+const WAITING_FOR_OWNER = "Waiting for its owner: send any message to the bot within 15 minutes."
 
 /** The running daemon's view, or undefined when none is registered. */
 async function daemonStatus(): Promise<Status[] | undefined> {
@@ -138,7 +148,14 @@ export const ChannelsCommand = cmd({
             const rows = []
             for (const name of NAMES) {
               const entry = config.channels[name] ?? Config.defaultChannel()
-              rows.push({ name, enabled: entry.enabled, allowlist: [...entry.allowlist], secrets: await secrets.keys(name) })
+              rows.push({
+                name,
+                enabled: entry.enabled,
+                owner: Config.owner(entry),
+                claimOpen: Config.claimOpen(entry),
+                allowlist: [...entry.allowlist],
+                secrets: await secrets.keys(name),
+              })
             }
             if (args.json) {
               process.stdout.write(JSON.stringify({ directory: config.directory, channels: rows }) + "\n")
@@ -148,8 +165,10 @@ export const ChannelsCommand = cmd({
               const state = row.enabled
                 ? `${UI.Style.TEXT_SUCCESS_BOLD}enabled${UI.Style.TEXT_NORMAL}`
                 : `${UI.Style.TEXT_DIM}disabled${UI.Style.TEXT_NORMAL}`
+              const owner = row.owner ?? "(waiting)"
+              const others = row.allowlist.slice(1)
               UI.println(
-                `${row.name.padEnd(9)} ${state}  allow: ${row.allowlist.length ? row.allowlist.join(", ") : "(nobody)"}  secrets: ${row.secrets.length ? row.secrets.join(", ") : "(none)"}`,
+                `${row.name.padEnd(9)} ${state}  owner: ${owner}${others.length ? `  also: ${others.join(", ")}` : ""}  secrets: ${row.secrets.length ? row.secrets.join(", ") : "(none)"}`,
               )
             }
           },
@@ -180,7 +199,14 @@ export const ChannelsCommand = cmd({
                   : !row.available
                     ? `${UI.Style.TEXT_WARNING}no transport in this build${UI.Style.TEXT_NORMAL}`
                     : `${UI.Style.TEXT_DANGER}not connected${UI.Style.TEXT_NORMAL}`
-              UI.println(`${row.name.padEnd(9)} ${state}${row.lastError ? `  ${UI.Style.TEXT_DIM}${row.lastError}${UI.Style.TEXT_NORMAL}` : ""}`)
+              const owner = row.claimOpen
+                ? `  ${UI.Style.TEXT_WARNING}waiting for its owner's first message${UI.Style.TEXT_NORMAL}`
+                : row.owner
+                  ? `  ${UI.Style.TEXT_DIM}owner: ${row.owner}${UI.Style.TEXT_NORMAL}`
+                  : ""
+              UI.println(
+                `${row.name.padEnd(9)} ${state}${owner}${row.lastError ? `  ${UI.Style.TEXT_DIM}${row.lastError}${UI.Style.TEXT_NORMAL}` : ""}`,
+              )
             }
           },
         }),
@@ -192,9 +218,9 @@ export const ChannelsCommand = cmd({
           builder: (yargs) => yargs.positional("name", { type: "string", demandOption: true, choices: NAMES }),
           handler: async (args) => {
             const name = channelName(args.name)
-            const config = await Config.update((c) => Config.setChannel(c, name, { enabled: true }))
-            if ((config.channels[name]?.allowlist.length ?? 0) === 0) {
-              UI.println(`${UI.Style.TEXT_WARNING}allowlist is empty: nobody can talk to it yet (redrob channels allow ${name} <senderId>)${UI.Style.TEXT_NORMAL}`)
+            const config = await Config.update((c) => Config.openClaim(c, name))
+            if (Config.claimOpen(config.channels[name])) {
+              UI.println(`${UI.Style.TEXT_WARNING}${WAITING_FOR_OWNER}${UI.Style.TEXT_NORMAL}`)
             }
             after(await reload())
             await syncAutostart(config)
@@ -217,7 +243,7 @@ export const ChannelsCommand = cmd({
       .command(
         cmd({
           command: "allow <name> <senderId>",
-          describe: "let a platform user id talk to the engine through a channel",
+          describe: "let one more platform user id talk to the engine through a channel (the owner is claimed by the first message)",
           builder: (yargs) =>
             yargs
               .positional("name", { type: "string", demandOption: true, choices: NAMES })
@@ -232,7 +258,8 @@ export const ChannelsCommand = cmd({
               const allowlist = args.remove
                 ? current.allowlist.filter((x) => x !== id)
                 : [...new Set([...current.allowlist, id])]
-              return Config.setChannel(c, name, { allowlist })
+              // An explicit allowlist edit closes any open claim window (parse drops the undefined).
+              return Config.setChannel(c, name, { allowlist, claimUntil: undefined })
             })
             after(await reload())
           },

@@ -12,6 +12,10 @@ export type ChannelStatus = {
   readonly connected: boolean
   readonly available: boolean
   readonly lastError?: string
+  /** First allowed sender; undefined while nobody is allowed. */
+  readonly owner?: string
+  /** Waiting for the owner's first message. */
+  readonly claimOpen: boolean
 }
 
 export type Controller = {

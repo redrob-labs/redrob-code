@@ -3,7 +3,9 @@
  *
  * `startEnabledChannels(factories)` reads `channels.json`, starts a transport for every enabled
  * channel that has a factory, attaches each to the daemon as `channel:<name>` so it is counted as
- * a client, and wires inbound messages through the allowlist to the dispatcher. `reload()`
+ * a client, and wires inbound messages through the allowlist to the dispatcher. A channel enabled
+ * with nobody allowed waits for its owner: the first sender inside the claim window is written
+ * into `channels.json` and answered. `reload()`
  * re-reads the file and starts, stops or restarts transports to match. `stopAll()` tears down.
  *
  * Plain promises, no Effect: this runs inside `redrob serve --register` next to the server, and
@@ -11,7 +13,7 @@
  */
 import os from "node:os"
 import { attach as attachToDaemon, currentDaemon, type Attachment } from "@redrob-labs/sdk/daemon"
-import { Allowlist } from "./allowlist"
+import { Allowlist, CLAIMED_REPLY } from "./allowlist"
 import * as Config from "./config"
 import { Dispatcher, SessionMap } from "./dispatch"
 import { FileSecretStore, scoped, type SecretStore } from "./secrets"
@@ -20,7 +22,7 @@ import { consoleLogger, type DaemonConnection, type Inbound, type Logger, type T
 export * as Config from "./config"
 export * as Paths from "./paths"
 export * as Renderer from "./renderer"
-export { Allowlist, DENIED_REPLY } from "./allowlist"
+export { Allowlist, CLAIMED_REPLY, DENIED_REPLY, UNCLAIMED_REPLY, type Verdict } from "./allowlist"
 export { Dispatcher, SessionMap, conversationKey, HELP, type Binding, type DispatcherOptions } from "./dispatch"
 export { FileSecretStore, MemorySecretStore, scoped, type SecretStore, type ChannelSecrets } from "./secrets"
 export {
@@ -41,6 +43,10 @@ export type ChannelStatus = {
   readonly lastError?: string
   /** Whether a transport for this channel is compiled in at all. */
   readonly available: boolean
+  /** The owner: the first allowed sender. Undefined while nobody is allowed. */
+  readonly owner?: string
+  /** True while the channel is waiting for its owner's first message. */
+  readonly claimOpen: boolean
 }
 
 export type ManagerOptions = {
@@ -55,7 +61,8 @@ export type ManagerOptions = {
 
 type Running = {
   readonly name: Config.ChannelName
-  readonly config: Config.ChannelConfig
+  /** The entry the transport was started from; rewritten in place by a claim so a later reload does not restart it. */
+  config: Config.ChannelConfig
   readonly transport: Transport
   readonly dispatcher: Dispatcher
   readonly allowlist: Allowlist
@@ -138,11 +145,15 @@ export class ChannelManager {
       const entry = this.config.channels[name]
       const run = this.running.get(name)
       const lastError = run?.lastError ?? this.errors.get(name)
+      const owner = run ? run.allowlist.owner : Config.owner(entry)
+      const claimOpen = run ? run.allowlist.claimOpen() : Config.claimOpen(entry)
       return {
         name,
         enabled: entry?.enabled === true,
         connected: run?.connected === true,
         available: this.factories[name] !== undefined,
+        claimOpen,
+        ...(owner !== undefined ? { owner } : {}),
         ...(lastError ? { lastError } : {}),
       }
     })
@@ -197,7 +208,15 @@ export class ChannelManager {
         if (verdict.reply) void transport.send(message.conversationId, [verdict.reply], message.replyTo).catch(() => undefined)
         return
       }
-      void dispatcher.handle(message)
+      if (verdict.claimed === undefined) {
+        void dispatcher.handle(message)
+        return
+      }
+      // The owner's first message: write them into channels.json, greet them, then answer the
+      // message itself. The in-memory allowlist already has them, so nothing restarts.
+      void this.claimed(run, verdict.claimed, log)
+        .then(() => transport.send(message.conversationId, [CLAIMED_REPLY], message.replyTo).catch(() => undefined))
+        .then(() => dispatcher.handle(message))
     }
     try {
       await transport.start({ config, secrets: scoped(this.secrets, name), daemon, log, onMessage })
@@ -215,7 +234,10 @@ export class ChannelManager {
         // exit off while channels run anyway.
         log.warn(`could not attach to the daemon as a client: ${error instanceof Error ? error.message : String(error)}`)
       }
-      if (allowlist.size === 0) log.warn("allowlist is empty: every sender will be denied")
+      if (allowlist.size === 0) {
+        if (allowlist.claimOpen()) log.info("waiting for its owner: the first sender to message the bot is allowed")
+        else log.warn("allowlist is empty and the claim window is over: every sender will be denied")
+      }
       log.info(`started (directory ${directory})`)
     } catch (error) {
       run.lastError = error instanceof Error ? error.message : String(error)
@@ -225,6 +247,22 @@ export class ChannelManager {
       return
     }
     this.running.set(name, run)
+  }
+
+  /**
+   * Persist a claim: `channels.json` gets the owner and loses `claimUntil`. The running entry and
+   * the manager's config snapshot are rewritten to match, so a `reload()` sees no change and keeps
+   * the connection. A write failure is logged; the owner is still allowed for this process.
+   */
+  private async claimed(run: Running, senderId: string, log: Logger): Promise<void> {
+    try {
+      const next = await Config.update((current) => Config.claim(current, run.name, senderId), this.env)
+      this.config = next
+      const entry = next.channels[run.name]
+      if (entry) run.config = entry
+    } catch (error) {
+      log.error(`could not save the owner of ${run.name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   private async stopOne(name: Config.ChannelName): Promise<void> {
