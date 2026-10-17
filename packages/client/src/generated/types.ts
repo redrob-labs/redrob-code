@@ -29,6 +29,10 @@ export type ClientNotFoundError = {
 export const isClientNotFoundError = (value: unknown): value is ClientNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ClientNotFoundError"
 
+export type AppNotFoundError = { readonly _tag: "AppNotFoundError"; readonly appID: string; readonly message: string }
+export const isAppNotFoundError = (value: unknown): value is AppNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "AppNotFoundError"
+
 export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
 export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
@@ -158,6 +162,89 @@ export type ServerClientsHeartbeatOutput = {
 export type ServerClientsDetachInput = { readonly clientID: { readonly clientID: string }["clientID"] }
 
 export type ServerClientsDetachOutput = void
+
+export type ServerChannelsStatusOutput = {
+  readonly channels: ReadonlyArray<{
+    readonly name: string
+    readonly enabled: boolean
+    readonly connected: boolean
+    readonly available: boolean
+    readonly lastError?: string | undefined
+  }>
+}
+
+export type ServerChannelsReloadOutput = { readonly running: ReadonlyArray<string> }
+
+export type ServerAppsListOutput = {
+  readonly apps: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly mcpUrl: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+    readonly registeredAt: number
+    readonly lastSeen: number
+  }>
+  readonly ttlMs: number
+}
+
+export type ServerAppsRegisterInput = {
+  readonly name: {
+    readonly name: string
+    readonly mcp_url: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+  }["name"]
+  readonly mcp_url: {
+    readonly name: string
+    readonly mcp_url: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+  }["mcp_url"]
+  readonly pid: {
+    readonly name: string
+    readonly mcp_url: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+  }["pid"]
+  readonly version?: {
+    readonly name: string
+    readonly mcp_url: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+  }["version"]
+  readonly tools?: {
+    readonly name: string
+    readonly mcp_url: string
+    readonly pid: number
+    readonly version?: string | undefined
+    readonly tools?: ReadonlyArray<string> | undefined
+  }["tools"]
+}
+
+export type ServerAppsRegisterOutput = { readonly id: string; readonly ttlMs: number }
+
+export type ServerAppsHeartbeatInput = { readonly appID: { readonly appID: string }["appID"] }
+
+export type ServerAppsHeartbeatOutput = {
+  readonly id: string
+  readonly name: string
+  readonly mcpUrl: string
+  readonly pid: number
+  readonly version?: string | undefined
+  readonly tools?: ReadonlyArray<string> | undefined
+  readonly registeredAt: number
+  readonly lastSeen: number
+}
+
+export type ServerAppsUnregisterInput = { readonly appID: { readonly appID: string }["appID"] }
+
+export type ServerAppsUnregisterOutput = void
 
 export type LocationGetInput = {
   readonly location?: {

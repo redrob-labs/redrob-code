@@ -7,6 +7,15 @@ import type {
   ServerClientsHeartbeatOutput,
   ServerClientsDetachInput,
   ServerClientsDetachOutput,
+  ServerChannelsStatusOutput,
+  ServerChannelsReloadOutput,
+  ServerAppsListOutput,
+  ServerAppsRegisterInput,
+  ServerAppsRegisterOutput,
+  ServerAppsHeartbeatInput,
+  ServerAppsHeartbeatOutput,
+  ServerAppsUnregisterInput,
+  ServerAppsUnregisterOutput,
   LocationGetInput,
   LocationGetOutput,
   AgentsListInput,
@@ -313,6 +322,65 @@ export function make(options: ClientOptions) {
           {
             method: "DELETE",
             path: `/api/clients/${encodeURIComponent(input.clientID)}`,
+            successStatus: 204,
+            declaredStatuses: [401, 400],
+            empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    "server.channels": {
+      status: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsStatusOutput>(
+          { method: "GET", path: `/channels/status`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      reload: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsReloadOutput>(
+          { method: "POST", path: `/channels/reload`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+    },
+    "server.apps": {
+      list: (requestOptions?: RequestOptions) =>
+        request<ServerAppsListOutput>(
+          { method: "GET", path: `/v1/apps`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      register: (input: ServerAppsRegisterInput, requestOptions?: RequestOptions) =>
+        request<ServerAppsRegisterOutput>(
+          {
+            method: "POST",
+            path: `/v1/apps/register`,
+            body: {
+              name: input["name"],
+              mcp_url: input["mcp_url"],
+              pid: input["pid"],
+              version: input["version"],
+              tools: input["tools"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      heartbeat: (input: ServerAppsHeartbeatInput, requestOptions?: RequestOptions) =>
+        request<ServerAppsHeartbeatOutput>(
+          {
+            method: "POST",
+            path: `/v1/apps/${encodeURIComponent(input.appID)}/heartbeat`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      unregister: (input: ServerAppsUnregisterInput, requestOptions?: RequestOptions) =>
+        request<ServerAppsUnregisterOutput>(
+          {
+            method: "DELETE",
+            path: `/v1/apps/${encodeURIComponent(input.appID)}`,
             successStatus: 204,
             declaredStatuses: [401, 400],
             empty: true,

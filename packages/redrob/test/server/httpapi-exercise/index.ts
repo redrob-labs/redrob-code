@@ -796,6 +796,43 @@ const scenarios: Scenario[] = [
     .seeded(() => Effect.sync(() => EngineClients.attach({ app: "httpapi-detach" })))
     .at((ctx) => ({ path: route("/api/clients/{clientID}", { clientID: ctx.state.id }), headers: ctx.headers() }))
     .status(204, undefined, "status"),
+  // App bridge. Registering a real loopback MCP server would make the engine connect to it, so
+  // the write path is exercised through its 400 (non-loopback URL); the id paths use a missing id.
+  http.protected.get("/v1/apps", "v1.apps.list").json(200, (body) => {
+    object(body)
+    check(Array.isArray(body.apps), "apps should be a list")
+    check(typeof body.ttlMs === "number", "the heartbeat deadline should be reported")
+  }),
+  http.protected
+    .post("/v1/apps/register", "v1.apps.register.invalid")
+    .at((ctx) => ({
+      path: "/v1/apps/register",
+      headers: ctx.headers(),
+      body: { name: "httpapi", mcp_url: "http://example.com:1234/mcp", pid: 4242 },
+    }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/v1/apps/{appID}/heartbeat", "v1.apps.heartbeat.missing")
+    .at((ctx) => ({ path: route("/v1/apps/{appID}/heartbeat", { appID: "httpapi-missing" }), headers: ctx.headers() }))
+    .json(404, object, "status"),
+  http.protected
+    .delete("/v1/apps/{appID}", "v1.apps.unregister.missing")
+    .mutating()
+    .at((ctx) => ({ path: route("/v1/apps/{appID}", { appID: "httpapi-missing" }), headers: ctx.headers() }))
+    .status(204, undefined, "status"),
+  // Chat channels. No channels.json in the exerciser environment, so nothing is enabled and a
+  // reload leaves nothing running.
+  http.protected.get("/channels/status", "v2.channels.status").json(200, (body) => {
+    object(body)
+    check(Array.isArray(body.channels), "channels should be a list")
+  }),
+  http.protected
+    .post("/channels/reload", "v2.channels.reload")
+    .mutating()
+    .json(200, (body) => {
+      object(body)
+      check(Array.isArray(body.running), "running channels should be a list")
+    }),
   http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
     object(body)
     check(body.mode === "off", "masking should be off until someone turns it on")
