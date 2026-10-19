@@ -1245,6 +1245,7 @@ export function make(options: ClientOptions) {
               presence_penalty: input["presence_penalty"],
               reasoning_effort: input["reasoning_effort"],
               user: input["user"],
+              redrob_context: input["redrob_context"],
             },
             successStatus: 200,
             declaredStatuses: [401, 400],

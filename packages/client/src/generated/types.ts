@@ -3167,6 +3167,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["model"]
   readonly messages: {
     readonly model: string
@@ -3210,6 +3213,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["messages"]
   readonly tools?: {
     readonly model: string
@@ -3253,6 +3259,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["tools"]
   readonly tool_choice?: {
     readonly model: string
@@ -3296,6 +3305,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["tool_choice"]
   readonly stream?: {
     readonly model: string
@@ -3339,6 +3351,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["stream"]
   readonly max_tokens?: {
     readonly model: string
@@ -3382,6 +3397,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["max_tokens"]
   readonly max_completion_tokens?: {
     readonly model: string
@@ -3425,6 +3443,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["max_completion_tokens"]
   readonly temperature?: {
     readonly model: string
@@ -3468,6 +3489,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["temperature"]
   readonly top_p?: {
     readonly model: string
@@ -3511,6 +3535,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["top_p"]
   readonly stop?: {
     readonly model: string
@@ -3554,6 +3581,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["stop"]
   readonly seed?: {
     readonly model: string
@@ -3597,6 +3627,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["seed"]
   readonly frequency_penalty?: {
     readonly model: string
@@ -3640,6 +3673,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["frequency_penalty"]
   readonly presence_penalty?: {
     readonly model: string
@@ -3683,6 +3719,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["presence_penalty"]
   readonly reasoning_effort?: {
     readonly model: string
@@ -3726,6 +3765,9 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["reasoning_effort"]
   readonly user?: {
     readonly model: string
@@ -3769,7 +3811,56 @@ export type ServerChatCompletionsInput = {
     readonly presence_penalty?: number | undefined
     readonly reasoning_effort?: string | undefined
     readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
   }["user"]
+  readonly redrob_context?: {
+    readonly model: string
+    readonly messages: ReadonlyArray<{
+      readonly role: "system" | "developer" | "user" | "assistant" | "tool"
+      readonly content?: string | null | ReadonlyArray<{ readonly [x: string]: unknown }> | undefined
+      readonly tool_calls?:
+        | ReadonlyArray<{
+            readonly id: string
+            readonly type: "function"
+            readonly function: { readonly name: string; readonly arguments: string }
+          }>
+        | undefined
+      readonly tool_call_id?: string | undefined
+      readonly name?: string | undefined
+    }>
+    readonly tools?:
+      | ReadonlyArray<{
+          readonly type: "function"
+          readonly function: {
+            readonly name: string
+            readonly description?: string | undefined
+            readonly parameters?: { readonly [x: string]: unknown } | undefined
+          }
+        }>
+      | undefined
+    readonly tool_choice?:
+      | "auto"
+      | "none"
+      | "required"
+      | { readonly type: "function"; readonly function: { readonly name: string } }
+      | undefined
+    readonly stream?: boolean | undefined
+    readonly max_tokens?: number | undefined
+    readonly max_completion_tokens?: number | undefined
+    readonly temperature?: number | undefined
+    readonly top_p?: number | undefined
+    readonly stop?: string | ReadonlyArray<string> | undefined
+    readonly seed?: number | undefined
+    readonly frequency_penalty?: number | undefined
+    readonly presence_penalty?: number | undefined
+    readonly reasoning_effort?: string | undefined
+    readonly user?: string | undefined
+    readonly redrob_context?:
+      | { readonly page_url?: string | undefined; readonly page_title?: string | undefined }
+      | undefined
+  }["redrob_context"]
 }
 
 export type ServerChatCompletionsOutput = {
