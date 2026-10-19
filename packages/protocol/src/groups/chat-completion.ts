@@ -101,6 +101,17 @@ export const ChatCompletionRequest = Schema.Struct({
   reasoning_effort: Schema.optional(Schema.String),
   /** Accepted and ignored: a caller may send it, and refusing would be rude. */
   user: Schema.optional(Schema.String),
+  /**
+   * Redrob extension, optional: what the calling host is looking at. redrob-browser sends the
+   * task's active tab, and the engine arms skills whose `urls:` globs match `page_url` (see
+   * docs/LOCAL-ENGINE-API.md). Other clients omit it and nothing changes for them.
+   */
+  redrob_context: Schema.optional(
+    Schema.Struct({
+      page_url: Schema.optional(Schema.String),
+      page_title: Schema.optional(Schema.String),
+    }),
+  ),
 }).annotate({ identifier: "ChatCompletionRequest" })
 export type ChatCompletionRequest = typeof ChatCompletionRequest.Type
 

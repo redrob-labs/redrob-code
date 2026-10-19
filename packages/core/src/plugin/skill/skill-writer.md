@@ -48,6 +48,8 @@ it is a skill that quietly does not do the thing you meant.
 | `icon` | string | icon URL, for surfaces that list skills. |
 | `autoInject.keywords` | string array | case-insensitive words matched against the prompt on word boundaries. |
 | `autoInject.url` | string array | globs matched against the current tab URL. |
+| `keywords` | string array | short form of `autoInject.keywords`; both are merged. |
+| `urls` | string array | short form of `autoInject.url`, written as copied from the address bar (`https://mail.google.com/*`); a trailing `/*` covers the whole site. |
 
 `autoInject` is what arms the skill without the user naming it. A skill with **no**
 `autoInject` block never auto-arms and stays explicitly loadable — which is the right choice
@@ -95,6 +97,21 @@ The body is the instruction, and it is read by an agent that has nothing else. S
 - Every claim about a tool, a global or a flag must be true. A skill that describes a method
   that does not exist produces an agent that calls it and fails.
 - Keep it short enough to be read whole. A skill is a page, not a manual.
+
+## Saving a repeated instruction
+
+When the user gives the same instruction a second time ("always do it this way", "like last
+time"), offer to save it as a skill, and write one only after they agree:
+
+1. Name it after the task, not the user (`weekly-sales-report`, not `my-skill`).
+2. Write it to the user's own skills folder, `~/.config/redrob/skills/<name>/SKILL.md`, so it
+   applies in every project. Use `.redrob/skills/<name>/SKILL.md` only when it is about this
+   repository.
+3. Put the user's instruction in the body in their words, as numbered steps.
+4. If the instruction is about one website, add `urls:` with that site
+   (`https://example.com/*`) so it arms itself there. If it is about a kind of request, add
+   two or three `keywords:` the user actually says. Leave both out otherwise.
+5. Tell the user the path you wrote and that it takes effect after a restart.
 
 ## After writing
 

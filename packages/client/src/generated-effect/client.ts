@@ -862,6 +862,7 @@ type Endpoint24_0Input = {
   readonly presence_penalty?: Endpoint24_0Request["payload"]["presence_penalty"]
   readonly reasoning_effort?: Endpoint24_0Request["payload"]["reasoning_effort"]
   readonly user?: Endpoint24_0Request["payload"]["user"]
+  readonly redrob_context?: Endpoint24_0Request["payload"]["redrob_context"]
 }
 const Endpoint24_0 = (raw: RawClient["server.chat"]) => (input: Endpoint24_0Input) =>
   raw["chat.completions"]({
@@ -881,6 +882,7 @@ const Endpoint24_0 = (raw: RawClient["server.chat"]) => (input: Endpoint24_0Inpu
       presence_penalty: input["presence_penalty"],
       reasoning_effort: input["reasoning_effort"],
       user: input["user"],
+      redrob_context: input["redrob_context"],
     },
   }).pipe(Effect.mapError(mapClientError))
 

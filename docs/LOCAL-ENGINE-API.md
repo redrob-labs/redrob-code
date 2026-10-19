@@ -64,9 +64,46 @@ An OpenAI chat-completions subset:
 | `max_tokens`       | no       |                                                                                     |
 | `temperature`      | no       | ignored for models that fix their own sampling                                      |
 | `reasoning_effort` | no       | passed through where the provider accepts it                                        |
+| `redrob_context`   | no       | Redrob extension: `{ page_url, page_title }` of the page the caller is on — see Skill arming |
 
 Unknown fields are ignored rather than rejected, so a newer client can talk to an
 older engine without a version check.
+
+### Skill arming
+
+A skill arms itself — its body is added to the request without anyone loading it —
+when its frontmatter declares `keywords:` or `urls:` (or the nested
+`autoInject: { keywords, url }` block; both spellings merge):
+
+```markdown
+---
+name: browser-gmail
+description: Use when the task is reading or drafting mail in Gmail.
+urls:
+  - https://mail.google.com/*
+keywords:
+  - gmail
+---
+```
+
+- **keywords** match the last `user` message, case-insensitively, on word boundaries
+  (`ai` does not match `said`). A keyword ending in Hangul needs no boundary after it,
+  so `홈택스` matches `홈택스에서`.
+- **urls** match `redrob_context.page_url`. The scheme is ignored, `*` stays inside one
+  path segment, `**` crosses segments, and a trailing `/*` in `urls:` covers the whole
+  site including its root.
+- Armed bodies go in as one extra `system` message after the caller's own system
+  messages, labelled with what armed each one. A skill with neither list never arms
+  and behaves as before; in agent sessions an armable skill is left out of the standing
+  skill list and appears only when it arms.
+
+`redrob-browser` sends `redrob_context` on every task turn to the built-in engine: the
+agent's own tab once it has opened one, else the http(s) tab the user started from. It
+never sends it to a user's own provider. The engine ships ten site skills under
+`packages/core/src/plugin/skill/browser/` (Gmail, Google Calendar, Notion, GitHub,
+Slack, 네이버 메일, 네이버 검색, 카카오, 홈택스 조회, 쿠팡 주문 조회) and the
+`skill-writer` skill, which saves a repeated instruction as a new
+`~/.config/redrob/skills/<name>/SKILL.md`.
 
 ### Tool ownership is decided by the request
 

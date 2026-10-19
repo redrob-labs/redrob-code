@@ -10,6 +10,7 @@ import { FSUtil } from "./fs-util"
 import { PermissionV2 } from "./permission"
 import { AbsolutePath } from "./schema"
 import { SkillDiscovery } from "./skill/discovery"
+import { SkillArming } from "./skill/arming"
 import { State } from "./state"
 
 export const DirectorySource = Skill.DirectorySource
@@ -148,6 +149,8 @@ const layer = Layer.effect(
               )
             } else autoInject = block.success
           }
+          // The short form: top-level `keywords:` and `urls:` lists arm the skill too.
+          autoInject = SkillArming.fromFrontmatter(markdown.data, autoInject)
           skills.push({
             name,
             description: frontmatter.description,
