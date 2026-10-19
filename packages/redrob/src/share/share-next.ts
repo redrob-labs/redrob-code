@@ -1,30 +1,39 @@
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import { httpClient } from "@redrob-code/core/effect/app-node-platform"
-import type * as SDK from "@redrob-labs/sdk/v2"
 import { serviceUse } from "@redrob-code/core/effect/service-use"
-import { Effect, Exit, Layer, Option, Schema, Scope, Context, Stream } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
-import { Account } from "@/account/account"
+import { Effect, Exit, Layer, Schema, Scope, Context } from "effect"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { Provider } from "@/provider/provider"
 
 import { Session } from "@/session/session"
-import { MessageV2 } from "@/session/message-v2"
 import type { SessionID } from "@/session/schema"
+import type { SessionV1 } from "@redrob-code/core/v1/session"
 import { Database } from "@redrob-code/core/database/database"
 import { eq } from "drizzle-orm"
 import { Config } from "@/config/config"
 import { SessionShareTable } from "@redrob-code/core/share/sql"
 import { ProviderV2 } from "@redrob-code/core/provider"
-import { ModelV2 } from "@redrob-code/core/model"
 import { EventV2 } from "@redrob-code/core/event"
+import { Flag } from "@redrob-code/core/flag/flag"
+
+/*
+  Sharing goes to Redrob Chat, not to opencode's share service.
+
+  A share is an immutable snapshot (`POST /share` on the Redrob Chat API, kind "transcript", source "code"):
+  the transcript is sent once, when the user shares, and nothing is streamed afterwards. Unshare is
+  `DELETE /share/:id`. The caller is identified by the same Redrob Console API key the `redrob` provider
+  spends, sent as a bearer token; there is no second account and no share secret.
+*/
 
 const disabled = process.env["REDROB_DISABLE_SHARE"] === "true" || process.env["REDROB_DISABLE_SHARE"] === "1"
 
+/** Production Redrob Chat API. Overridden by `chat.url` in config, then by `REDROB_CHAT_API_URL`. */
+export const DEFAULT_CHAT_API_URL = "https://chat-prod.redrob.ai"
+
 export type Api = {
   create: string
-  sync: (shareID: string) => string
   remove: (shareID: string) => string
   data: (shareID: string) => string
 }
@@ -35,40 +44,25 @@ export type Req = {
   baseUrl: string
 }
 
-const ShareSchema = Schema.Struct({
+const CreatedSchema = Schema.Struct({
   id: Schema.String,
   url: Schema.String,
-  secret: Schema.String,
 })
-export type Share = typeof ShareSchema.Type
+
+/** `secret` is kept for the stored row's shape; Redrob Chat shares carry none, so it is always "". */
+export type Share = { id: string; url: string; secret: string }
+
+export type ArtifactInput = {
+  title: string
+  format: "markdown" | "html" | "code" | "json"
+  language?: string
+  body: string
+}
 
 type State = {
-  queue: Map<SessionID, Map<string, Data>>
   scope: Scope.Closeable
   shared: Map<SessionID, Share | null>
 }
-
-type Data =
-  | {
-      type: "session"
-      data: SDK.Session
-    }
-  | {
-      type: "message"
-      data: SDK.Message
-    }
-  | {
-      type: "part"
-      data: SDK.Part
-    }
-  | {
-      type: "session_diff"
-      data: SDK.SnapshotFileDiff[]
-    }
-  | {
-      type: "model"
-      data: SDK.Model[]
-    }
 
 export interface Interface {
   readonly init: () => Effect.Effect<void, unknown>
@@ -76,43 +70,63 @@ export interface Interface {
   readonly request: () => Effect.Effect<Req, unknown>
   readonly create: (sessionID: SessionID) => Effect.Effect<Share, unknown>
   readonly remove: (sessionID: SessionID) => Effect.Effect<void, unknown>
+  /** Share one file or snippet as a standalone artifact. Not tied to a session, so nothing is persisted. */
+  readonly artifact: (input: ArtifactInput) => Effect.Effect<{ id: string; url: string }, unknown>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/ShareNext") {}
 
 export const use = serviceUse(Service)
 
-function api(resource: string): Api {
-  return {
-    create: `/api/${resource}`,
-    sync: (shareID) => `/api/${resource}/${shareID}/sync`,
-    remove: (shareID) => `/api/${resource}/${shareID}`,
-    data: (shareID) => `/api/${resource}/${shareID}/data`,
-  }
+const chatApi: Api = {
+  create: "/share",
+  remove: (shareID) => `/share/${encodeURIComponent(shareID)}`,
+  data: (shareID) => `/share/${encodeURIComponent(shareID)}`,
 }
 
-const legacyApi = api("share")
-const consoleApi = api("shares")
+/** Contract limit on the server side; trimming here would silently drop history, so the oldest go first. */
+const MAX_MESSAGES = 500
 
-function key(item: Data) {
-  switch (item.type) {
-    case "session":
-      return "session"
-    case "message":
-      return `message/${item.data.id}`
-    case "part":
-      return `part/${item.data.messageID}/${item.data.id}`
-    case "session_diff":
-      return "session_diff"
-    case "model":
-      return "model"
+/*
+  One line per tool call: the tool name and its title (for file tools that is the path). Inputs and
+  outputs are left out on purpose, so a share never carries file contents the conversation did not show.
+*/
+function toolLine(part: SessionV1.ToolPart) {
+  const state = part.state
+  const title = state.status === "completed" ? state.title : ""
+  const suffix = state.status === "error" ? " (failed)" : ""
+  return `> **${part.tool}**${title ? ` ${title}` : ""}${suffix}`
+}
+
+function transcript(messages: SessionV1.WithParts[]) {
+  const out: Array<{ role: "user" | "assistant"; content: string }> = []
+  for (const msg of messages) {
+    const lines: string[] = []
+    for (const part of msg.parts) {
+      if (part.type === "text") {
+        if (part.ignored || part.synthetic || !part.text.trim()) continue
+        lines.push(part.text)
+        continue
+      }
+      if (part.type === "tool") {
+        lines.push(toolLine(part))
+        continue
+      }
+      if (part.type === "file") {
+        lines.push(`> attached ${part.filename ?? part.mime}`)
+        continue
+      }
+    }
+    const content = lines.join("\n\n").trim()
+    if (!content) continue
+    out.push({ role: msg.info.role, content })
   }
+  return out.slice(-MAX_MESSAGES)
 }
 
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const account = yield* Account.Service
     const events = yield* EventV2Bridge.Service
     const cfg = yield* Config.Service
     const { db } = yield* Database.Service
@@ -121,44 +135,12 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const session = yield* Session.Service
 
-    function sync(sessionID: SessionID, data: Data[]) {
-      return Effect.gen(function* () {
-        if (disabled) return
-        const share = yield* getCached(sessionID)
-        if (!share) return
-
-        const s = yield* InstanceState.get(state)
-        const existing = s.queue.get(sessionID)
-        if (existing) {
-          for (const item of data) {
-            existing.set(key(item), item)
-          }
-          return
-        }
-
-        const next = new Map(data.map((item) => [key(item), item]))
-        s.queue.set(sessionID, next)
-        yield* flush(sessionID).pipe(
-          Effect.delay(1000),
-          Effect.catchCause((cause) => Effect.logError("share flush failed", { sessionID: sessionID, cause: cause })),
-          Effect.forkIn(s.scope),
-        )
-      })
-    }
-
     const state: InstanceState.InstanceState<State> = yield* InstanceState.make<State>(
       Effect.fn("ShareNext.state")(function* (_ctx) {
-        const cache: State = { queue: new Map(), scope: yield* Scope.make(), shared: new Map() }
+        const cache: State = { scope: yield* Scope.make(), shared: new Map() }
 
         yield* Effect.addFinalizer(() =>
-          Scope.close(cache.scope, Exit.void).pipe(
-            Effect.andThen(
-              Effect.sync(() => {
-                cache.queue.clear()
-                cache.shared.clear()
-              }),
-            ),
-          ),
+          Scope.close(cache.scope, Exit.void).pipe(Effect.andThen(Effect.sync(() => cache.shared.clear()))),
         )
 
         if (disabled) return cache
@@ -176,49 +158,39 @@ const layer = Layer.effect(
             )
           })
 
-        yield* watch(Session.Event.Updated, (data) =>
-          Effect.gen(function* () {
-            const info = data.info
-            yield* sync(info.id, [{ type: "session", data: structuredClone(info) as SDK.Session }])
-          }),
-        )
-        yield* watch(MessageV2.Event.Updated, (data) =>
-          Effect.gen(function* () {
-            const info = data.info
-            yield* sync(info.sessionID, [{ type: "message", data: structuredClone(info) as SDK.Message }])
-            if (info.role !== "user") return
-            const model = yield* provider.getModel(info.model.providerID, info.model.modelID)
-            yield* sync(info.sessionID, [{ type: "model", data: [model] }])
-          }),
-        )
-        yield* watch(MessageV2.Event.PartUpdated, (data) =>
-          sync(data.part.sessionID, [{ type: "part", data: structuredClone(data.part) as SDK.Part }]),
-        )
-        yield* watch(Session.Event.Diff, (data) =>
-          sync(data.sessionID, [{ type: "session_diff", data: structuredClone(data.diff) as SDK.SnapshotFileDiff[] }]),
-        )
+        // A deleted session takes its share link down with it.
         yield* watch(Session.Event.Deleted, (data) => remove(data.sessionID))
 
         return cache
       }),
     )
 
+    /** The Console key the `redrob` provider resolved (env, auth store, config, or launcher). */
+    const consoleKey = Effect.fn("ShareNext.consoleKey")(function* () {
+      const providers = yield* provider.list()
+      const info = providers[ProviderV2.ID.redrob]
+      const key = info?.key ?? (info?.options?.["apiKey"] as string | undefined)
+      if (!key || key === "public") return undefined
+      return key
+    })
+
     const request = Effect.fn("ShareNext.request")(function* () {
+      const conf = yield* cfg.get()
+      const baseUrl = (Flag.REDROB_CHAT_API_URL ?? conf.chat?.url ?? DEFAULT_CHAT_API_URL).replace(/\/+$/, "")
       const headers: Record<string, string> = {}
-      const active = yield* account.active()
-      if (Option.isNone(active) || !active.value.active_org_id) {
-        const baseUrl = (yield* cfg.get()).enterprise?.url ?? "https://opncd.ai"
-        return { headers, api: legacyApi, baseUrl } satisfies Req
-      }
+      const key = yield* consoleKey()
+      if (key) headers.authorization = `Bearer ${key}`
+      return { headers, api: chatApi, baseUrl } satisfies Req
+    })
 
-      const token = yield* account.token(active.value.id)
-      if (Option.isNone(token)) {
-        throw new Error("No active account token available for sharing")
+    const authorized = Effect.fn("ShareNext.authorized")(function* () {
+      const req = yield* request()
+      if (!req.headers.authorization) {
+        return yield* Effect.fail(
+          new Error("Sharing needs a Redrob Console key. Connect with `redrob providers login` first."),
+        )
       }
-
-      headers.authorization = `Bearer ${token.value}`
-      headers["x-org-id"] = active.value.active_org_id
-      return { headers, api: consoleApi, baseUrl: active.value.url } satisfies Req
+      return req
     })
 
     const get = Effect.fnUntraced(function* (sessionID: SessionID) {
@@ -244,58 +216,14 @@ const layer = Layer.effect(
       return share
     })
 
-    const flush = Effect.fn("ShareNext.flush")(function* (sessionID: SessionID) {
-      if (disabled) return
-      const s = yield* InstanceState.get(state)
-      const queued = s.queue.get(sessionID)
-      if (!queued) return
-
-      s.queue.delete(sessionID)
-
-      const share = yield* getCached(sessionID)
-      if (!share) return
-
-      const req = yield* request()
-      const res = yield* HttpClientRequest.post(`${req.baseUrl}${req.api.sync(share.id)}`).pipe(
+    const post = Effect.fn("ShareNext.post")(function* (body: Record<string, unknown>) {
+      const req = yield* authorized()
+      return yield* HttpClientRequest.post(`${req.baseUrl}${req.api.create}`).pipe(
         HttpClientRequest.setHeaders(req.headers),
-        HttpClientRequest.bodyJson({ secret: share.secret, data: Array.from(queued.values()) }),
-        Effect.flatMap((r) => http.execute(r)),
+        HttpClientRequest.bodyJson(body),
+        Effect.flatMap((r) => httpOk.execute(r)),
+        Effect.flatMap(HttpClientResponse.schemaBodyJson(CreatedSchema)),
       )
-
-      if (res.status >= 400) {
-        yield* Effect.logWarning("failed to sync share", {
-          sessionID: sessionID,
-          shareID: share.id,
-          status: res.status,
-        })
-      }
-    })
-
-    const full = Effect.fn("ShareNext.full")(function* (sessionID: SessionID) {
-      yield* Effect.logInfo("full sync", { sessionID: sessionID })
-      const info = yield* session.get(sessionID)
-      const diffs = yield* session.diff(sessionID)
-      const messages = yield* session.messages({ sessionID })
-      const models = yield* Effect.forEach(
-        Array.from(
-          new Map(
-            messages
-              .filter((msg) => msg.info.role === "user")
-              .map((msg) => (msg.info as SDK.UserMessage).model)
-              .map((item) => [`${item.providerID}/${item.modelID}`, item] as const),
-          ).values(),
-        ),
-        (item) => provider.getModel(ProviderV2.ID.make(item.providerID), ModelV2.ID.make(item.modelID)),
-        { concurrency: 8 },
-      )
-
-      yield* sync(sessionID, [
-        { type: "session", data: info },
-        ...messages.map((item) => ({ type: "message" as const, data: item.info })),
-        ...messages.flatMap((item) => item.parts.map((part) => ({ type: "part" as const, data: part }))),
-        { type: "session_diff", data: diffs },
-        { type: "model", data: models },
-      ])
     })
 
     const init = Effect.fn("ShareNext.init")(function* () {
@@ -310,13 +238,16 @@ const layer = Layer.effect(
     const create = Effect.fn("ShareNext.create")(function* (sessionID: SessionID) {
       if (disabled) return { id: "", url: "", secret: "" }
       yield* Effect.logInfo("creating share", { sessionID: sessionID })
-      const req = yield* request()
-      const result = yield* HttpClientRequest.post(`${req.baseUrl}${req.api.create}`).pipe(
-        HttpClientRequest.setHeaders(req.headers),
-        HttpClientRequest.bodyJson({ sessionID }),
-        Effect.flatMap((r) => httpOk.execute(r)),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(ShareSchema)),
-      )
+      const info = yield* session.get(sessionID)
+      const messages = yield* session.messages({ sessionID })
+      const created = yield* post({
+        kind: "transcript",
+        source: "code",
+        title: (info.title || "Redrob Code session").slice(0, 200),
+        visibility: "unlisted",
+        messages: transcript(messages),
+      })
+      const result: Share = { id: created.id, url: created.url, secret: "" }
       yield* db
         .insert(SessionShareTable)
         .values({ session_id: sessionID, id: result.id, secret: result.secret, url: result.url })
@@ -328,10 +259,6 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       const s = yield* InstanceState.get(state)
       s.shared.set(sessionID, result)
-      yield* full(sessionID).pipe(
-        Effect.catchCause((cause) => Effect.logError("share full sync failed", { sessionID: sessionID, cause: cause })),
-        Effect.forkIn(s.scope),
-      )
       return result
     })
 
@@ -342,30 +269,48 @@ const layer = Layer.effect(
       const share = yield* getCached(sessionID)
       if (!share) {
         s.shared.delete(sessionID)
-        s.queue.delete(sessionID)
         return
       }
 
-      const req = yield* request()
-      yield* HttpClientRequest.delete(`${req.baseUrl}${req.api.remove(share.id)}`).pipe(
+      const req = yield* authorized()
+      const res = yield* HttpClientRequest.delete(`${req.baseUrl}${req.api.remove(share.id)}`).pipe(
         HttpClientRequest.setHeaders(req.headers),
-        HttpClientRequest.bodyJson({ secret: share.secret }),
-        Effect.flatMap((r) => httpOk.execute(r)),
+        Effect.flatMap((r) => http.execute(r)),
       )
+      // 404: the link is already gone on the server, which is the state unshare asks for.
+      if (res.status >= 400 && res.status !== 404) {
+        return yield* Effect.fail(new Error(`Redrob Chat refused to remove the share (${res.status})`))
+      }
 
       yield* db.delete(SessionShareTable).where(eq(SessionShareTable.session_id, sessionID)).run().pipe(Effect.orDie)
       s.shared.delete(sessionID)
-      s.queue.delete(sessionID)
     })
 
-    return Service.of({ init, url, request, create, remove })
+    const artifact = Effect.fn("ShareNext.artifact")(function* (input: ArtifactInput) {
+      if (disabled) return yield* Effect.fail(new Error("Sharing is disabled (REDROB_DISABLE_SHARE)"))
+      const conf = yield* cfg.get()
+      if (conf.share === "disabled") return yield* Effect.fail(new Error("Sharing is disabled in configuration"))
+      return yield* post({
+        kind: "artifact",
+        source: "code",
+        title: input.title.slice(0, 200),
+        visibility: "unlisted",
+        artifact: {
+          format: input.format,
+          ...(input.language ? { language: input.language } : {}),
+          body: input.body,
+        },
+      })
+    })
+
+    return Service.of({ init, url, request, create, remove, artifact })
   }),
 )
 
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: () => [Account.node, EventV2Bridge.node, Config.node, Database.node, httpClient, Provider.node, Session.node],
+  deps: () => [EventV2Bridge.node, Config.node, Database.node, httpClient, Provider.node, Session.node],
 })
 
 export * as ShareNext from "./share-next"

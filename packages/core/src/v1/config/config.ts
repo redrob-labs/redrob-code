@@ -133,6 +133,13 @@ export const Info = Schema.Struct({
   enterprise: Schema.optional(
     Schema.Struct({ url: Schema.optional(Schema.String).annotate({ description: "Enterprise URL" }) }),
   ),
+  chat: Schema.optional(
+    Schema.Struct({
+      url: Schema.optional(Schema.String).annotate({
+        description: "Redrob Chat API base URL used for sharing (default https://chat-prod.redrob.ai)",
+      }),
+    }),
+  ),
   tool_output: Schema.optional(
     Schema.Struct({
       max_lines: Schema.optional(PositiveInt).annotate({
