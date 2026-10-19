@@ -10,6 +10,18 @@ import customizeRedrobContent from "./skill/customize-redrob.md" with { type: "t
 import documentToolchainContent from "./skill/document-toolchain.md" with { type: "text" }
 import pageControlContent from "./skill/page-control.md" with { type: "text" }
 import skillWriterContent from "./skill/skill-writer.md" with { type: "text" }
+import browserGmail from "./skill/browser/gmail/SKILL.md" with { type: "text" }
+import browserGoogleCalendar from "./skill/browser/google-calendar/SKILL.md" with { type: "text" }
+import browserNotion from "./skill/browser/notion/SKILL.md" with { type: "text" }
+import browserGithub from "./skill/browser/github/SKILL.md" with { type: "text" }
+import browserSlack from "./skill/browser/slack/SKILL.md" with { type: "text" }
+import browserNaverMail from "./skill/browser/naver-mail/SKILL.md" with { type: "text" }
+import browserNaverSearch from "./skill/browser/naver-search/SKILL.md" with { type: "text" }
+import browserKakao from "./skill/browser/kakao/SKILL.md" with { type: "text" }
+import browserHometax from "./skill/browser/hometax/SKILL.md" with { type: "text" }
+import browserCoupang from "./skill/browser/coupang/SKILL.md" with { type: "text" }
+import { ConfigMarkdown } from "../config/markdown"
+import { SkillArming } from "../skill/arming"
 
 const mutable = <T>(value: T) => value as DeepMutable<T>
 
@@ -79,11 +91,51 @@ export const BuiltinSkills: ReadonlyArray<SkillV2.Info> = [
   }),
 ]
 
+/**
+ * CAP-1: the browser site skills. Each one is a real SKILL.md under `./skill/browser/<site>/`,
+ * frontmatter included, so the file a person edits is the whole truth: its `name`,
+ * `description`, `urls:` and `keywords:` are read from it here, through the same arming merge
+ * the disk loader uses. A document whose frontmatter does not parse, or has no name, is skipped
+ * rather than shipped as a nameless skill.
+ */
+const BrowserSkillDocuments: ReadonlyArray<readonly [string, string]> = [
+  ["gmail", browserGmail],
+  ["google-calendar", browserGoogleCalendar],
+  ["notion", browserNotion],
+  ["github", browserGithub],
+  ["slack", browserSlack],
+  ["naver-mail", browserNaverMail],
+  ["naver-search", browserNaverSearch],
+  ["kakao", browserKakao],
+  ["hometax", browserHometax],
+  ["coupang", browserCoupang],
+]
+
+export const BrowserSkills: ReadonlyArray<SkillV2.Info> = BrowserSkillDocuments.flatMap(([site, document]) => {
+  const markdown = ConfigMarkdown.parseOption(document)
+  const data = markdown?.data as Record<string, unknown> | undefined
+  const name = typeof data?.["name"] === "string" ? (data["name"] as string) : undefined
+  if (!markdown || !name) return []
+  const autoInject = SkillArming.fromFrontmatter(data, undefined)
+  return [
+    SkillV2.Info.make({
+      name,
+      description: typeof data?.["description"] === "string" ? (data["description"] as string) : undefined,
+      location: AbsolutePath.make(`/builtin/browser/${site}/SKILL.md`),
+      ...(autoInject ? { autoInject: SkillV2.AutoInject.make(autoInject) } : {}),
+      content: markdown.content,
+    }),
+  ]
+})
+
+/** Everything the engine registers: the core built-ins, then the browser site skills. */
+export const AllBuiltinSkills: ReadonlyArray<SkillV2.Info> = [...BuiltinSkills, ...BrowserSkills]
+
 export const Plugin = define({
   id: "skill",
   effect: Effect.fn(function* (ctx) {
     yield* ctx.skill.transform((draft) => {
-      for (const skill of BuiltinSkills) {
+      for (const skill of AllBuiltinSkills) {
         // The plugin API is typed from the generated SDK, which has no readonly arrays.
         draft.source(mutable(SkillV2.EmbeddedSource.make({ type: "embedded", skill })))
       }

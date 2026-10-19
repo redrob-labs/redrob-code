@@ -61,7 +61,10 @@ const matchesKeyword = (prompt: string, keyword: string): boolean => {
   if (needle.length === 0) return false
   const haystack = prompt.toLowerCase()
   const checkStart = isWordCharacter(needle[0])
-  const checkEnd = isWordCharacter(needle[needle.length - 1])
+  // Korean attaches particles straight to the noun ("홈택스에서", "쿠팡의"), so a keyword ending in
+  // Hangul needs no boundary after it. The start boundary still applies.
+  const last = needle[needle.length - 1]
+  const checkEnd = isWordCharacter(last) && !/\p{Script=Hangul}/u.test(last!)
   let from = 0
   for (;;) {
     const at = haystack.indexOf(needle, from)

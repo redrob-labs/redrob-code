@@ -318,7 +318,7 @@ const layer = Layer.effect(
         // The engine's other built-ins (documents, page-control, skill-writer and the
         // browser site skills) come from the same list the v2 plugin registers, so a session
         // sees and arms the same set the chat-completions route does.
-        for (const builtin of SkillPlugin.BuiltinSkills) {
+        for (const builtin of SkillPlugin.AllBuiltinSkills) {
           if (s.skills[builtin.name]) continue
           s.skills[builtin.name] = {
             name: builtin.name,
