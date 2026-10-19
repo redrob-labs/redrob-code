@@ -29,6 +29,8 @@ export const Flag = {
    * still wants a key it recognises.
    */
   REDROB_CONSOLE_URL: process.env["REDROB_CONSOLE_URL"],
+  /** Point sharing at a different Redrob Chat API (staging, local). Wins over `chat.url` in config. */
+  REDROB_CHAT_API_URL: process.env["REDROB_CHAT_API_URL"],
   REDROB_CONFIG: process.env["REDROB_CONFIG"],
   REDROB_CONFIG_CONTENT: process.env["REDROB_CONFIG_CONTENT"],
   REDROB_DISABLE_AUTOUPDATE: truthy("REDROB_DISABLE_AUTOUPDATE"),
