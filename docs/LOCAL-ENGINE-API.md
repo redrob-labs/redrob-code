@@ -91,7 +91,8 @@ keywords:
   so `홈택스` matches `홈택스에서`.
 - **urls** match `redrob_context.page_url`. The scheme is ignored, `*` stays inside one
   path segment, `**` crosses segments, and a trailing `/*` in `urls:` covers the whole
-  site including its root.
+  site including its root. In agent sessions the same matcher reads the optional
+  `pageUrl` field of the session prompt body.
 - Armed bodies go in as one extra `system` message after the caller's own system
   messages, labelled with what armed each one. A skill with neither list never arms
   and behaves as before; in agent sessions an armable skill is left out of the standing

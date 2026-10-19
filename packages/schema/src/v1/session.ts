@@ -351,6 +351,12 @@ export const User = Schema.Struct({
   }),
   system: Schema.optional(Schema.String),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
+  /**
+   * The URL of the browser tab the caller was on when it sent this message. Skills whose
+   * `urls:` globs match it arm for the turn, the same matcher `/v1/chat/completions` runs
+   * on `redrob_context.page_url`. Absent for callers with no tab.
+   */
+  pageUrl: Schema.optional(Schema.String),
 }).annotate({ identifier: "UserMessage" })
 export type User = Types.DeepMutable<Schema.Schema.Type<typeof User>>
 
