@@ -310,6 +310,7 @@ export type UserMessage = {
   tools?: {
     [key: string]: boolean
   }
+  pageUrl?: string
 }
 
 export type ProviderAuthError = {
@@ -10384,6 +10385,7 @@ export type SessionPromptData = {
     format?: OutputFormat
     system?: string
     variant?: string
+    pageUrl?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
@@ -10731,6 +10733,7 @@ export type SessionPromptAsyncData = {
     format?: OutputFormat
     system?: string
     variant?: string
+    pageUrl?: string
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
   }
   path: {
