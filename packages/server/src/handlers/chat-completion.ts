@@ -342,20 +342,27 @@ function toJsonBody(id: string, model: string, response: LLMResponse): unknown {
         finish_reason: toFinishReason(response.finishReason),
       },
     ],
-    ...(usage
-      ? {
-          usage: {
-            prompt_tokens: usage.inputTokens ?? 0,
-            completion_tokens: usage.outputTokens ?? 0,
-            total_tokens: usage.totalTokens ?? 0,
-          },
-        }
-      : {}),
+    ...(usage ? { usage: toWireUsage(usage) } : {}),
+  }
+}
+
+/** The engine's usage, in OpenAI's `usage` shape. One mapping for the JSON body and the stream. */
+function toWireUsage(usage: NonNullable<LLMResponse["usage"]>) {
+  return {
+    prompt_tokens: usage.inputTokens ?? 0,
+    completion_tokens: usage.outputTokens ?? 0,
+    total_tokens: usage.totalTokens ?? 0,
   }
 }
 
 /** One SSE frame carrying an OpenAI chunk. */
-function chunkFrame(id: string, model: string, delta: unknown, finishReason: string | null): Sse.Event {
+function chunkFrame(
+  id: string,
+  model: string,
+  delta: unknown,
+  finishReason: string | null,
+  usage?: ReturnType<typeof toWireUsage>,
+): Sse.Event {
   return {
     _tag: "Event",
     event: "message",
@@ -366,6 +373,7 @@ function chunkFrame(id: string, model: string, delta: unknown, finishReason: str
       created: seconds(),
       model,
       choices: [{ index: 0, delta, finish_reason: finishReason }],
+      ...(usage ? { usage } : {}),
     }),
   }
 }
@@ -386,13 +394,25 @@ function doneFrame(): Sse.Event {
  * caller would read a truncated answer as a complete one.
  */
 function toChunks(id: string, model: string, events: Stream.Stream<LLMEvent, LLMError>) {
+  // Usage rides on the finish frame, as OpenAI's own final chunk carries it. A provider that
+  // reports it only per step still gets counted: the last step's usage stands in. Without this the
+  // streaming path dropped usage entirely, and the browser's memory runs recorded 0 tokens.
+  let stepUsage: LLMResponse["usage"]
   return events.pipe(
-    Stream.flatMap((event: LLMEvent) => Stream.fromIterable(eventFrames(id, model, event))),
+    Stream.flatMap((event: LLMEvent) => {
+      if (event.type === "step-finish" && event.usage !== undefined) stepUsage = event.usage
+      return Stream.fromIterable(eventFrames(id, model, event, stepUsage))
+    }),
     Stream.concat(Stream.make(doneFrame())),
   )
 }
 
-function eventFrames(id: string, model: string, event: LLMEvent): ReadonlyArray<Sse.Event> {
+function eventFrames(
+  id: string,
+  model: string,
+  event: LLMEvent,
+  stepUsage?: LLMResponse["usage"],
+): ReadonlyArray<Sse.Event> {
   switch (event.type) {
     case "text-delta":
       return [chunkFrame(id, model, { content: event.text }, null)]
@@ -402,8 +422,10 @@ function eventFrames(id: string, model: string, event: LLMEvent): ReadonlyArray<
       const [call] = toWireToolCalls([{ id: event.id, name: event.name, input: event.input }])
       return [chunkFrame(id, model, { tool_calls: [{ index: 0, ...call }] }, null)]
     }
-    case "finish":
-      return [chunkFrame(id, model, {}, toFinishReason(event.reason))]
+    case "finish": {
+      const usage = event.usage ?? stepUsage
+      return [chunkFrame(id, model, {}, toFinishReason(event.reason), usage ? toWireUsage(usage) : undefined)]
+    }
     case "provider-error":
       // Surfaced as data, not as a stream failure: headers are already sent, so
       // this is the only way the caller learns the turn broke.
