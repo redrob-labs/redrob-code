@@ -8,6 +8,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@redrob-code/core/global"
 import { SkillPlugin } from "@redrob-code/core/plugin/skill"
 import { SkillV2 } from "@redrob-code/core/skill"
+import { SkillArming } from "@redrob-code/core/skill/arming"
 import { Permission } from "@/permission"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { Config } from "@/config/config"
@@ -82,8 +83,12 @@ function isSkillFrontmatter(data: unknown): data is { name: string; description?
  * like one that declared no block at all -- the documented failure mode.
  */
 function autoInjectOf(data: { autoInject?: unknown }): SkillV2.AutoInject | undefined {
-  if (data.autoInject === undefined) return undefined
-  return Schema.decodeUnknownOption(SkillV2.AutoInject)(data.autoInject).pipe(Option.getOrUndefined)
+  const block =
+    data.autoInject === undefined
+      ? undefined
+      : Schema.decodeUnknownOption(SkillV2.AutoInject)(data.autoInject).pipe(Option.getOrUndefined)
+  // Top-level `keywords:` / `urls:` are the short spelling of the same block.
+  return SkillArming.fromFrontmatter(data, block)
 }
 
 export class InvalidError extends Schema.TaggedErrorClass<InvalidError>()("SkillInvalidError", {
@@ -309,6 +314,19 @@ const layer = Layer.effect(
           description: CUSTOMIZE_REDROB_SKILL_DESCRIPTION,
           location: "<built-in>",
           content: CUSTOMIZE_REDROB_SKILL_BODY,
+        }
+        // The engine's other built-ins (documents, page-control, skill-writer and the
+        // browser site skills) come from the same list the v2 plugin registers, so a session
+        // sees and arms the same set the chat-completions route does.
+        for (const builtin of SkillPlugin.BuiltinSkills) {
+          if (s.skills[builtin.name]) continue
+          s.skills[builtin.name] = {
+            name: builtin.name,
+            description: builtin.description,
+            location: "<built-in>",
+            content: builtin.content,
+            ...(builtin.autoInject ? { autoInject: builtin.autoInject } : {}),
+          }
         }
         yield* loadSkills(s, yield* InstanceState.get(discovered), events)
         return s

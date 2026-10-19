@@ -16,6 +16,8 @@ import { ModelV2 } from "@redrob-code/core/model"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { Mask } from "@redrob-code/core/privacy/mask"
 import { Privacy } from "@redrob-code/core/privacy/service"
+import { SkillV2 } from "@redrob-code/core/skill"
+import { SkillArming } from "@redrob-code/core/skill/arming"
 import { fromCatalogModel } from "@redrob-code/core/session/runner/model"
 import { LLM, LLMError, LLMResponse, Message } from "@redrob-code/llm"
 import type { LLMEvent, LLMRequest } from "@redrob-code/llm"
@@ -184,12 +186,81 @@ export function callerLabels(headers: Record<string, string>): Record<string, st
   }
 }
 
+/**
+ * Skill arming on this route.
+ *
+ * The route stays sessionless, but a skill that declares `keywords:` or `urls:` arms here
+ * exactly as it does in a session: the last user message is matched against the keywords,
+ * and `redrob_context.page_url` (the tab the browser's task is on) against the URL globs.
+ * Armed bodies go in as ONE extra system message, placed after the caller's own system
+ * messages so the caller's instructions still come first.
+ *
+ * Read through `serviceOption`: a host that serves this route without the skill service
+ * gets today's behaviour instead of a missing-service failure, and any failure while
+ * listing skills costs the arming, never the completion.
+ */
+const attribute = (value: string) =>
+  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+
+function lastUserText(payload: ChatCompletionRequest): string {
+  for (let index = payload.messages.length - 1; index >= 0; index -= 1) {
+    const message = payload.messages[index]!
+    if (message.role !== "user") continue
+    const content = message.content
+    if (typeof content === "string") return content
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => (part["type"] === "text" && typeof part["text"] === "string" ? (part["text"] as string) : ""))
+        .join("\n")
+    }
+    return ""
+  }
+  return ""
+}
+
+export const withArmedSkills = Effect.fn("chat.armedSkills")(function* (
+  payload: ChatCompletionRequest,
+  messages: ReadonlyArray<Message>,
+) {
+  const service = yield* Effect.serviceOption(SkillV2.Service)
+  if (Option.isNone(service)) return messages
+  const skills = yield* service.value.list().pipe(Effect.catchCause(() => Effect.succeed([] as SkillV2.Info[])))
+  const pageUrl = payload.redrob_context?.page_url?.trim() || undefined
+  const armed = SkillArming.arm({ skills, prompt: lastUserText(payload), url: pageUrl })
+  if (armed.length === 0) return messages
+
+  const byName = new Map(skills.map((skill) => [skill.name, skill] as const))
+  const sections: string[] = []
+  for (const entry of armed) {
+    const info = byName.get(entry.name)
+    if (info === undefined || info.content.trim().length === 0) continue
+    const why = [...entry.keywords.map((k) => `keyword ${k}`), ...entry.urls.map((u) => `url ${u}`)].join(", ")
+    sections.push(`  <skill name="${attribute(entry.name)}" armed-by="${attribute(why)}">`, info.content, "  </skill>")
+  }
+  if (sections.length === 0) return messages
+
+  const title = payload.redrob_context?.page_title?.trim()
+  const text = [
+    "<armed_skills>",
+    "These skills armed themselves on this request: their own keywords matched what the user typed,",
+    "or their URL globs matched the page the task is on" +
+      (pageUrl ? ` (${title ? `${attribute(title)} - ` : ""}${attribute(pageUrl)}).` : "."),
+    "Follow them when they apply; they are already loaded.",
+    ...sections,
+    "</armed_skills>",
+  ].join("\n")
+
+  const insertAt = messages.findIndex((message) => message.role !== "system")
+  const at = insertAt === -1 ? messages.length : insertAt
+  return [...messages.slice(0, at), Message.system(text), ...messages.slice(at)]
+})
+
 const buildRequest = Effect.fn("chat.buildRequest")(function* (
   payload: ChatCompletionRequest,
   labels: Record<string, string> = {},
 ) {
   const model = yield* resolveModel(payload.model)
-  const messages = toLLMMessages(payload)
+  const messages = yield* withArmedSkills(payload, toLLMMessages(payload))
   const tools = toLLMTools(payload)
   const generation = toGeneration(payload)
   return LLM.request({

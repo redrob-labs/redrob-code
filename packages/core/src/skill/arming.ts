@@ -18,6 +18,9 @@ import type { Skill } from "@redrob-code/schema/skill"
  *   path segments. The scheme is ignored on both sides, so a glob is written
  *   `docs.google.com/document/**` rather than `https://docs.google.com/document/**`.
  *
+ * The block comes from frontmatter `autoInject: { keywords, url }` or from the short
+ * top-level `keywords:` / `urls:` lists; `fromFrontmatter` merges the two spellings.
+ *
  * A skill with no `autoInject` block NEVER auto-arms. It stays explicitly loadable, which
  * is the point: a skill that arms on everything is a skill that is always in the prompt.
  */
@@ -108,7 +111,50 @@ const globToRegExp = (glob: string): RegExp => {
 const matchesUrlGlob = (url: string, glob: string): boolean => {
   const normalized = normalizeUrl(glob)
   if (normalized.length === 0) return false
-  return globToRegExp(normalized).test(normalizeUrl(url))
+  const target = normalizeUrl(url)
+  if (globToRegExp(normalized).test(target)) return true
+  // `mail.google.com/**` should also cover the bare site root, which `normalizeUrl` turns
+  // into `mail.google.com` (no trailing slash left for the `/` in the glob to match).
+  return normalized.endsWith("/**") && globToRegExp(normalized.slice(0, -3)).test(target)
+}
+
+const stringList = (value: unknown): ReadonlyArray<string> => {
+  if (typeof value === "string") return value.trim().length > 0 ? [value] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+}
+
+/**
+ * Top-level `urls:` globs are written the way a person copies them out of the address bar,
+ * `https://mail.google.com/*`. In that habit a trailing `/*` means "anything on this site",
+ * so it is widened to `/**`; inside `autoInject.url` the stricter glob rules stay as they are.
+ */
+const widenSiteGlob = (glob: string): string => (glob.endsWith("/*") ? `${glob}*` : glob)
+
+/**
+ * The arming block a frontmatter declares, from either spelling:
+ *
+ * - the nested `autoInject: { keywords, url }` block (its decoded value is passed as `block`),
+ * - top-level `keywords:` and `urls:` lists, the short form the browser skill set uses.
+ *
+ * Both are merged, so a document may use either or both. When neither top-level list is
+ * present the block is returned unchanged, which keeps a plain skill on today's
+ * explicit-only behaviour.
+ */
+export const fromFrontmatter = (
+  data: unknown,
+  block: Skill.AutoInject | undefined,
+): Skill.AutoInject | undefined => {
+  const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
+  const extraKeywords = stringList(record["keywords"])
+  const extraUrls = stringList(record["urls"]).map(widenSiteGlob)
+  if (extraKeywords.length === 0 && extraUrls.length === 0) return block
+  const keywords = [...(block?.keywords ?? []), ...extraKeywords]
+  const url = [...(block?.url ?? []), ...extraUrls]
+  return {
+    ...(keywords.length > 0 ? { keywords } : {}),
+    ...(url.length > 0 ? { url } : {}),
+  }
 }
 
 /** Returns the skills that auto-arm, in the order they were given. */
