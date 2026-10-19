@@ -7,11 +7,6 @@ on:
     paths:
       - "crates/engine-client/**"
       - ".github/workflows/engine-client.yml"
-  push:
-    branches: [develop, main]
-    paths:
-      - "crates/engine-client/**"
-      - ".github/workflows/engine-client.yml"
 
 permissions:
   contents: read

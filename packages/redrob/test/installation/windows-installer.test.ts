@@ -54,6 +54,6 @@ describe("the Windows installer definition", () => {
   })
 
   test("produces the asset name the release and the console both expect", () => {
-    expect(definition).toContain("OutputBaseFilename=redrob-code-x64-setup")
+    expect(definition).toContain("OutputBaseFilename=redrob-code-{#AppVersion}-windows-x64-setup")
   })
 })

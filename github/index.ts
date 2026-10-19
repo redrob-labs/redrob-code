@@ -853,21 +853,10 @@ async function createPR(base: string, branch: string, title: string, body: strin
   })
   return pr.data.number
 }
-function footer(opts?: { image?: boolean }) {
-  const { providerID, modelID } = useEnvModel()
-
-  const image = (() => {
-    if (!shareUrl) return ""
-    if (!opts?.image) return ""
-
-    const titleAlt = encodeURIComponent(session.title.substring(0, 50))
-    const title64 = Buffer.from(session.title.substring(0, 700), "utf8").toString("base64")
-    const shareId = shareUrl.split("/").pop()
-
-    return `<a href="${shareUrl}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
-  })()
+// Shares live on Redrob Chat; the opencode social-cards image is no longer requested.
+function footer(_opts?: { image?: boolean }) {
   const shareLink = shareUrl ? `[Redrob Code session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
-  return `\n\n${image}${shareLink}[github run](${useEnvRunUrl()})`
+  return `\n\n${shareLink}[github run](${useEnvRunUrl()})`
 }
 
 async function fetchRepo() {

@@ -301,7 +301,7 @@ jobs:
         dist/redrob-windows-x64/bin/redrob.exe
         dist/redrob-windows-x64-baseline/bin/redrob.exe
       REDROB_WINDOWS_INSTALLER: >-
-        dist/redrob-code-x64-setup.exe
+        dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe
         dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64.msi
         dist/redrob-code-${{ needs.version.outputs.version }}-windows-arm64.msi
     steps:
@@ -368,7 +368,7 @@ jobs:
             "/O${{ github.workspace }}\dist" `
             "${{ github.workspace }}\installer\windows\redrob-code.iss"
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
-          $setup = "${{ github.workspace }}\dist\redrob-code-x64-setup.exe"
+          $setup = "${{ github.workspace }}\dist\redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe"
           if (-not (Test-Path $setup)) { throw "the installer was not produced at $setup" }
           Write-Host "built $((Get-Item $setup).Length) bytes"
 
@@ -430,7 +430,7 @@ jobs:
           name: release-windows
           path: |
             dist/redrob-windows-*.zip
-            dist/redrob-code-x64-setup.exe
+            dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe
             dist/redrob-code-*-windows-*.msi
           if-no-files-found: error
 
@@ -495,6 +495,12 @@ jobs:
           set -euo pipefail
           bun ./packages/redrob/script/launcher-assets.ts \
             --version "$VERSION" --unsigned unsigned --signed signed --out assets
+
+      # The icon redrob-launcher.json names: the 512 px mark as one more release asset, so Redrob
+      # Launcher's catalog shows this release's own logo. The shared publish job is told the name
+      # (`launcher_icon`) and writes the manifest with it over every asset.
+      - name: Add the Redrob Launcher icon
+        run: cp packages/identity/mark-512x512.png assets/redrob-code.png
 
       # The marker install.sh and `redrob upgrade` read to answer "what is the newest
       # version". `releases/latest/download/VERSION` resolves to whichever release is newest,
@@ -614,6 +620,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       title: Redrob Code
       launcher_manifest: true
+      launcher_icon: redrob-code.png
       publish: true
       tag: ${{ needs.version.outputs.tag }}
       target: ${{ needs.version.outputs.sha }}

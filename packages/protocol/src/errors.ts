@@ -135,3 +135,12 @@ export class ClientNotFoundError extends Schema.TaggedErrorClass<ClientNotFoundE
   },
   { httpApiStatus: 404 },
 ) {}
+
+export class AppNotFoundError extends Schema.TaggedErrorClass<AppNotFoundError>()(
+  "AppNotFoundError",
+  {
+    appID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}

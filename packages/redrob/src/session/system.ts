@@ -121,13 +121,19 @@ const layer = Layer.effect(
         if (Permission.disabled(["skill"], agent.permission).has("skill")) return
 
         const list = yield* skill.available(agent)
+        // A skill that declares keywords or URL globs is ARMED: it stays out of the standing
+        // list and reaches the prompt only through `armedSkills` when its own patterns match.
+        // Listing every site skill in every session is exactly what arming exists to avoid.
+        const standing = list.filter(
+          (entry) => (entry.autoInject?.keywords?.length ?? 0) === 0 && (entry.autoInject?.url?.length ?? 0) === 0,
+        )
 
         return [
           "Skills provide specialized instructions and workflows for specific tasks.",
           "Use the skill tool to load a skill when a task matches its description.",
           // the agents seem to ingest the information about skills a bit better if we present a more verbose
           // version of them here and a less verbose version in tool description, rather than vice versa.
-          Skill.fmt(list, { verbose: true }),
+          Skill.fmt(standing, { verbose: true }),
         ].join("\n")
       }),
 

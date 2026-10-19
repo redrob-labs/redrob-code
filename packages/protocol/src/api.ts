@@ -15,6 +15,8 @@ import type { Definition } from "@redrob-code/schema/event"
 import { AgentGroup } from "./groups/agent"
 import { HealthGroup } from "./groups/health"
 import { ClientsGroup } from "./groups/clients"
+import { ChannelsGroup } from "./groups/channels"
+import { AppsGroup } from "./groups/apps"
 import { PtyGroup } from "./groups/pty"
 import { makeBrowserRequestGroup } from "./groups/browser-request"
 import { makeQuestionGroup } from "./groups/question"
@@ -42,6 +44,8 @@ const makeApiFromGroup = <
   HttpApi.make("server")
     .add(HealthGroup)
     .add(ClientsGroup)
+    .add(ChannelsGroup)
+    .add(AppsGroup)
     .add(LocationGroup.middleware(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))
     .add(makeSessionGroup(sessionLocationMiddleware))
