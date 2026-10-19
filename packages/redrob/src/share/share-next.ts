@@ -273,9 +273,10 @@ const layer = Layer.effect(
       }
 
       const req = yield* authorized()
-      const res = yield* HttpClientRequest.delete(`${req.baseUrl}${req.api.remove(share.id)}`).pipe(
-        HttpClientRequest.setHeaders(req.headers),
-        Effect.flatMap((r) => http.execute(r)),
+      const res = yield* http.execute(
+        HttpClientRequest.delete(`${req.baseUrl}${req.api.remove(share.id)}`).pipe(
+          HttpClientRequest.setHeaders(req.headers),
+        ),
       )
       // 404: the link is already gone on the server, which is the state unshare asks for.
       if (res.status >= 400 && res.status !== 404) {
