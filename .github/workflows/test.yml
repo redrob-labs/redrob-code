@@ -1,6 +1,9 @@
 name: test
 
 on:
+  # Pull requests run ONE fast linux path: typecheck, core unit tests, the HttpApi gates.
+  # The long engine suite and the Windows legs run only by hand (Actions -> test -> Run
+  # workflow), where `changes` always reports heavy=true and every job below runs.
   workflow_dispatch:
   # Pull requests only. A merge to `develop` or `main` is a pull request that already
   # passed, so running again on push would repeat the same checks.
@@ -18,21 +21,170 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# The engine suite is sharded across JOBS rather than parallelised across workers inside
-# one. The suite contains tests whose assertion is "this finished within N milliseconds",
-# so their budget is really a statement about machine load: `bun test --parallel` passed on
-# a 16-core idle host and failed in CI, where four workers sharing a runner's cores pushed
-# a 3s wait past a 5s ceiling. A shard gets a runner to itself, so per-test wall clock stays
-# what it was serially and only the total divides. See docs/TEST-PARALLELISM.md.
+# Required checks on develop and main: `typecheck`, `core (linux)`, `httpapi (linux)`,
+# `unit (linux)`. Keep those job names exactly. A job skipped by `if:` reports as passing,
+# so a docs-only or version-only pull request satisfies them without running anything.
 #
-# `unit (linux)` is an aggregator that does no work. It exists so the required status check
-# keeps a stable name while the jobs underneath it change shape — renaming a required check
-# in the same pull request that introduces it is a deadlock, because the check the rule
-# demands never reports.
+# The engine suite is sharded across JOBS rather than parallelised across workers inside
+# one; see docs/TEST-PARALLELISM.md. It takes ~10 runner-minutes, so it is dispatch-only.
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.diff.outputs.heavy }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # The pull request merge commit and its first parent (the base) are enough for a
+          # two-dot diff; no merge base lookup is needed.
+          fetch-depth: 2
+
+      - name: Docs-only or version-only?
+        id: diff
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "heavy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          heavy=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              # Docs.
+              *.md|docs/*|LICENSE*|CHANGELOG*) continue ;;
+              # Whole-file version markers.
+              VERSION|REDROB_VERSION|UPSTREAM_VERSION|*-version.txt|*/VERSION) continue ;;
+              # Manifests and lockfiles: allowed only if every changed line is a version string.
+              package.json|*/package.json|bun.lock|Cargo.toml|*/Cargo.toml|Cargo.lock|*/Cargo.lock)
+                if git diff -U0 HEAD^1 HEAD -- "$f" \
+                    | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' \
+                    | grep -vE '^[+-][[:space:]]*("version":[[:space:]]*"[^"]*",?|version[[:space:]]*=[[:space:]]*"[^"]*")[[:space:]]*$' >/dev/null; then
+                  echo "non-version change in $f"
+                  heavy=true
+                fi
+                ;;
+              *)
+                echo "code change: $f"
+                heavy=true
+                ;;
+            esac
+          done < <(git diff --name-only HEAD^1 HEAD)
+
+          echo "heavy=$heavy"
+          echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
+
+  typecheck:
+    name: typecheck
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Run typecheck
+        # Bound turbo's fan-out. tsgo peaks at ~5.3 GB on packages/redrob and
+        # ~2.4 GB each on core and tui, so turbo's default concurrency of 10
+        # co-schedules them and the 16 GB ubuntu-latest runner OOM-kills the
+        # workers (exit 137 on client/protocol/tui/redrob). tsgo is already
+        # internally parallel across the 4 vCPUs, so 2 tasks at a time costs no
+        # wall time: all 30 packages finish in ~43s at either 2 or 3, and 2
+        # keeps combined tsgo RSS near 6 GB.
+        run: bun turbo typecheck --concurrency=2
+
+  core:
+    name: core (linux)
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
+          git config --global user.name "redrob"
+
+      # Not sharded: 933 tests in ~22s.
+      - name: Run core tests
+        working-directory: packages/core
+        run: bun test --timeout 30000 --only-failures
+
+      - name: Check generated client
+        working-directory: packages/client
+        run: bun run check:generated
+
+      # The JSON Schemas the Console serves (config.json, tui.json, theme.json) are committed under
+      # packages/redrob/schema and regenerated from the live Effect schemas; a stale copy fails here.
+      - name: Check generated schemas
+        working-directory: packages/redrob
+        run: bun run check:generated
+
+  httpapi:
+    name: httpapi (linux)
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Provision ripgrep
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          rg --version | head -1
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
+          git config --global user.name "redrob"
+
+      - name: Run HttpApi exerciser gates
+        working-directory: packages/redrob
+        run: bun run test:httpapi
+
+  # Dispatch only: ~10 runner-minutes across four shards.
   engine:
     name: engine (linux ${{ matrix.shard }}/4)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -74,130 +226,42 @@ jobs:
         env:
           REDROB_EXPERIMENTAL_DISABLE_FILEWATCHER: "false"
 
-  core:
-    name: core (linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "24"
-
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-
-      - name: Provision ripgrep
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
-          rg --version | head -1
-
-      - name: Configure git identity
-        run: |
-          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
-          git config --global user.name "redrob"
-
-      # Not sharded: 933 tests in ~22s. Splitting it would cost more in runner setup than
-      # it saves.
-      - name: Run core tests
-        working-directory: packages/core
-        run: bun test --timeout 30000 --only-failures
-
-      - name: Check generated client
-        working-directory: packages/client
-        run: bun run check:generated
-
-      # The JSON Schemas the Console serves (config.json, tui.json, theme.json) are committed under
-      # packages/redrob/schema and regenerated from the live Effect schemas; a stale copy fails here.
-      - name: Check generated schemas
-        working-directory: packages/redrob
-        run: bun run check:generated
-
-  httpapi:
-    name: httpapi (linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "24"
-
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-
-      - name: Provision ripgrep
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
-          rg --version | head -1
-
-      - name: Configure git identity
-        run: |
-          git config --global user.email "44862514+savagemanage@users.noreply.github.com"
-          git config --global user.name "redrob"
-
-      # Its own job rather than a step after the tests: ~1m38s that has no reason to sit
-      # behind anything else.
-      - name: Run HttpApi exerciser gates
-        working-directory: packages/redrob
-        run: bun run test:httpapi
-
+  # `unit (linux)` is an aggregator that does no work. It exists so the required status check
+  # keeps a stable name while the jobs underneath it change shape.
   unit:
     name: unit (linux)
-    needs: [engine, core, httpapi]
+    needs: [changes, typecheck, core, httpapi, engine]
     # `always()` so a failing dependency still reports here rather than leaving the required
-    # check permanently "expected" — a skipped required check never resolves and blocks the
-    # pull request with no visible failure to fix.
+    # check permanently "expected". Skipped dependencies (docs/version-only pull requests, and
+    # the dispatch-only engine shards on a pull request) count as passing.
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Report
         run: |
           set -euo pipefail
-          printf 'engine  %s\ncore    %s\nhttpapi %s\n' \
-            "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"
-          # A matrix dependency reports one aggregated result, so a single red shard makes
-          # `needs.engine.result` a failure.
-          for result in "${{ needs.engine.result }}" "${{ needs.core.result }}" "${{ needs.httpapi.result }}"; do
-            if [ "$result" != "success" ]; then
-              echo "::error::a linux test job did not succeed"
-              exit 1
-            fi
+          printf 'changes   %s\ntypecheck %s\ncore      %s\nhttpapi   %s\nengine    %s\n' \
+            "${{ needs.changes.result }}" "${{ needs.typecheck.result }}" "${{ needs.core.result }}" \
+            "${{ needs.httpapi.result }}" "${{ needs.engine.result }}"
+          for result in "${{ needs.changes.result }}" "${{ needs.typecheck.result }}" "${{ needs.core.result }}" \
+                        "${{ needs.httpapi.result }}" "${{ needs.engine.result }}"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::a linux test job did not succeed"; exit 1 ;;
+            esac
           done
-          echo "all linux test jobs succeeded"
+          echo "all linux test jobs succeeded or were skipped"
 
+  # Dispatch only, advisory. The engine suite takes ~15 minutes across four Windows shards.
   windows:
     name: unit (windows ${{ matrix.shard }}/4)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    # Windows runs and reports, but does not block. Two path-normalization tests were failing
-    # here for a real reason — a drive-less rooted path resolved against the runner's D:
-    # workspace instead of the C: temp directory — and that is fixed; whether anything else is
-    # Windows-specific is not yet established, so this stays advisory until it has been green
-    # for a while.
-    #
-    # Sharded now, which the earlier diagnosis said not to do. That diagnosis was wrong: the
-    # job was not hanging after its tests. Turbo buffers each task's output until the task
-    # ends, so `core` flushing at 88s and `redrob` flushing 14 minutes later read as a stall.
-    # The engine suite genuinely takes 906s here against 381s on Linux, which is what nearly
-    # hit the 20-minute limit. Splitting it is the fix, and it is the same mechanism already
-    # proven on Linux.
     continue-on-error: true
     defaults:
       run:
@@ -231,6 +295,7 @@ jobs:
 
   windows-core:
     name: unit (windows core)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 25
     continue-on-error: true

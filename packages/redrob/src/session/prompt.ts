@@ -698,6 +698,7 @@ const layer = Layer.effect(
         },
         system: input.system,
         format: input.format,
+        ...(input.pageUrl?.trim() ? { pageUrl: input.pageUrl.trim() } : {}),
       }
 
       const current = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
@@ -1300,18 +1301,18 @@ const layer = Layer.effect(
              * otherwise arm on half of what the user said.
              *
              * The URL is deliberately NOT fetched. Arming by URL glob needs the active
-             * tab, and the only way to get it is a browser request -- a round trip on
-             * every single message, which with no extension attached spends the request
-             * deadline before the model sees anything. A twenty second pause before each
-             * reply is a worse product than URL arming is a better one. Keywords arm
-             * today; the URL half arms once a session carries its tab URL as state the
-             * engine already holds, rather than as a question it has to ask.
+             * tab, and asking the browser for it is a round trip on every single message,
+             * which with no extension attached spends the request deadline before the
+             * model sees anything. Instead the caller states it: `pageUrl` on the prompt
+             * is stored on the user message, and arms through the same matcher the
+             * chat-completions route runs on `redrob_context.page_url`.
              */
             const armedSkills = yield* sys.armedSkills(agent, {
               prompt: (lastUserMsg?.parts ?? [])
                 .filter((part) => part.type === "text")
                 .map((part) => (part.type === "text" ? part.text : ""))
                 .join("\n"),
+              url: lastUser.pageUrl,
             })
             const system = [
               ...env,
@@ -1563,6 +1564,10 @@ export const PromptInput = Schema.Struct({
   format: Schema.optional(SessionV1.Format),
   system: Schema.optional(Schema.String),
   variant: Schema.optional(Schema.String),
+  pageUrl: Schema.optional(Schema.String).annotate({
+    description:
+      "URL of the caller's active browser tab. Skills whose `urls:` globs match it arm for this turn, as on /v1/chat/completions.",
+  }),
   parts: Schema.Array(
     Schema.Union([
       SessionV1.TextPartInput,
