@@ -13,12 +13,9 @@ permissions:
 
 jobs:
   check:
-    name: engine-client (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    # Linux only: the crate has no OS-specific code paths worth a per-OS leg on every PR.
+    name: engine-client
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: crates/engine-client
