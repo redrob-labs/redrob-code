@@ -139,6 +139,9 @@ function runServiceStart(options: DaemonOptions, bin: string): Promise<DaemonRec
   return new Promise((resolve, reject) => {
     const child = spawn(bin, ["service", "start", "--json", "--idle-exit", String(idle)], {
       env,
+      // `service start` spawns the long-lived daemon, which inherits this cwd. The app's own
+      // install folder must not be it: the daemon would hold it open and block the app's update.
+      cwd: os.homedir(),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     })
