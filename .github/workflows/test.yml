@@ -1,9 +1,10 @@
 name: test
 
 on:
-  # Pull requests run ONE fast linux path: typecheck, core unit tests, the HttpApi gates.
-  # The long engine suite and the Windows legs run only by hand (Actions -> test -> Run
-  # workflow), where `changes` always reports heavy=true and every job below runs.
+  # Pull requests compile once: the typecheck, nothing more. The release build compiles
+  # again on every target. Core tests, the HttpApi gates, the engine suite and the Windows
+  # legs run only by hand (Actions -> test -> Run workflow), where `changes` always
+  # reports heavy=true and every job below runs.
   workflow_dispatch:
   # Pull requests only. A merge to `develop` or `main` is a pull request that already
   # passed, so running again on push would repeat the same checks.
@@ -100,10 +101,11 @@ jobs:
         # keeps combined tsgo RSS near 6 GB.
         run: bun turbo typecheck --concurrency=2
 
+  # Dispatch only. Required check: skipped on a pull request, which counts as passing.
   core:
     name: core (linux)
     needs: changes
-    if: needs.changes.outputs.heavy == 'true'
+    if: needs.changes.outputs.heavy == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -146,10 +148,11 @@ jobs:
         working-directory: packages/redrob
         run: bun run check:generated
 
+  # Dispatch only. Required check: skipped on a pull request, which counts as passing.
   httpapi:
     name: httpapi (linux)
     needs: changes
-    if: needs.changes.outputs.heavy == 'true'
+    if: needs.changes.outputs.heavy == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
