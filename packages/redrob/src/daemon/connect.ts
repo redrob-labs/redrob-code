@@ -9,6 +9,7 @@
  *      for the new record to answer.
  */
 import { spawn } from "node:child_process"
+import os from "node:os"
 import path from "node:path"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import * as Registry from "./registry"
@@ -87,6 +88,9 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
     detached: true,
     stdio: "ignore",
     env,
+    // The daemon outlives its caller. Inheriting the caller's cwd (an app's install folder) would
+    // hold that folder open for the daemon's whole life and block the app's Windows update.
+    cwd: os.homedir(),
   })
   child.unref()
 
