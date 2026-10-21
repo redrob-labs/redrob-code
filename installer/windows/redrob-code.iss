@@ -141,6 +141,21 @@ begin
     RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Rebuilt);
 end;
 
+{ A running shared daemon is `redrob.exe serve --register` from this directory, and Windows will not
+  overwrite an exe that is running. Stop it through the installed CLI before [Files] replaces it;
+  attached apps reconnect and start the new version. Any failure (no install yet, nothing running,
+  an old binary without `service stop`) is ignored: the install proceeds either way. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Existing: string;
+  ResultCode: Integer;
+begin
+  Result := '';
+  Existing := ExpandConstant('{app}\redrob.exe');
+  if FileExists(Existing) then
+    Exec(Existing, 'service stop', ExpandConstant('{localappdata}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   { usUninstall, not usPostUninstall: the value is removed while the app path is still known good. }

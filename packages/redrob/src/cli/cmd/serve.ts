@@ -1,3 +1,4 @@
+import os from "node:os"
 import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
@@ -41,6 +42,16 @@ export const ServeCommand = effectCmd({
   handler: Effect.fn("Cli.serve")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
     const register = args.register === true
+    // The shared daemon outlives whoever started it. A caller that spawned it from an app's
+    // install folder (older SDKs did) would otherwise have that folder held open for the daemon's
+    // whole life, blocking the app's Windows update. Requests carry their own directory.
+    if (register) {
+      try {
+        process.chdir(os.homedir())
+      } catch {
+        /* keep the inherited cwd */
+      }
+    }
     const Registry = register ? yield* Effect.promise(() => import("../../daemon/registry")) : undefined
     // The daemon's secret is per start. It must be in the environment BEFORE the server's config
     // layer reads it, and it is what goes into the record, so other apps can authenticate.
