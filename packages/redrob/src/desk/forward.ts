@@ -144,13 +144,19 @@ export class Forwarder {
     await link.send({ t: "res", id, status: result.status, ...(result.body !== undefined ? { body: result.body } : {}) })
   }
 
-  /** After a phone prompt: when the session goes idle and no phone is watching, push "done". */
+  /**
+   * After a phone prompt: when the session goes idle, tell subscribed phones with a synthetic
+   * `session.idle` event (the bus carries none), and push "done" when no phone is watching.
+   */
   private watchTurn(sessionID: string): void {
     if (this.waiting.has(sessionID)) return
     this.waiting.add(sessionID)
     void this.daemon
       .wait(sessionID, this.abort?.signal)
-      .then(() => (this.watched(sessionID) ? undefined : this.notify("done", sessionID)))
+      .then(() => {
+        this.onEvent({ type: "session.idle", data: { sessionID } })
+        return this.watched(sessionID) ? undefined : this.notify("done", sessionID)
+      })
       .catch(() => undefined)
       .finally(() => this.waiting.delete(sessionID))
   }
