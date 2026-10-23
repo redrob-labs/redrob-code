@@ -53,6 +53,10 @@ export const endpointNames = {
   // PA-10: both browser endpoints end in ".list", and the client method name is the last
   // dot segment, so the location-wide one needs an explicit name or generation fails.
   "browser.request.list": "listRequests",
+  // desk.status and channels.status share the group and the last segment.
+  "desk.status": "deskStatus",
+  "desk.reply": "deskReply",
+  "desk.revoke": "deskRevoke",
 } as const
 
 export const omitEndpoints = new Set(["fs.read", "pty.connect", "pty.connectToken"])

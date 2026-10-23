@@ -833,6 +833,20 @@ const scenarios: Scenario[] = [
       object(body)
       check(Array.isArray(body.running), "running channels should be a list")
     }),
+  // Desk relay. Nobody ran `redrob mobile login` here, so it is not running and the
+  // pairing answers are refused.
+  http.protected.get("/desk/status", "v2.desk.status").json(200, (body) => {
+    object(body)
+    check(body.running === false, "the desk relay should not be running")
+  }),
+  http.protected
+    .post("/desk/pairings/reply", "v2.desk.reply")
+    .at((ctx) => ({ path: "/desk/pairings/reply", headers: ctx.headers(), body: { code: "000000", decision: "deny" } }))
+    .json(400, object, "status"),
+  http.protected
+    .post("/desk/phones/revoke", "v2.desk.revoke")
+    .at((ctx) => ({ path: "/desk/phones/revoke", headers: ctx.headers(), body: { id: "httpapi-missing" } }))
+    .json(400, object, "status"),
   http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
     object(body)
     check(body.mode === "off", "masking should be off until someone turns it on")

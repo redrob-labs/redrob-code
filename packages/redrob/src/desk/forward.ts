@@ -8,6 +8,10 @@
  */
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
+import { MAX_RELAY_FRAME_BYTES } from "./frames"
+
+/** Room for the frame header and the seal on top of the JSON. */
+const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
 
 type Method = "GET" | "POST"
 
@@ -141,6 +145,11 @@ export class Forwarder {
       if (typeof created === "string") MobileProfile.mark(created)
     }
     if (ok && route.prompt && sessionID) this.watchTurn(sessionID)
+    // The relay drops a frame over 8 MB and the phone would wait forever. Say 413 instead;
+    // the phone asks for a smaller history page.
+    if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
+      return link.send({ t: "res", id, status: 413 })
+    }
     await link.send({ t: "res", id, status: result.status, ...(result.body !== undefined ? { body: result.body } : {}) })
   }
 

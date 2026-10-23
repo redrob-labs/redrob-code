@@ -9,6 +9,11 @@ import type {
   ServerClientsDetachOutput,
   ServerChannelsStatusOutput,
   ServerChannelsReloadOutput,
+  ServerChannelsDeskStatusOutput,
+  ServerChannelsDeskReplyInput,
+  ServerChannelsDeskReplyOutput,
+  ServerChannelsDeskRevokeInput,
+  ServerChannelsDeskRevokeOutput,
   ServerAppsListOutput,
   ServerAppsRegisterInput,
   ServerAppsRegisterOutput,
@@ -338,6 +343,35 @@ export function make(options: ClientOptions) {
       reload: (requestOptions?: RequestOptions) =>
         request<ServerChannelsReloadOutput>(
           { method: "POST", path: `/channels/reload`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      deskStatus: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskStatusOutput>(
+          { method: "GET", path: `/desk/status`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      deskReply: (input: ServerChannelsDeskReplyInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskReplyOutput>(
+          {
+            method: "POST",
+            path: `/desk/pairings/reply`,
+            body: { code: input["code"], decision: input["decision"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskRevoke: (input: ServerChannelsDeskRevokeInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskRevokeOutput>(
+          {
+            method: "POST",
+            path: `/desk/phones/revoke`,
+            body: { id: input["id"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
           requestOptions,
         ),
     },
