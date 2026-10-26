@@ -2,6 +2,7 @@ import { beforeEach, describe, expect } from "bun:test"
 import path from "path"
 import { Effect, Exit, Layer, PlatformError } from "effect"
 import { Config } from "@redrob-code/core/config"
+import { EventV2 } from "@redrob-code/core/event"
 import { ConfigAttachments } from "@redrob-code/core/config/attachments"
 import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
@@ -130,7 +131,7 @@ const unavailableImage = Layer.succeed(
   Image.Service.of({ normalize: () => Effect.fail(new Image.ResizerUnavailableError()) }),
 )
 const readLayer = (imageLayer: Layer.Layer<Image.Service>) =>
-  AppNodeBuilder.build(LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, ReadTool.node]), [
+  AppNodeBuilder.build(LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, EventV2.node, ReadTool.node]), [
     [ReadToolFileSystem.node, reader],
     [PermissionV2.node, permission],
     [Config.node, config],
@@ -267,6 +268,34 @@ describe("ReadTool", () => {
         { type: "text", text: "Image read successfully" },
         { type: "file", mime: "image/png", uri: `data:image/png;base64,${png}` },
       ])
+    }),
+  )
+
+  it.effect("announces an image it reads as a session attachment", () =>
+    Effect.gen(function* () {
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+      readResult = { uri: "file:///pixel.png", name: "pixel.png", content: png, encoding: "base64", mime: "image/png" }
+      const registry = yield* ToolRegistry.Service
+      const events = yield* EventV2.Service
+      const attached: EventV2.Payload[] = []
+      const unsubscribe = yield* events.listen((event) =>
+        Effect.sync(() => void (event.type === "session.next.attachment" && attached.push(event))),
+      )
+      yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-image-attach", name: "read", input: { path: "pixel.png" } },
+      })
+      yield* unsubscribe
+      expect(attached).toHaveLength(1)
+      expect(attached[0]!.data).toMatchObject({
+        sessionID,
+        name: "pixel.png",
+        mime: "image/png",
+        size: Buffer.byteLength(png, "base64"),
+        source: "read",
+        path: path.join(process.cwd(), "pixel.png"),
+      })
     }),
   )
 
