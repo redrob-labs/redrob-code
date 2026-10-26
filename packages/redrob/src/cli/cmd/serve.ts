@@ -88,24 +88,60 @@ export const ServeCommand = effectCmd({
       const Channels = yield* Effect.promise(() => import("@redrob-code/channels-core"))
       const ServerChannels = yield* Effect.promise(() => import("@redrob-code/server/channels"))
       const { channelFactories } = yield* Effect.promise(() => import("../../channels/registry"))
-      const channels = Channels.manager({ daemon: { url: `http://${server.hostname}:${server.port}`, headers: Registry.headers(secret) } })
-      const applyIdlePolicy = () => setIdleExitAfterMs(channels.active ? undefined : idleExitMs)
+      const daemon = { url: `http://${server.hostname}:${server.port}`, headers: Registry.headers(secret) }
+      const channels = Channels.manager({ daemon })
+      // The desk (web and phone -> this daemon, docs/desk-relay.md in redrob-mobile): the
+      // `/desk/*` local routes, and the relay connection, which runs while the `desk` switch is on
+      // (the default) and the machine is signed in. Like a channel, the relay keeps the daemon up
+      // while it runs, so a device can reach it.
+      const Desk = yield* Effect.promise(() => import("../../desk/service"))
+      const desk = new Desk.DeskService(daemon, undefined, () => applyIdlePolicy())
+      const applyIdlePolicy = () => setIdleExitAfterMs(channels.active || desk.active ? undefined : idleExitMs)
+      // Map the service's own errors onto the route errors.
+      const found = async <A>(run: () => Promise<A> | A): Promise<A> => {
+        try {
+          return await run()
+        } catch (error) {
+          if (error instanceof Desk.NotFound) throw new ServerChannels.DeskNotFound(error.message)
+          throw error
+        }
+      }
       ServerChannels.setController({
         status: () => channels.status(),
         reload: async () => {
           const running = await channels.reload()
+          await desk.reconcile()
           applyIdlePolicy()
           return running
         },
+        desk: {
+          status: () => desk.status(),
+          enable: (enabled) => desk.enable(enabled),
+          login: async () => {
+            try {
+              return await desk.startLogin()
+            } catch (error) {
+              if (error instanceof Desk.AlreadySignedIn) throw new ServerChannels.DeskConflict(error.message)
+              throw error
+            }
+          },
+          logout: () => desk.logout(),
+          approve: (code) => found(() => desk.approve(code)),
+          deny: (code) => found(() => desk.deny(code)),
+          revoke: (id) => found(() => desk.revoke(id)),
+        },
       })
       const started = yield* Effect.promise(() => channels.startEnabledChannels(channelFactories).catch(() => []))
+      yield* Effect.promise(() => desk.reconcile())
       applyIdlePolicy()
       if (started.length > 0) console.log(`channels: ${started.join(", ")}`)
+      if (desk.active) console.log("desk relay: on")
 
       let leaving = false
       const leave = (code: number) => {
         if (leaving) return
         leaving = true
+        desk.stop()
         void channels
           .stopAll()
           .catch(() => undefined)
@@ -126,7 +162,7 @@ export const ServeCommand = effectCmd({
           Apps.sweep()
           Clients.sweep()
           const idle = Clients.idleFor()
-          if (channels.active) return
+          if (channels.active || desk.active) return
           if (idleExitMs !== undefined && idle !== undefined && idle >= idleExitMs) leave(0)
         })
       }, 10_000)

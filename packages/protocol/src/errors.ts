@@ -86,6 +86,15 @@ export class PermissionNotFoundError extends Schema.TaggedErrorClass<PermissionN
   { httpApiStatus: 404 },
 ) {}
 
+/** No pending desk request with that code, or no approved desk device with that id. */
+export class DeskNotFoundError extends Schema.TaggedErrorClass<DeskNotFoundError>()(
+  "DeskNotFoundError",
+  {
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
 export class QuestionNotFoundError extends Schema.TaggedErrorClass<QuestionNotFoundError>()(
   "QuestionNotFoundError",
   {

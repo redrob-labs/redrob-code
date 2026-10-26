@@ -9,6 +9,17 @@ import type {
   ServerClientsDetachOutput,
   ServerChannelsStatusOutput,
   ServerChannelsReloadOutput,
+  ServerChannelsDeskStatusOutput,
+  ServerChannelsDeskEnableInput,
+  ServerChannelsDeskEnableOutput,
+  ServerChannelsDeskLoginOutput,
+  ServerChannelsDeskLogoutOutput,
+  ServerChannelsDeskApproveInput,
+  ServerChannelsDeskApproveOutput,
+  ServerChannelsDeskDenyInput,
+  ServerChannelsDeskDenyOutput,
+  ServerChannelsDeskRevokeInput,
+  ServerChannelsDeskRevokeOutput,
   ServerAppsListOutput,
   ServerAppsRegisterInput,
   ServerAppsRegisterOutput,
@@ -338,6 +349,72 @@ export function make(options: ClientOptions) {
       reload: (requestOptions?: RequestOptions) =>
         request<ServerChannelsReloadOutput>(
           { method: "POST", path: `/channels/reload`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      deskStatus: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskStatusOutput>(
+          { method: "GET", path: `/desk/status`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      deskEnable: (input: ServerChannelsDeskEnableInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskEnableOutput>(
+          {
+            method: "POST",
+            path: `/desk/enable`,
+            body: { enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskLogin: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskLoginOutput>(
+          {
+            method: "POST",
+            path: `/desk/login`,
+            successStatus: 200,
+            declaredStatuses: [409, 503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskLogout: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskLogoutOutput>(
+          { method: "POST", path: `/desk/logout`, successStatus: 200, declaredStatuses: [503, 401, 400], empty: false },
+          requestOptions,
+        ),
+      deskApprove: (input: ServerChannelsDeskApproveInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskApproveOutput>(
+          {
+            method: "POST",
+            path: `/desk/pending/${encodeURIComponent(input.code)}/approve`,
+            successStatus: 200,
+            declaredStatuses: [404, 503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskDeny: (input: ServerChannelsDeskDenyInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskDenyOutput>(
+          {
+            method: "POST",
+            path: `/desk/pending/${encodeURIComponent(input.code)}/deny`,
+            successStatus: 200,
+            declaredStatuses: [404, 503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskRevoke: (input: ServerChannelsDeskRevokeInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskRevokeOutput>(
+          {
+            method: "POST",
+            path: `/desk/devices/${encodeURIComponent(input.id)}/revoke`,
+            successStatus: 200,
+            declaredStatuses: [404, 503, 401, 400],
+            empty: false,
+          },
           requestOptions,
         ),
     },

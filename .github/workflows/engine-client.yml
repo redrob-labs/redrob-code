@@ -7,6 +7,8 @@ on:
     paths:
       - "crates/engine-client/**"
       - ".github/workflows/engine-client.yml"
+  # By hand: fmt and tests too. A pull request only compiles (clippy, no test targets).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,6 +29,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates/engine-client
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      - if: github.event_name != 'pull_request'
+        run: cargo fmt --all -- --check
+      - if: github.event_name == 'pull_request'
+        run: cargo clippy --locked -- -D warnings
+      - if: github.event_name != 'pull_request'
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - if: github.event_name != 'pull_request'
+        run: cargo test --locked
