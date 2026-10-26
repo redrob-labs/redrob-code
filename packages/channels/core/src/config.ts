@@ -10,13 +10,18 @@
  *   "directory": "/path/the/sessions/work/in",
  *   "channels": {
  *     "slack":    { "enabled": true,  "allowlist": ["U0123ABC"] },
- *     "telegram": { "enabled": true,  "allowlist": [], "claimUntil": 1760000000000 }
+ *     "telegram": { "enabled": true,  "allowlist": [], "claimUntil": 1760000000000 },
+ *     "desk":     { "enabled": true,  "allowlist": [] }
  *   }
  * }
  * ```
  *
  * `claimUntil` is the owner claim window: while it is in the future and the allowlist is empty,
  * the first person who messages the bot is written into the allowlist and the field is removed.
+ *
+ * `desk` is not a chat channel: it is the desk relay switch (web and phone -> this PC, see
+ * `packages/redrob/src/desk`). Only its `enabled` is read, and a missing entry means on, so the
+ * relay runs as soon as this machine is signed in. The channel manager never starts it.
  */
 import * as Paths from "./paths"
 
@@ -51,7 +56,7 @@ export type ChannelsConfig = {
   readonly version: 1
   /** Default project directory for every channel's sessions. Default: the user's home. */
   readonly directory?: string
-  readonly channels: Partial<Readonly<Record<ChannelName, ChannelConfig>>>
+  readonly channels: Partial<Readonly<Record<ChannelName, ChannelConfig>>> & { readonly desk?: ChannelConfig }
 }
 
 export const EMPTY: ChannelsConfig = { version: 1, channels: {} }
@@ -82,10 +87,10 @@ function channel(value: unknown): ChannelConfig | undefined {
 /** Coerce anything into a config; unknown channels and malformed entries are dropped. */
 export function parse(value: unknown): ChannelsConfig {
   if (!isObject(value)) return EMPTY
-  const channels: Partial<Record<ChannelName, ChannelConfig>> = {}
+  const channels: Partial<Record<ChannelName | "desk", ChannelConfig>> = {}
   if (isObject(value.channels)) {
     for (const [name, entry] of Object.entries(value.channels)) {
-      if (!isChannelName(name)) continue
+      if (!isChannelName(name) && name !== "desk") continue
       const parsed = channel(entry)
       if (parsed) channels[name] = parsed
     }
@@ -155,6 +160,16 @@ export function claim(config: ChannelsConfig, name: ChannelName, senderId: strin
   const current = withoutClaim(config.channels[name] ?? defaultChannel())
   const allowlist = [...new Set([senderId, ...current.allowlist])]
   return { ...config, channels: { ...config.channels, [name]: { ...current, allowlist } } }
+}
+
+/** The desk relay switch. On unless turned off: a missing entry means on. */
+export function deskEnabled(config: ChannelsConfig): boolean {
+  return config.channels.desk?.enabled !== false
+}
+
+export function setDesk(config: ChannelsConfig, enabled: boolean): ChannelsConfig {
+  const current = config.channels.desk ?? defaultChannel()
+  return { ...config, channels: { ...config.channels, desk: { ...current, enabled } } }
 }
 
 export function enabledChannels(config: ChannelsConfig): ChannelName[] {

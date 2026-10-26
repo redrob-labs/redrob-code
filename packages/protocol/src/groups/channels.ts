@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { ConflictError, DeskNotFoundError, ServiceUnavailableError } from "../errors"
 
 /**
  * The chat channels this daemon serves (Slack, Telegram, Discord, WhatsApp). The transports run
@@ -29,6 +30,46 @@ export const ChannelReloadResult = Schema.Struct({
   running: Schema.Array(Schema.String),
 }).annotate({ identifier: "ChannelReloadResult" })
 
+/**
+ * The desk relay (redrob-mobile docs/desk-relay.md, v2 section 3): web and phone devices driving
+ * this daemon. The launcher polls `desk.status` and answers pending devices.
+ */
+const DeviceKind = Schema.Literals(["phone", "web"])
+
+export const DeskLogin = Schema.Struct({
+  userCode: Schema.String,
+  verificationUriComplete: Schema.String,
+  expiresAt: Schema.Number,
+}).annotate({ identifier: "DeskLogin" })
+
+export const DeskStatus = Schema.Struct({
+  /** The switch (`channels.json` entry `desk`); on unless turned off. */
+  enabled: Schema.Boolean,
+  signedIn: Schema.Boolean,
+  account: Schema.optional(Schema.Struct({ email: Schema.String })),
+  /** The relay connection is open. */
+  connected: Schema.Boolean,
+  /** A sign-in started with `desk.login` and still waiting for the person. */
+  login: Schema.optional(DeskLogin),
+  pending: Schema.Array(
+    Schema.Struct({ code: Schema.String, name: Schema.String, kind: DeviceKind, expiresAt: Schema.Number }),
+  ),
+  devices: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      kind: DeviceKind,
+      addedAt: Schema.Number,
+      /** Has an open encrypted session right now. */
+      online: Schema.Boolean,
+    }),
+  ),
+}).annotate({ identifier: "DeskStatus" })
+
+export const DeskDevice = Schema.Struct({ id: Schema.String, name: Schema.String, kind: DeviceKind }).annotate({
+  identifier: "DeskDevice",
+})
+
 export const ChannelsGroup = HttpApiGroup.make("server.channels")
   .add(
     HttpApiEndpoint.get("channels.status", "/channels/status", { success: ChannelStatusList }).annotateMerge(
@@ -46,6 +87,90 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
         identifier: "v2.channels.reload",
         summary: "Re-read channels.json",
         description: "Start newly enabled channels, stop disabled ones, restart changed ones.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("desk.status", "/desk/status", { success: DeskStatus }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.status",
+        summary: "Desk relay status",
+        description: "The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.enable", "/desk/enable", {
+      payload: Schema.Struct({ enabled: Schema.Boolean }),
+      success: DeskStatus,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.enable",
+        summary: "Turn the desk relay on or off",
+        description:
+          "Persisted in channels.json as channel desk. The relay runs while this is on and the machine is signed in. 503 on a server that is not the registered daemon.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.login", "/desk/login", {
+      success: DeskLogin,
+      error: [ConflictError, ServiceUnavailableError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.login",
+        summary: "Sign this machine in for the desk relay",
+        description:
+          "Starts the RFC 8628 device grant (or returns the one already running). The daemon polls and stores the token. 409 when already signed in.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.logout", "/desk/logout", { success: DeskStatus, error: ServiceUnavailableError }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.logout",
+        summary: "Sign out of the desk relay",
+        description: "Drops the refresh token and disconnects. Approved devices are kept.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.approve", "/desk/pending/:code/approve", {
+      params: { code: Schema.String },
+      success: DeskDevice,
+      error: [DeskNotFoundError, ServiceUnavailableError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.approve",
+        summary: "Allow a device",
+        description: "Approve the pending device showing this six-digit code. 404 when none matches.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.deny", "/desk/pending/:code/deny", {
+      params: { code: Schema.String },
+      success: DeskDevice,
+      error: [DeskNotFoundError, ServiceUnavailableError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.deny",
+        summary: "Refuse a device",
+        description: "Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.revoke", "/desk/devices/:id/revoke", {
+      params: { id: Schema.String },
+      success: DeskDevice,
+      error: [DeskNotFoundError, ServiceUnavailableError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.revoke",
+        summary: "Remove an approved device",
+        description: "Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.",
       }),
     ),
   )
