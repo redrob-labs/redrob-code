@@ -153,7 +153,7 @@ const echo = Layer.effectDiscard(
   ),
 )
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: () => [ToolRegistry.node] })
-let modelResolveHook = Effect.void
+let modelResolveHook: Effect.Effect<void, SessionRunnerModel.Error> = Effect.void
 let currentModel = model
 const models = SessionRunnerModel.layerWith((session) =>
   modelResolveHook.pipe(Effect.as(session.model?.id === "replacement" ? replacementModel : currentModel)),
@@ -2258,6 +2258,53 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[1]!)).toEqual(["Start working", "Recover with this"])
+    }),
+  )
+
+  it.effect("publishes one step.failed with the error when the run fails before a provider step", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const failed: string[] = []
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === SessionEvent.Step.Failed.type) failed.push((event.data as SessionEvent.Step.Failed["data"]).error.message)
+        }),
+      )
+      modelResolveHook = Effect.fail(new SessionRunnerModel.ModelNotSelectedError({ sessionID }))
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "No model" }), resume: false })
+      requests.length = 0
+
+      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(requests).toHaveLength(0)
+      expect(failed).toEqual([`No model is available for session ${sessionID}`])
+    }),
+  )
+
+  it.effect("does not publish a second step.failed when the provider step already failed", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const failed: string[] = []
+      yield* events.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === SessionEvent.Step.Failed.type) failed.push((event.data as SessionEvent.Step.Failed["data"]).error.message)
+        }),
+      )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Provider down" }), resume: false })
+      responses = undefined
+      response = []
+      streamFailure = providerUnavailable()
+
+      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      streamFailure = undefined
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(failed).toEqual(["Provider unavailable"])
     }),
   )
 

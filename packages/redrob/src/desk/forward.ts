@@ -153,6 +153,12 @@ async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<Mobil
 const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
 const COALESCE_MS = 100
 
+/** The message of a `session.next.step.failed`, for the synthetic `session.idle` that ends the turn. */
+function stepError(data: Record<string, unknown> | undefined): string | undefined {
+  const message = (data?.error as { message?: unknown } | undefined)?.message
+  return typeof message === "string" && message.length > 0 ? message.slice(0, 2000) : undefined
+}
+
 export type Request = { readonly method: Method; readonly path: string; readonly body?: unknown }
 
 /** The route a request matches, and the session id it names; undefined when not allowed. */
@@ -299,7 +305,8 @@ export class Forwarder {
 
   /**
    * After a phone prompt: when the turn ends, tell subscribed phones with a synthetic
-   * `session.idle` event (the bus carries none), and push "done" when no phone is watching.
+   * `session.idle` event (the bus carries none; a failed turn adds `error`, the step's message), and
+   * push "done" when no phone is watching.
    *
    * The turn's end is read off the bus: `session.next.step.failed`, or `session.next.step.ended`
    * whose finish is not a tool call and whose step called no tool (a tool call starts another
@@ -311,10 +318,10 @@ export class Forwarder {
     this.waiting.add(sessionID)
   }
 
-  private turnEnded(sessionID: string): void {
+  private turnEnded(sessionID: string, error?: string): void {
     this.toolStep.delete(sessionID)
     if (!this.waiting.delete(sessionID)) return
-    this.onEvent({ type: "session.idle", data: { sessionID } })
+    this.onEvent({ type: "session.idle", data: { sessionID, ...(error ? { error } : {}) } })
     if (!this.watched(sessionID)) void this.notify("done", sessionID).catch(() => undefined)
   }
 
@@ -359,7 +366,7 @@ export class Forwarder {
       const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
       if (event.type === "session.next.step.started") this.toolStep.delete(sessionID)
       else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called") this.toolStep.add(sessionID)
-      else if (event.type === "session.next.step.failed") this.turnEnded(sessionID)
+      else if (event.type === "session.next.step.failed") this.turnEnded(sessionID, stepError(event.data))
       // Some console models finish a tool step with "stop"/"other"; a step that called a tool is not the end.
       else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID)) this.turnEnded(sessionID)
     }
