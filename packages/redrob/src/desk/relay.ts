@@ -241,7 +241,7 @@ export class DeskRelay {
       phonePeerId: peer.peerId,
     })
     peer.channel = channel
-    peer.link = this.forwarder.link((message) => this.seal(peer, message))
+    peer.link = this.forwarder.link((message) => this.seal(peer, message), peer.name ?? peer.deviceId)
     this.sendJson("desk.accept", { v: 1, eph: DeskCrypto.b64url(ephemeral.pub) }, peer.peerId)
   }
 

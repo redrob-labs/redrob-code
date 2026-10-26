@@ -8,14 +8,16 @@
  *
  * Approval modes: a `req` may carry `headers: { "X-Redrob-Approval": "ask" | "edits" | "all" }` on
  * session create and prompt. The mode is stored for that session and updated on every prompt; no
- * header means `ask` (old apps). `all` while the launcher's switch is off is lowered to `edits`, and
- * the `res` then carries `headers: { "X-Redrob-Approval-Applied": "edits" }`. `GET /desk/capabilities`
- * is answered here, not by the daemon: the modes this machine offers right now.
+ * header means `ask` (old apps). `all` is allowed unless the launcher's switch was turned off; then it
+ * is lowered to `edits`, and the `res` carries `headers: { "X-Redrob-Approval-Applied": "edits" }`.
+ * When a session first gets `all`, one `auto_all_on` line is appended to `~/.redrob/desk/events.jsonl`
+ * so the launcher can tell the person at the PC. `GET /desk/capabilities` is answered here, not by
+ * the daemon: the modes this machine offers right now.
  */
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
-import { allowAutoAll } from "./settings"
+import { allowAutoAll, appendEvent } from "./settings"
 
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
@@ -81,7 +83,7 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
   return undefined
 }
 
-/** The mode a session actually gets: `all` only while the launcher's switch is on, else `edits`. */
+/** The mode a session actually gets: `all` unless the launcher's switch is off, then `edits`. */
 async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<MobileProfile.ApprovalMode> {
   if (requested !== "all") return requested
   return (await allowAutoAll()) ? "all" : "edits"
@@ -117,6 +119,8 @@ export type Link = {
   send(message: Record<string, unknown>): Promise<void>
   subscriptions: Set<string>
   queue: BusEvent[]
+  /** The device's name as the relay knows it, for the PC's `auto_all_on` note. */
+  device?: string
   timer?: ReturnType<typeof setTimeout>
 }
 
@@ -135,8 +139,8 @@ export class Forwarder {
     private readonly log: (message: string) => void,
   ) {}
 
-  link(send: Link["send"]): Link {
-    const link: Link = { send, subscriptions: new Set(), queue: [] }
+  link(send: Link["send"], device?: string): Link {
+    const link: Link = { send, subscriptions: new Set(), queue: [], ...(device ? { device } : {}) }
     this.links.add(link)
     return link
   }
@@ -172,7 +176,7 @@ export class Forwarder {
     const requested = route.mark ? requestedMode(value.headers) : undefined
     const mode = requested ? await appliedMode(requested) : "ask"
     const headers = requested && requested !== mode ? { headers: { "X-Redrob-Approval-Applied": mode } } : {}
-    if (route.mark === "named" && sessionID) MobileProfile.mark(sessionID, mode)
+    if (route.mark === "named" && sessionID) this.mark(link, sessionID, mode)
     const result = await this.daemon.raw(request.method, request.path, request.body).catch((error: unknown) => {
       this.log(`forward ${request.method} failed: ${error instanceof Error ? error.message : String(error)}`)
       return { status: 502, body: undefined }
@@ -180,7 +184,7 @@ export class Forwarder {
     const ok = result.status >= 200 && result.status < 300
     if (ok && route.mark === "created") {
       const created = (result.body as { data?: { id?: unknown } } | undefined)?.data?.id
-      if (typeof created === "string") MobileProfile.mark(created, mode)
+      if (typeof created === "string") this.mark(link, created, mode)
     }
     if (ok && route.prompt && sessionID) this.watchTurn(sessionID)
     // A stop may leave no step.ended behind; the phone's stop must still end the turn.
@@ -191,6 +195,16 @@ export class Forwarder {
       return link.send({ t: "res", id, status: 413, ...headers })
     }
     await link.send({ t: "res", id, status: result.status, ...headers, ...(result.body !== undefined ? { body: result.body } : {}) })
+  }
+
+  /** Mark a session, and note on the PC when it first turns to `all`. */
+  private mark(link: Link, sessionID: string, mode: MobileProfile.ApprovalMode): void {
+    const first = mode === "all" && !(MobileProfile.isMobile(sessionID) && MobileProfile.mode(sessionID) === "all")
+    MobileProfile.mark(sessionID, mode)
+    if (!first) return
+    void appendEvent({ type: "auto_all_on", sessionId: sessionID, ...(link.device ? { device: link.device } : {}) }).catch(
+      (error: unknown) => this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
+    )
   }
 
   /**
