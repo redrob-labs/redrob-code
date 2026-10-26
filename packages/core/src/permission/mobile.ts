@@ -27,7 +27,7 @@ const KEY = Symbol.for("redrob.mobile.permission-profile")
  * - `ask`: every dangerous action asks (the profile above; also what an old app without the header gets);
  * - `edits`: file edits inside the project folder run right away; commands and outside folders ask;
  * - `all`: nothing asks except the rules in `KEEP_ASKING`. The forwarder only grants it while the
- *   launcher's switch (`~/.redrob/desk/settings.json` `allowAutoAll`) is on.
+ *   launcher's switch (`~/.redrob/desk/settings.json` `allowAutoAll`) is not turned off.
  *
  * A configured `deny` wins in every mode.
  */
