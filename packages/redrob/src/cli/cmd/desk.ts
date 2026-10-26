@@ -19,6 +19,7 @@ type Status = {
   signedIn: boolean
   account?: { email: string }
   connected: boolean
+  autoAll?: boolean
   login?: Login
   pending: { code: string; name: string; kind: Kind; expiresAt: number }[]
   devices: { id: string; name: string; kind: Kind; addedAt: number; online: boolean }[]
@@ -73,6 +74,8 @@ function printStatus(status: Status): void {
   if (!status.signedIn) dim("not signed in; run: redrob desk login")
   else UI.println(`signed in${status.account ? ` as ${status.account.email}` : ""}`)
   UI.println(`desk ${status.enabled ? "on" : "off"}, relay ${status.connected ? "connected" : "not connected"}`)
+  // Older daemons do not report it.
+  if (status.autoAll !== undefined) UI.println(`auto all from phone: ${status.autoAll ? "on" : "off"}`)
   if (status.pending.length > 0) UI.println(`${status.pending.length} device(s) waiting; run: redrob desk pending`)
   UI.println(`${status.devices.length} approved device(s)`)
 }

@@ -21,8 +21,25 @@ export * as MobileProfile from "./mobile"
 
 const KEY = Symbol.for("redrob.mobile.permission-profile")
 
+/**
+ * The approval mode the device picked for a session (header `X-Redrob-Approval`):
+ *
+ * - `ask`: every dangerous action asks (the profile above; also what an old app without the header gets);
+ * - `edits`: file edits inside the project folder run right away; commands and outside folders ask;
+ * - `all`: nothing asks except the rules in `KEEP_ASKING`. The forwarder only grants it while the
+ *   launcher's switch (`~/.redrob/desk/settings.json` `allowAutoAll`) is on.
+ *
+ * A configured `deny` wins in every mode.
+ */
+export type ApprovalMode = "ask" | "edits" | "all"
+export const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "edits", "all"]
+
+/** Rules that ask in every mode, even `all`. */
+export const KEEP_ASKING: readonly string[] = ["doom_loop"]
+
 type Registry = {
   readonly sessions: Set<string>
+  readonly modes: Map<string, ApprovalMode>
   readonly dangerousActions: Set<string>
 }
 
@@ -36,18 +53,50 @@ function registry(): Registry {
   const holder = globalThis as unknown as Record<symbol, Registry | undefined>
   let value = holder[KEY]
   if (!value) {
-    value = { sessions: new Set(), dangerousActions: new Set() }
+    value = { sessions: new Set(), modes: new Map(), dangerousActions: new Set() }
     holder[KEY] = value
   }
+  // A registry made by an older copy of this module has no modes map.
+  if (!value.modes) (value as { modes: Map<string, ApprovalMode> }).modes = new Map()
   return value
 }
 
-export function mark(sessionID: string): void {
-  registry().sessions.add(sessionID)
+/** Mark a session as driven from a device, in the mode it asked for (each prompt updates it). */
+export function mark(sessionID: string, mode: ApprovalMode = "ask"): void {
+  const value = registry()
+  value.sessions.add(sessionID)
+  value.modes.set(sessionID, mode)
 }
 
 export function unmark(sessionID: string): void {
-  registry().sessions.delete(sessionID)
+  const value = registry()
+  value.sessions.delete(sessionID)
+  value.modes.delete(sessionID)
+}
+
+export function mode(sessionID: string): ApprovalMode {
+  return registry().modes.get(sessionID) ?? "ask"
+}
+
+/** A permission resource inside the project: edit resources are Location-relative there, canonical outside. */
+function insideProject(resource: string): boolean {
+  if (resource === "" || resource === "*") return false
+  if (resource.startsWith("/") || resource.startsWith("\\") || /^[A-Za-z]:/.test(resource)) return false
+  return !resource.split(/[\\/]/).includes("..")
+}
+
+/**
+ * The effect for one resource of a marked session, after the configured `deny` check.
+ * `configured` is what the agent's own ruleset says for it (saved approvals are not used here).
+ */
+export function decide(sessionID: string, action: string, resource: string, configured: "allow" | "ask" | "deny"): "allow" | "ask" | "deny" {
+  if (configured === "deny") return "deny"
+  if (KEEP_ASKING.includes(action)) return "ask"
+  const current = mode(sessionID)
+  if (current === "all") return "allow"
+  if (current === "edits" && action === "edit" && insideProject(resource)) return "allow"
+  if (isDangerous(action)) return "ask"
+  return configured
 }
 
 export function isMobile(sessionID: string): boolean {

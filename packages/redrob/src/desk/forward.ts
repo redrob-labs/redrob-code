@@ -4,11 +4,18 @@
  *
  * `ROUTES` is the only security boundary. A `req` outside it is answered 403 without touching the
  * daemon. A session created or prompted from any device, phone or web alike, is marked with
- * `MobileProfile.mark`, so saved approvals do not apply to it and dangerous actions always ask.
+ * `MobileProfile.mark`, so saved approvals do not apply to it and its approval mode decides what asks.
+ *
+ * Approval modes: a `req` may carry `headers: { "X-Redrob-Approval": "ask" | "edits" | "all" }` on
+ * session create and prompt. The mode is stored for that session and updated on every prompt; no
+ * header means `ask` (old apps). `all` while the launcher's switch is off is lowered to `edits`, and
+ * the `res` then carries `headers: { "X-Redrob-Approval-Applied": "edits" }`. `GET /desk/capabilities`
+ * is answered here, not by the daemon: the modes this machine offers right now.
  */
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
+import { allowAutoAll } from "./settings"
 
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
@@ -26,6 +33,8 @@ type Route = {
   readonly mark?: "named" | "created"
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
+  /** Answered by the forwarder itself; never reaches the daemon. */
+  readonly local?: "capabilities"
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -53,7 +62,30 @@ export const ROUTES: readonly Route[] = [
     },
   },
   { method: "GET", path: /^\/v1\/apps$/ },
+  { method: "GET", path: /^\/desk\/capabilities$/, local: "capabilities" },
 ]
+
+/** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
+export async function capabilities(): Promise<{ v: 1; approvalModes: MobileProfile.ApprovalMode[]; defaultApproval: "edits" }> {
+  const approvalModes: MobileProfile.ApprovalMode[] = (await allowAutoAll()) ? ["ask", "edits", "all"] : ["ask", "edits"]
+  return { v: 1, approvalModes, defaultApproval: "edits" }
+}
+
+/** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
+function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined {
+  if (typeof headers !== "object" || headers === null) return undefined
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() !== "x-redrob-approval") continue
+    return MobileProfile.APPROVAL_MODES.includes(value as MobileProfile.ApprovalMode) ? (value as MobileProfile.ApprovalMode) : "ask"
+  }
+  return undefined
+}
+
+/** The mode a session actually gets: `all` only while the launcher's switch is on, else `edits`. */
+async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<MobileProfile.ApprovalMode> {
+  if (requested !== "all") return requested
+  return (await allowAutoAll()) ? "all" : "edits"
+}
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
 const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
@@ -134,7 +166,11 @@ export class Forwarder {
     if (!allowed) return link.send({ t: "res", id, status: 403 })
 
     const { route, sessionID } = allowed
-    if (route.mark === "named" && sessionID) MobileProfile.mark(sessionID)
+    if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
+    const requested = route.mark ? requestedMode(value.headers) : undefined
+    const mode = requested ? await appliedMode(requested) : "ask"
+    const headers = requested && requested !== mode ? { headers: { "X-Redrob-Approval-Applied": mode } } : {}
+    if (route.mark === "named" && sessionID) MobileProfile.mark(sessionID, mode)
     const result = await this.daemon.raw(request.method, request.path, request.body).catch((error: unknown) => {
       this.log(`forward ${request.method} failed: ${error instanceof Error ? error.message : String(error)}`)
       return { status: 502, body: undefined }
@@ -142,7 +178,7 @@ export class Forwarder {
     const ok = result.status >= 200 && result.status < 300
     if (ok && route.mark === "created") {
       const created = (result.body as { data?: { id?: unknown } } | undefined)?.data?.id
-      if (typeof created === "string") MobileProfile.mark(created)
+      if (typeof created === "string") MobileProfile.mark(created, mode)
     }
     if (ok && route.prompt && sessionID) this.watchTurn(sessionID)
     // A stop may leave no step.ended behind; the phone's stop must still end the turn.
@@ -150,9 +186,9 @@ export class Forwarder {
     // The relay drops a frame over 8 MB and the phone would wait forever. Say 413 instead;
     // the phone asks for a smaller history page.
     if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
-      return link.send({ t: "res", id, status: 413 })
+      return link.send({ t: "res", id, status: 413, ...headers })
     }
-    await link.send({ t: "res", id, status: result.status, ...(result.body !== undefined ? { body: result.body } : {}) })
+    await link.send({ t: "res", id, status: result.status, ...headers, ...(result.body !== undefined ? { body: result.body } : {}) })
   }
 
   /**

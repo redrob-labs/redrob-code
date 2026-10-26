@@ -37,6 +37,7 @@ export type DeskStatus = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string }
   readonly connected: boolean
+  readonly autoAll?: boolean
   readonly login?: DeskLogin
   readonly pending: readonly { code: string; name: string; kind: DeskKind; expiresAt: number }[]
   readonly devices: readonly { id: string; name: string; kind: DeskKind; addedAt: number; online: boolean }[]
