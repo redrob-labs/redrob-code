@@ -21,6 +21,7 @@ import {
   CONSOLE_URL,
   type ConsoleModelInfo,
 } from "./plugin/provider/redrob-constants"
+import { rememberConsoleModels, type ConsoleModelFacts } from "./plugin/provider/redrob-body-budget"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -182,6 +183,9 @@ const ConsoleModelCapabilities = Schema.Struct({
   // failed the whole-array decode and took all 323 models down with it, which is what left the
   // catalog showing six built-in ids.
   maxOutputTokens: Schema.optional(Schema.NullOr(Schema.Finite)),
+  // A router id (`auto`): the console picks the real model per request, so a limit one request
+  // reports is not this id's own.
+  routed: Schema.optional(Schema.Boolean),
 })
 
 // Assumed OpenAI-standard /v1/models listing shape returned by the console endpoint:
@@ -505,6 +509,7 @@ const layer = Layer.effect(
       const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ConsoleModelList))(response)
       if (decoded._tag === "None") return yield* Effect.fail(new Error("Failed to parse console /models response"))
       const models: Record<string, Model> = {}
+      const facts: ConsoleModelFacts[] = []
       let rejected = 0
       for (const entry of decoded.value.data) {
         const model = Schema.decodeUnknownOption(ConsoleModel)(entry)
@@ -513,7 +518,14 @@ const layer = Layer.effect(
           continue
         }
         models[model.value.id] = consoleModel(model.value)
+        facts.push({
+          id: model.value.id,
+          image: model.value.capabilities?.imageInput,
+          routed: model.value.capabilities?.routed,
+        })
       }
+      // Which ids take images and which route, for the console request budget (vision switch).
+      rememberConsoleModels(facts)
       // Silence here is what hid the previous failure, so a dropped entry is reported. It is a warning
       // rather than an error: the catalog is usable, just short by however many entries this CLI could
       // not describe.

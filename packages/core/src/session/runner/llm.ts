@@ -29,6 +29,7 @@ import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
 import { SessionHistory } from "../history"
 import { SessionInput } from "../input"
+import { SessionMessage } from "../message"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { type RunError, Service } from "./index"
@@ -223,6 +224,9 @@ const layer = Layer.effect(
     const continueAfterOverflowCompaction = (step: number) =>
       new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step })
 
+    /** Sessions whose running turn already published its own `step.failed`. */
+    const failedSteps = new Set<SessionSchema.ID>()
+
     const loadSystemContext = (agent: AgentV2.Selection) =>
       Effect.all([systemContext.load(), skillGuidance.load(agent), referenceGuidance.load()], {
         concurrency: "unbounded",
@@ -234,6 +238,7 @@ const layer = Layer.effect(
       step: number,
       recoverOverflow?: typeof compaction.compactAfterOverflow,
     ) {
+      failedSteps.delete(sessionID)
       const session = yield* getSession(sessionID)
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
@@ -422,7 +427,7 @@ const layer = Layer.effect(
             return yield* Effect.failCause(settled.cause)
           return { needsContinuation: !publisher.hasProviderError() && needsContinuation, step: currentStep }
         }),
-      )
+      ).pipe(Effect.ensuring(Effect.sync(() => publisher.hasFailed() && failedSteps.add(session.id))))
     }, Effect.scoped)
     type RunTurn = (
       sessionID: SessionSchema.ID,
@@ -458,7 +463,7 @@ const layer = Layer.effect(
       )
     })
 
-    const run = Effect.fn("SessionRunner.run")(function* (input: {
+    const runSteps = Effect.fn("SessionRunner.run")(function* (input: {
       readonly sessionID: SessionSchema.ID
       readonly force: boolean
     }) {
@@ -482,6 +487,32 @@ const layer = Layer.effect(
         promotion = shouldRun ? "queue" : undefined
       }
     })
+
+    /**
+     * A run that fails before or outside a provider step (no model, a bad message, a broken
+     * context) would otherwise leave no `step.failed` on the bus, only "Failed to drain Session" in
+     * the log, and anything watching the turn (the desk forwarder) would wait forever. Publish one
+     * with the error's message, unless the failing step already published its own.
+     */
+    const publishRunFailure = (sessionID: SessionSchema.ID, cause: Cause.Cause<unknown>) =>
+      Effect.gen(function* () {
+        if (Cause.hasInterruptsOnly(cause) || failedSteps.has(sessionID)) return
+        const failure = Cause.squash(cause)
+        const message = failure instanceof Error && failure.message ? failure.message : String(failure)
+        yield* events.publish(SessionEvent.Step.Failed, {
+          sessionID,
+          timestamp: yield* DateTime.now,
+          assistantMessageID: SessionMessage.ID.create(),
+          error: { type: "unknown", message },
+        })
+      }).pipe(Effect.catchCause((publishCause) => Effect.logError("Failed to publish run failure", publishCause)))
+
+    const run = (input: { readonly sessionID: SessionSchema.ID; readonly force: boolean }) =>
+      Effect.sync(() => failedSteps.delete(input.sessionID)).pipe(
+        Effect.andThen(runSteps(input)),
+        Effect.tapCause((cause) => publishRunFailure(input.sessionID, cause)),
+        Effect.ensuring(Effect.sync(() => failedSteps.delete(input.sessionID))),
+      )
 
     return Service.of({
       run,

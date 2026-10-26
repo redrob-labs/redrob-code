@@ -1,3 +1,4 @@
+import { consoleImageNote, consoleVisionModel } from "@redrob-code/core/plugin/provider/redrob-body-budget"
 import type { ModelMessage, ToolResultPart } from "ai"
 import { mergeDeep, unique } from "remeda"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -433,6 +434,12 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       const modality = mimeToModality(mime)
       if (!modality) return part
       if (model.capabilities.input[modality]) return part
+      if (modality === "image") {
+        // A console step with an image goes to a vision model for that one request
+        // (redrob-body-budget routeConsoleBody), so the image stays when there is one.
+        if (model.providerID === "redrob" && consoleVisionModel(model.api.id)) return part
+        return { type: "text" as const, text: consoleImageNote(filename ?? "the image") }
+      }
 
       const name = filename ? `"${filename}"` : modality
       return {

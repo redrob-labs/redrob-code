@@ -1,7 +1,10 @@
 export * as ReadTool from "./read"
 
 import { ToolFailure } from "@redrob-code/llm"
+import path from "path"
 import { Effect, Layer, Schema } from "effect"
+import { SessionAttachment } from "@redrob-code/schema/session-attachment"
+import { EventV2 } from "../event"
 import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
 import { Image } from "../image"
@@ -34,6 +37,7 @@ const layer = Layer.effectDiscard(
     const mutation = yield* LocationMutation.Service
     const image = yield* Image.Service
     const permission = yield* PermissionV2.Service
+    const events = yield* EventV2.Service
 
     yield* tools
       .register({
@@ -84,6 +88,17 @@ const layer = Layer.effectDiscard(
                 limit: input.limit,
               })
               if ("encoding" in content && content.encoding === "base64" && SUPPORTED_IMAGE_MIMES.has(content.mime)) {
+                // The user sees the image in the chat too (the desk forwarder serves its bytes), so
+                // the model never has to describe or OCR it to show it.
+                yield* events.publish(SessionAttachment.Event.Attached, {
+                  sessionID: context.sessionID,
+                  id: SessionAttachment.createID(),
+                  name: path.basename(target.canonical),
+                  mime: content.mime,
+                  size: Buffer.byteLength(content.content, "base64"),
+                  source: "read",
+                  path: target.canonical,
+                })
                 return yield* image
                   .normalize(resource, { ...content, encoding: "base64" })
                   .pipe(Effect.catchTag("Image.ResizerUnavailableError", () => Effect.succeed(content)))
@@ -113,5 +128,12 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/read",
   layer,
-  deps: () => [ToolRegistry.node, ReadToolFileSystem.node, LocationMutation.node, Image.node, PermissionV2.node],
+  deps: () => [
+    ToolRegistry.node,
+    ReadToolFileSystem.node,
+    LocationMutation.node,
+    Image.node,
+    PermissionV2.node,
+    EventV2.node,
+  ],
 })
