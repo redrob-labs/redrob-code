@@ -145,6 +145,8 @@ export class Forwarder {
       if (typeof created === "string") MobileProfile.mark(created)
     }
     if (ok && route.prompt && sessionID) this.watchTurn(sessionID)
+    // A stop may leave no step.ended behind; the phone's stop must still end the turn.
+    if (ok && sessionID && request.method === "POST" && request.path.endsWith("/interrupt")) this.turnEnded(sessionID)
     // The relay drops a frame over 8 MB and the phone would wait forever. Say 413 instead;
     // the phone asks for a smaller history page.
     if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
@@ -154,20 +156,22 @@ export class Forwarder {
   }
 
   /**
-   * After a phone prompt: when the session goes idle, tell subscribed phones with a synthetic
+   * After a phone prompt: when the turn ends, tell subscribed phones with a synthetic
    * `session.idle` event (the bus carries none), and push "done" when no phone is watching.
+   *
+   * The turn's end is read off the bus: `session.next.step.failed`, or `session.next.step.ended`
+   * whose finish is not a tool call (a tool call starts another step). `POST /api/session/:id/wait`
+   * is not used: V2 sessions answer it 503 "Session wait is not available yet", so the phone never
+   * heard the turn end and showed "working" forever, and stop could not end it either.
    */
   private watchTurn(sessionID: string): void {
-    if (this.waiting.has(sessionID)) return
     this.waiting.add(sessionID)
-    void this.daemon
-      .wait(sessionID, this.abort?.signal)
-      .then(() => {
-        this.onEvent({ type: "session.idle", data: { sessionID } })
-        return this.watched(sessionID) ? undefined : this.notify("done", sessionID)
-      })
-      .catch(() => undefined)
-      .finally(() => this.waiting.delete(sessionID))
+  }
+
+  private turnEnded(sessionID: string): void {
+    if (!this.waiting.delete(sessionID)) return
+    this.onEvent({ type: "session.idle", data: { sessionID } })
+    if (!this.watched(sessionID)) void this.notify("done", sessionID).catch(() => undefined)
   }
 
   /** Follow `GET /api/event` until `stop`, reconnecting with backoff. */
@@ -205,6 +209,11 @@ export class Forwarder {
       if (!wanted) continue
       link.queue.push(event)
       if (!link.timer) link.timer = setTimeout(() => this.flush(link), COALESCE_MS)
+    }
+    if (sessionID && this.waiting.has(sessionID)) {
+      const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
+      if (event.type === "session.next.step.failed") this.turnEnded(sessionID)
+      else if (event.type === "session.next.step.ended" && finish !== "tool-calls") this.turnEnded(sessionID)
     }
   }
 
