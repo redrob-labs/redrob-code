@@ -201,7 +201,26 @@ const responseBody = (body: string | void, request: HttpClientRequest.HttpClient
   return { body: redacted.slice(0, BODY_LIMIT), bodyTruncated: true }
 }
 
+// The human sentence of an OpenAI/Anthropic-style error body (`{"error":{"message":...}}`), so a
+// refusal reads as the provider wrote it rather than as raw JSON. The full body stays on `http.body`.
+const bodyErrorMessage = (body: string) => {
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (typeof parsed !== "object" || parsed === null) return undefined
+    const error = (parsed as { error?: unknown }).error
+    const message =
+      typeof error === "object" && error !== null
+        ? (error as { message?: unknown }).message
+        : (parsed as { message?: unknown }).message
+    return typeof message === "string" && message.trim() ? message.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const providerMessage = (status: number, body: { readonly body?: string }) => {
+  const message = body.body ? bodyErrorMessage(body.body) : undefined
+  if (message) return `Provider request failed with HTTP ${status}: ${message}`
   if (body.body && body.body.length <= 500) return `Provider request failed with HTTP ${status}: ${body.body}`
   return `Provider request failed with HTTP ${status}`
 }

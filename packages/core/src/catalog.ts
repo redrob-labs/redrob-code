@@ -1,7 +1,7 @@
 export * as Catalog from "./catalog"
 
 import { makeLocationNode } from "./effect/app-node"
-import { Array, Context, Effect, Layer, Option, Order, pipe, Schema } from "effect"
+import { Array, Context, Deferred, Effect, Layer, Option, Order, pipe, Schema } from "effect"
 import { Catalog } from "@redrob-code/schema/catalog"
 import { ModelV2 } from "./model"
 import { ProviderV2 } from "./provider"
@@ -57,6 +57,14 @@ export interface Interface extends State.Transformable<Draft> {
     readonly default: () => Effect.Effect<ModelV2.Info | undefined>
     readonly small: (providerID: ProviderV2.ID) => Effect.Effect<ModelV2.Info | undefined>
   }
+  /**
+   * Runs `effect` as a catalog load: `loaded()` waits while any is running. The location's plugin
+   * boot runs in the background and only materializes the catalog at its end (after the console
+   * `/models` fetch), so a reader that must not see the empty catalog waits on `loaded()`.
+   */
+  readonly loading: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+  /** Resolves when no `loading` effect is running; at once when none ever started. */
+  readonly loaded: () => Effect.Effect<void>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/v2/Catalog") {}
@@ -168,9 +176,29 @@ const layer = Layer.effect(
         yield* events.publish(Event.Updated, {})
       }),
     })
+    let running = 0
+    let pending: Deferred.Deferred<void> | undefined
+
     const result: Interface = {
       transform: state.transform,
       reload: state.reload,
+
+      loading: (effect) =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            if (running++ === 0) pending = Deferred.makeUnsafe<void>()
+          }),
+          () => effect,
+          () =>
+            Effect.suspend(() => {
+              if (--running > 0 || !pending) return Effect.void
+              const done = pending
+              pending = undefined
+              return Deferred.succeed(done, undefined)
+            }),
+        ),
+
+      loaded: () => Effect.suspend(() => (pending ? Deferred.await(pending) : Effect.void)),
 
       provider: {
         get: Effect.fn("CatalogV2.provider.get")(function* (providerID) {
