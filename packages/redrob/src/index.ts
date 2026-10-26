@@ -15,7 +15,7 @@ import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { ServiceCommand } from "./cli/cmd/service"
 import { ChannelsCommand } from "./cli/cmd/channels"
-import { MobileCommand } from "./cli/cmd/mobile"
+import { DeskCommand } from "./cli/cmd/desk"
 import { AppsCommand } from "./cli/cmd/apps"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
@@ -98,7 +98,7 @@ const cli = yargs(args)
   .command(ServeCommand)
   .command(ServiceCommand)
   .command(ChannelsCommand)
-  .command(MobileCommand)
+  .command(DeskCommand)
   .command(AppsCommand)
   .command(ModelsCommand)
   .command(ModelsLocalCommand)

@@ -3,8 +3,9 @@ export * as MobileProfile from "./mobile"
 /**
  * The mobile permission profile (redrob-mobile `docs/desk-relay.md`, "Mobile profile").
  *
- * A session created or prompted from a paired phone is marked here by the desk relay forwarder
- * (`packages/redrob/src/desk/forward.ts`). While a session is marked:
+ * A session created or prompted from a paired device (the phone app or a web browser) is marked
+ * here by the desk relay forwarder (`packages/redrob/src/desk/forward.ts`). While a session is
+ * marked:
  *
  * - saved "always allow" permissions do not apply to it: the desktop's remembered approvals are not
  *   the phone's;
