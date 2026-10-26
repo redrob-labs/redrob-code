@@ -39,6 +39,7 @@ import {
   CONSOLE_URL,
 } from "@redrob-code/core/plugin/provider/redrob"
 import type { ConsoleModelInfo } from "@redrob-code/core/plugin/provider/redrob-constants"
+import { budgetConsoleBodyText } from "@redrob-code/core/plugin/provider/redrob-body-budget"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
@@ -1979,6 +1980,12 @@ const layer = Layer.effect(
 
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
+
+          // The console runs on Vercel and 413s bodies over 2 MB; compaction resends the same
+          // history, so every console request (compaction included) is shrunk to
+          // CONSOLE_MAX_BODY_BYTES here. See packages/core/src/plugin/provider/redrob-body-budget.ts.
+          if (model.providerID === "redrob" && typeof opts.body === "string" && opts.method === "POST")
+            opts.body = budgetConsoleBodyText(opts.body)
 
           const res = await fetchFn(input, {
             ...opts,

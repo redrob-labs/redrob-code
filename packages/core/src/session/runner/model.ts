@@ -5,13 +5,14 @@ import { type Model } from "@redrob-code/llm"
 import * as AnthropicMessages from "@redrob-code/llm/protocols/anthropic-messages"
 import * as OpenAICompatibleChat from "@redrob-code/llm/protocols/openai-compatible-chat"
 import * as OpenAIResponses from "@redrob-code/llm/protocols/openai-responses"
-import { Auth, type AnyRoute } from "@redrob-code/llm/route"
+import { Auth, type AnyRoute, type TransportDef } from "@redrob-code/llm/route"
 import { Context, Effect, Layer, Schema } from "effect"
 import { produce } from "immer"
 import { Catalog } from "../../catalog"
 import { Credential } from "../../credential"
 import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
+import { budgetConsoleBody } from "../../plugin/provider/redrob-body-budget"
 import { ProviderV2 } from "../../provider"
 import { SessionSchema } from "../schema"
 
@@ -125,6 +126,13 @@ const withVariant = (
   )
 }
 
+const withConsoleBodyBudget = <Body, Prepared>(
+  transport: TransportDef<Body, Prepared, unknown>,
+): TransportDef<Body, Prepared, unknown> => ({
+  ...transport,
+  prepare: (input) => transport.prepare({ ...input, body: budgetConsoleBody(input.body) }),
+})
+
 const apiName = (model: ModelV2.Info) =>
   model.api.type === "aisdk" ? `${model.api.type}:${model.api.package}` : model.api.type
 
@@ -154,8 +162,14 @@ export const fromCatalogModel = (
     )
   }
   if (resolved.api.type === "aisdk" && resolved.api.package === "@ai-sdk/openai-compatible" && resolved.api.url) {
+    // The console (Vercel) rejects bodies over 2 MB, so its requests, compaction included, are
+    // shrunk to CONSOLE_MAX_BODY_BYTES before encoding. See ../../plugin/provider/redrob-body-budget.ts.
+    const route =
+      resolved.providerID === ProviderV2.ID.redrob
+        ? OpenAICompatibleChat.route.with({ transport: withConsoleBodyBudget(OpenAICompatibleChat.route.transport) })
+        : OpenAICompatibleChat.route
     return Effect.succeed(
-      withDefaults(resolved, OpenAICompatibleChat.route)
+      withDefaults(resolved, route)
         .with({ auth: key === undefined ? Auth.none : Auth.bearer(key) })
         .model({ id: resolved.api.id }),
     )
