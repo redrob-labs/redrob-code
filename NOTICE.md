@@ -23,8 +23,6 @@ publishes. `v1.18.31-redrob.1` is the first Redrob Code build against opencode
 
 ## Third-party material
 
-- `packages/docs/` was seeded from the Mintlify docs starter template, MIT,
-  copyright (c) 2023 Mintlify. See [packages/docs/LICENSE](./packages/docs/LICENSE).
 - `packages/http-recorder/` carries its own copy of the upstream MIT licence at
   [packages/http-recorder/LICENSE](./packages/http-recorder/LICENSE).
 
