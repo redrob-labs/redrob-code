@@ -22,23 +22,43 @@ export type Controller = {
   status(): ChannelStatus[] | Promise<ChannelStatus[]>
   /** Re-read the config and reconcile; returns the channels running afterwards. */
   reload(): Promise<string[]>
-  /** The desk relay's pairing surface; undefined while the relay is not running. */
-  desk?(): DeskController | undefined
+  /** The desk (web and phone devices -> this daemon). Absent on a server that is not the registered daemon. */
+  readonly desk?: DeskController
 }
+
+export type DeskKind = "phone" | "web"
+
+export type DeskLogin = { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+
+export type DeskDevice = { readonly id: string; readonly name: string; readonly kind: DeskKind }
 
 export type DeskStatus = {
+  readonly enabled: boolean
+  readonly signedIn: boolean
+  readonly account?: { readonly email: string }
   readonly connected: boolean
-  readonly pending: readonly { phoneId: string; name: string; code: string; expiresAt: number }[]
-  readonly phones: readonly { id: string; name: string; addedAt: number; online: boolean }[]
+  readonly login?: DeskLogin
+  readonly pending: readonly { code: string; name: string; kind: DeskKind; expiresAt: number }[]
+  readonly devices: readonly { id: string; name: string; kind: DeskKind; addedAt: number; online: boolean }[]
 }
 
-/** `redrob mobile pending|approve|deny|list|revoke` through the running daemon. */
+/** No pending request with that code, or no approved device with that id (404). */
+export class DeskNotFound extends Error {}
+
+/** `desk.login` on a machine that is already signed in (409). */
+export class DeskConflict extends Error {}
+
+/** The `/desk/*` routes, the launcher and `redrob desk ...` through the running daemon. */
 export type DeskController = {
   status(): Promise<DeskStatus>
-  /** Rejects when no pending request has that code. */
-  reply(code: string, decision: "approve" | "deny"): Promise<{ id: string; name: string }>
-  /** Rejects when no phone has that id. */
-  revoke(id: string): Promise<{ id: string; name: string }>
+  enable(enabled: boolean): Promise<DeskStatus>
+  /** Rejects with `DeskConflict` when already signed in. */
+  login(): Promise<DeskLogin>
+  logout(): Promise<DeskStatus>
+  /** These reject with `DeskNotFound` when nothing matches. */
+  approve(code: string): Promise<DeskDevice>
+  deny(code: string): Promise<DeskDevice>
+  revoke(id: string): Promise<DeskDevice>
 }
 
 let controller: Controller | undefined

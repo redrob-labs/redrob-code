@@ -5,7 +5,8 @@
  * The chat API's `/mobile/*` routes sit behind its user JWT guard, which takes redrob-auth tokens
  * of the `REDROB_AUTH_DESKTOP_CLIENTS` clients. The Console key the `redrob` provider spends (and
  * sharing sends) is not one of those, so the daemon signs in as the public `redrob-code` desktop
- * client: RFC 8628 device grant once (`redrob mobile login`), `refresh_token` grant after that.
+ * client: RFC 8628 device grant once (`POST /desk/login` from the launcher, or `redrob desk login`),
+ * `refresh_token` grant after that.
  * Only the refresh token is kept, in the secret store (`~/.redrob/channels/secrets.json`, 0600)
  * under `desk.refreshToken`. redrob-auth rotates it on every refresh, so every refresh writes the
  * new one back before the access token is used.
@@ -29,7 +30,26 @@ export function endpoints(env: NodeJS.ProcessEnv = process.env): { issuer: strin
   return { issuer, chatApi }
 }
 
-export type TokenSet = { readonly accessToken: string; readonly refreshToken?: string; readonly expiresAt: number }
+export type TokenSet = {
+  readonly accessToken: string
+  readonly refreshToken?: string
+  readonly expiresAt: number
+  /** From the `id_token`, when the issuer sent one. Shown by `GET /desk/status`. */
+  readonly email?: string
+}
+
+/** The `email` claim of an ID token. Read only for display; the token came straight from the issuer over TLS. */
+function emailOf(idToken: unknown): string | undefined {
+  if (typeof idToken !== "string") return undefined
+  const part = idToken.split(".")[1]
+  if (!part) return undefined
+  try {
+    const claims = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as { email?: unknown }
+    return typeof claims.email === "string" && claims.email ? claims.email : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export type DeviceAuthorization = {
   readonly deviceCode: string
@@ -63,8 +83,10 @@ function tokens(body: Record<string, unknown>, now: number): TokenSet {
   const accessToken = typeof body.access_token === "string" ? body.access_token : ""
   if (!accessToken) throw new AuthError("invalid_response", "no access_token in the token response")
   const expiresIn = typeof body.expires_in === "number" && body.expires_in > 0 ? body.expires_in : 3600
+  const email = emailOf(body.id_token)
   return {
     accessToken,
+    ...(email ? { email } : {}),
     ...(typeof body.refresh_token === "string" && body.refresh_token ? { refreshToken: body.refresh_token } : {}),
     expiresAt: now + expiresIn * 1000,
   }
@@ -146,7 +168,7 @@ export class AccessTokens {
     if (!this.inflight) {
       this.inflight = (async () => {
         const stored = await this.store.get("refreshToken")
-        if (!stored) throw new AuthError("signed_out", "run: redrob mobile login")
+        if (!stored) throw new AuthError("signed_out", "run: redrob desk login")
         const result = await post(this.issuer, "/oauth/token", {
           grant_type: "refresh_token",
           refresh_token: stored,
@@ -155,6 +177,7 @@ export class AccessTokens {
         if (!result.ok) throw oauthError(result.body, result.status)
         const next = tokens(result.body, Date.now())
         if (next.refreshToken) await this.store.set("refreshToken", next.refreshToken)
+        if (next.email) await this.store.set("email", next.email)
         this.current = next
         return next
       })().finally(() => {

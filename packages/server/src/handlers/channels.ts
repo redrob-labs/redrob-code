@@ -1,4 +1,4 @@
-import { InvalidRequestError } from "@redrob-code/protocol/errors"
+import { ConflictError, DeskNotFoundError, ServiceUnavailableError } from "@redrob-code/protocol/errors"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -8,8 +8,24 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-const notRunning = () =>
-  new InvalidRequestError({ message: "the desk relay is not running (redrob mobile login)", kind: "not_running" })
+const noDesk = () =>
+  new ServiceUnavailableError({ message: "the desk runs only in the registered daemon (redrob service start)", service: "desk" })
+
+const OFF = { enabled: false, signedIn: false, connected: false, pending: [], devices: [] }
+
+function desk() {
+  const controller = Channels.current()?.desk
+  return controller ? Effect.succeed(controller) : Effect.fail(noDesk())
+}
+
+/** A pending code / device id that matches nothing is 404; anything else is a defect (500). */
+function lookup<A>(run: () => Promise<A>) {
+  return Effect.tryPromise({ try: run, catch: (error) => error }).pipe(
+    Effect.catch((error) =>
+      error instanceof Channels.DeskNotFound ? Effect.fail(new DeskNotFoundError({ message: message(error) })) : Effect.die(error),
+    ),
+  )
+}
 
 export const ChannelsHandler = HttpApiBuilder.group(Api, "server.channels", (handlers) =>
   handlers
@@ -34,34 +50,57 @@ export const ChannelsHandler = HttpApiBuilder.group(Api, "server.channels", (han
     .handle(
       "desk.status",
       Effect.fn(function* () {
-        const desk = Channels.current()?.desk?.()
-        if (!desk) return { running: false, connected: false, pending: [], phones: [] }
-        const status = yield* Effect.promise(() => desk.status())
-        return { running: true, ...status }
+        const controller = Channels.current()?.desk
+        if (!controller) return OFF
+        return yield* Effect.promise(() => controller.status())
       }),
     )
     .handle(
-      "desk.reply",
+      "desk.enable",
       Effect.fn(function* (ctx) {
-        const desk = Channels.current()?.desk?.()
-        if (!desk) return yield* notRunning()
-        const { code, decision } = ctx.payload
-        return yield* Effect.tryPromise({
-          try: () => desk.reply(code, decision),
-          catch: (error) => new InvalidRequestError({ message: message(error), field: "code" }),
-        })
+        const controller = yield* desk()
+        return yield* Effect.promise(() => controller.enable(ctx.payload.enabled))
+      }),
+    )
+    .handle(
+      "desk.login",
+      Effect.fn(function* () {
+        const controller = yield* desk()
+        return yield* Effect.tryPromise({ try: () => controller.login(), catch: (error) => error }).pipe(
+          Effect.catch((error) =>
+            error instanceof Channels.DeskConflict
+              ? Effect.fail(new ConflictError({ message: message(error), resource: "desk" }))
+              : Effect.die(error),
+          ),
+        )
+      }),
+    )
+    .handle(
+      "desk.logout",
+      Effect.fn(function* () {
+        const controller = yield* desk()
+        return yield* Effect.promise(() => controller.logout())
+      }),
+    )
+    .handle(
+      "desk.approve",
+      Effect.fn(function* (ctx) {
+        const controller = yield* desk()
+        return yield* lookup(() => controller.approve(ctx.params.code))
+      }),
+    )
+    .handle(
+      "desk.deny",
+      Effect.fn(function* (ctx) {
+        const controller = yield* desk()
+        return yield* lookup(() => controller.deny(ctx.params.code))
       }),
     )
     .handle(
       "desk.revoke",
       Effect.fn(function* (ctx) {
-        const desk = Channels.current()?.desk?.()
-        if (!desk) return yield* notRunning()
-        const { id } = ctx.payload
-        return yield* Effect.tryPromise({
-          try: () => desk.revoke(id),
-          catch: (error) => new InvalidRequestError({ message: message(error), field: "id" }),
-        })
+        const controller = yield* desk()
+        return yield* lookup(() => controller.revoke(ctx.params.id))
       }),
     ),
 )

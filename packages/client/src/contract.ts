@@ -55,7 +55,11 @@ export const endpointNames = {
   "browser.request.list": "listRequests",
   // desk.status and channels.status share the group and the last segment.
   "desk.status": "deskStatus",
-  "desk.reply": "deskReply",
+  "desk.enable": "deskEnable",
+  "desk.login": "deskLogin",
+  "desk.logout": "deskLogout",
+  "desk.approve": "deskApprove",
+  "desk.deny": "deskDeny",
   "desk.revoke": "deskRevoke",
 } as const
 

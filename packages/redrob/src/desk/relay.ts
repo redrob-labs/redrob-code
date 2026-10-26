@@ -341,8 +341,3 @@ export class DeskRelay {
     return device
   }
 }
-
-/** Whether this machine is signed in for the desk relay (`redrob desk login` or the launcher). */
-export async function signedIn(pairing: Pairing = new Pairing()): Promise<boolean> {
-  return Boolean(await pairing.tokens().get("refreshToken"))
-}
