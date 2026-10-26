@@ -177,6 +177,34 @@ export type ServerChannelsStatusOutput = {
 
 export type ServerChannelsReloadOutput = { readonly running: ReadonlyArray<string> }
 
+export type ServerChannelsDeskStatusOutput = {
+  readonly running: boolean
+  readonly connected: boolean
+  readonly pending: ReadonlyArray<{
+    readonly phoneId: string
+    readonly name: string
+    readonly code: string
+    readonly expiresAt: number
+  }>
+  readonly phones: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly addedAt: number
+    readonly online: boolean
+  }>
+}
+
+export type ServerChannelsDeskReplyInput = {
+  readonly code: { readonly code: string; readonly decision: "approve" | "deny" }["code"]
+  readonly decision: { readonly code: string; readonly decision: "approve" | "deny" }["decision"]
+}
+
+export type ServerChannelsDeskReplyOutput = { readonly id: string; readonly name: string }
+
+export type ServerChannelsDeskRevokeInput = { readonly id: { readonly id: string }["id"] }
+
+export type ServerChannelsDeskRevokeOutput = { readonly id: string; readonly name: string }
+
 export type ServerAppsListOutput = {
   readonly apps: ReadonlyArray<{
     readonly id: string

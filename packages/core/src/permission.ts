@@ -10,6 +10,7 @@ import { SessionV2 } from "./session"
 import { SessionStore } from "./session/store"
 import { Wildcard } from "./util/wildcard"
 import { PermissionSaved } from "./permission/saved"
+import { MobileProfile } from "./permission/mobile"
 
 export { Effect, Rule, Ruleset } from "@redrob-code/schema/permission"
 const missingAgentPermissions: Permission.Ruleset = [{ action: "*", resource: "*", effect: "deny" }]
@@ -155,6 +156,14 @@ const layer = Layer.effect(
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
       const rules = yield* configured(input.sessionID, input.agent)
       if (denied(input, rules)) return { effect: "deny" as const, rules }
+      // Mobile permission profile: saved approvals do not carry over to the phone, and a dangerous
+      // action always asks there (permission/mobile.ts).
+      if (MobileProfile.isMobile(input.sessionID)) {
+        if (MobileProfile.isDangerous(input.action)) return { effect: "ask" as const, rules }
+        const effects = input.resources.map((resource) => evaluate(input.action, resource, rules).effect)
+        const effect: Permission.Effect = effects.includes("ask") ? "ask" : "allow"
+        return { effect, rules }
+      }
       const all = [...rules, ...(yield* savedRules())]
       const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
       const effect: Permission.Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
@@ -266,6 +275,8 @@ const layer = Layer.effect(
             )
             if (!rules) continue
             if (denied(input, rules)) continue
+            // A saved approval never answers a mobile session's pending request.
+            if (MobileProfile.isMobile(item.request.sessionID)) continue
             const effective = [...rules, ...rememberedRules]
             if (
               !item.request.resources.every(
