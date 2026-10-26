@@ -125,6 +125,8 @@ export type Notify = (kind: "done" | "approval", sessionId: string) => Promise<v
 export class Forwarder {
   private readonly links = new Set<Link>()
   private readonly waiting = new Set<string>()
+  /** Sessions whose current step has called a tool. */
+  private readonly toolStep = new Set<string>()
   private abort?: AbortController
 
   constructor(
@@ -196,7 +198,8 @@ export class Forwarder {
    * `session.idle` event (the bus carries none), and push "done" when no phone is watching.
    *
    * The turn's end is read off the bus: `session.next.step.failed`, or `session.next.step.ended`
-   * whose finish is not a tool call (a tool call starts another step). `POST /api/session/:id/wait`
+   * whose finish is not a tool call and whose step called no tool (a tool call starts another
+   * step; some models still report "stop" for it). `POST /api/session/:id/wait`
    * is not used: V2 sessions answer it 503 "Session wait is not available yet", so the phone never
    * heard the turn end and showed "working" forever, and stop could not end it either.
    */
@@ -205,6 +208,7 @@ export class Forwarder {
   }
 
   private turnEnded(sessionID: string): void {
+    this.toolStep.delete(sessionID)
     if (!this.waiting.delete(sessionID)) return
     this.onEvent({ type: "session.idle", data: { sessionID } })
     if (!this.watched(sessionID)) void this.notify("done", sessionID).catch(() => undefined)
@@ -248,8 +252,11 @@ export class Forwarder {
     }
     if (sessionID && this.waiting.has(sessionID)) {
       const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
-      if (event.type === "session.next.step.failed") this.turnEnded(sessionID)
-      else if (event.type === "session.next.step.ended" && finish !== "tool-calls") this.turnEnded(sessionID)
+      if (event.type === "session.next.step.started") this.toolStep.delete(sessionID)
+      else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called") this.toolStep.add(sessionID)
+      else if (event.type === "session.next.step.failed") this.turnEnded(sessionID)
+      // Some console models finish a tool step with "stop"/"other"; a step that called a tool is not the end.
+      else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID)) this.turnEnded(sessionID)
     }
   }
 
