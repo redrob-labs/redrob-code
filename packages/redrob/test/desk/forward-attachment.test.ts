@@ -76,8 +76,8 @@ describe("desk attachment route", () => {
     expect(rest.body?.offset).toBe(ATTACHMENT_CHUNK_BYTES)
     expect(Buffer.from(rest.body!.data, "base64").length).toBe(100)
 
-    // Never forwarded to the daemon.
-    expect(calls).toEqual([])
+    // Never forwarded to the daemon (the link only warmed the catalog).
+    expect(calls).toEqual(["/api/model"])
     forwarder.stop()
   })
 
@@ -89,6 +89,47 @@ describe("desk attachment route", () => {
     expect((await get(`/desk/attachment/${sessionID}/att_2`)).status).toBe(404)
     expect((await get(`/desk/attachment/ses_other/att_1`)).status).toBe(404)
     expect((await get(`/desk/attachment/${sessionID}/att_1?offset=-1`)).status).toBe(400)
+    forwarder.stop()
+  })
+})
+
+describe("desk live events", () => {
+  test("a device link warms the catalog once, and each delta goes out before the turn ends", async () => {
+    const calls: string[] = []
+    let emit: (event: BusEvent) => void = () => undefined
+    const daemon = {
+      raw: async (_method: string, requestPath: string) => (calls.push(requestPath), { status: 200, body: {} }),
+      events: async (listener: (event: BusEvent) => void, signal: AbortSignal) => {
+        emit = listener
+        await new Promise((resolve) => signal.addEventListener("abort", resolve))
+      },
+    } as unknown as DaemonApi
+    const forwarder = new Forwarder(daemon, async () => undefined, () => undefined)
+    forwarder.start()
+    await Bun.sleep(0)
+    const sent: { at: number; types: string[] }[] = []
+    const link = forwarder.link(async (message) => {
+      const events = (message as { events?: BusEvent[] }).events ?? []
+      sent.push({ at: Date.now(), types: events.map((e) => e.type) })
+    })
+    forwarder.link(async () => undefined)
+    expect(calls).toEqual(["/api/model"])
+    await forwarder.handle(link, { t: "sub", sessions: [sessionID] })
+
+    const delta = (n: number) => ({ type: "session.next.text.delta", data: { sessionID, textID: "t1", delta: `d${n}` } })
+    const started = Date.now()
+    emit(delta(0))
+    await Bun.sleep(20)
+    // The first event after a quiet spell is not held for the coalescing window.
+    expect(sent.map((s) => s.types)).toEqual([["session.next.text.delta"]])
+    expect(sent[0]!.at - started).toBeLessThan(50)
+    for (let n = 1; n < 4; n++) {
+      emit(delta(n))
+      await Bun.sleep(150)
+    }
+    // Every delta reached the device while the turn is still running (no step.ended yet).
+    expect(sent.length).toBe(4)
+    for (let n = 1; n < 4; n++) expect(sent[n]!.at - sent[n - 1]!.at).toBeLessThan(300)
     forwarder.stop()
   })
 })

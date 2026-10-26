@@ -152,6 +152,12 @@ async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<Mobil
 /** Session list events, forwarded for every session so the phone's list stays current. */
 const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
 const COALESCE_MS = 100
+/**
+ * A device connecting warms the daemon's default location (`GET /api/model`), at most this often.
+ * A cold location loads its model catalog, console `/models` included, on the first prompt and
+ * the turn waits for it; warming it here moves that wait off the person's first prompt.
+ */
+const WARM_EVERY_MS = 5 * 60_000
 
 /** The message of a `session.next.step.failed`, for the synthetic `session.idle` that ends the turn. */
 function stepError(data: Record<string, unknown> | undefined): string | undefined {
@@ -188,6 +194,8 @@ export type Link = {
   /** The device's name as the relay knows it, for the PC's `auto_all_on` note. */
   device?: string
   timer?: ReturnType<typeof setTimeout>
+  /** When the last `evts` went out; an event after a quiet spell is sent at once. */
+  flushed?: number
 }
 
 export type Notify = (kind: "done" | "approval", sessionId: string) => Promise<void>
@@ -210,7 +218,18 @@ export class Forwarder {
   link(send: Link["send"], device?: string): Link {
     const link: Link = { send, subscriptions: new Set(), queue: [], ...(device ? { device } : {}) }
     this.links.add(link)
+    this.warm()
     return link
+  }
+
+  private warmed = 0
+
+  /** Boots the default location's catalog ahead of the first prompt (see WARM_EVERY_MS). */
+  private warm(): void {
+    const now = Date.now()
+    if (now - this.warmed < WARM_EVERY_MS) return
+    this.warmed = now
+    void this.daemon.raw("GET", "/api/model").catch(() => undefined)
   }
 
   unlink(link: Link): void {
@@ -360,7 +379,10 @@ export class Forwarder {
       const wanted = permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
       if (!wanted) continue
       link.queue.push(event)
-      if (!link.timer) link.timer = setTimeout(() => this.flush(link), COALESCE_MS)
+      if (link.timer) continue
+      // Leading edge: the first event after a quiet spell goes now, later ones wait for the window.
+      const wait = (link.flushed ?? 0) + COALESCE_MS - Date.now()
+      link.timer = setTimeout(() => this.flush(link), Math.max(wait, 0))
     }
     if (sessionID && this.waiting.has(sessionID)) {
       const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
@@ -377,6 +399,7 @@ export class Forwarder {
     if (!this.links.has(link) || link.queue.length === 0) return
     const events = link.queue
     link.queue = []
+    link.flushed = Date.now()
     void link.send({ t: "evts", events }).catch(() => undefined)
   }
 }
