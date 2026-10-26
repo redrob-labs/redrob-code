@@ -156,11 +156,13 @@ const layer = Layer.effect(
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
       const rules = yield* configured(input.sessionID, input.agent)
       if (denied(input, rules)) return { effect: "deny" as const, rules }
-      // Mobile permission profile: saved approvals do not carry over to the phone, and a dangerous
-      // action always asks there (permission/mobile.ts).
+      // Mobile permission profile: saved approvals do not carry over to the phone, and the session's
+      // approval mode (ask / edits / all) decides what asks there (permission/mobile.ts).
       if (MobileProfile.isMobile(input.sessionID)) {
-        if (MobileProfile.isDangerous(input.action)) return { effect: "ask" as const, rules }
-        const effects = input.resources.map((resource) => evaluate(input.action, resource, rules).effect)
+        const resources = input.resources.length > 0 ? input.resources : ["*"]
+        const effects = resources.map((resource) =>
+          MobileProfile.decide(input.sessionID, input.action, resource, evaluate(input.action, resource, rules).effect),
+        )
         const effect: Permission.Effect = effects.includes("ask") ? "ask" : "allow"
         return { effect, rules }
       }

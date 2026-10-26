@@ -11,6 +11,7 @@ import { Config, type DaemonConnection } from "@redrob-code/channels-core"
 import { endpoints, finishDeviceLogin, startDeviceLogin, type DeviceAuthorization } from "./auth"
 import { NotFound, Pairing, type DeviceKind } from "./pairing"
 import { DeskRelay, consoleLogger, type Logger } from "./relay"
+import { allowAutoAll } from "./settings"
 
 export { NotFound }
 
@@ -23,6 +24,8 @@ export type DeskStatus = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string }
   readonly connected: boolean
+  /** The launcher's "Allow Auto all from phone" switch (`~/.redrob/desk/settings.json`). */
+  readonly autoAll: boolean
   readonly login?: DeskLogin
   readonly pending: readonly { code: string; name: string; kind: DeviceKind; expiresAt: number }[]
   readonly devices: readonly { id: string; name: string; kind: DeviceKind; addedAt: number; online: boolean }[]
@@ -94,12 +97,13 @@ export class DeskService {
   }
 
   async status(): Promise<DeskStatus> {
-    const [enabled, signedIn, email] = await Promise.all([
+    const [enabled, signedIn, email, autoAll] = await Promise.all([
       this.enabled().catch(() => true),
       this.signedIn().catch(() => false),
       this.tokens()
         .get("email")
         .catch(() => undefined),
+      allowAutoAll(),
     ])
     const relay = this.relay?.status()
     const online = relay?.online ?? new Set<string>()
@@ -109,6 +113,7 @@ export class DeskService {
       signedIn,
       ...(signedIn && email ? { account: { email } } : {}),
       connected: relay?.connected ?? false,
+      autoAll,
       ...(login ? { login } : {}),
       pending: this.pairing.list().map(({ code, name, kind, expiresAt }) => ({ code, name, kind, expiresAt })),
       devices: (await this.pairing.devices()).map(({ id, name, kind, addedAt }) => ({
