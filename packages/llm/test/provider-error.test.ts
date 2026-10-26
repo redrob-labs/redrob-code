@@ -13,6 +13,8 @@ describe("provider error classification", () => {
       "Prompt has 5,958,968 tokens, but the configured context size is 256,000 tokens",
       "Too many tokens",
       "Token limit exceeded",
+      '{"error":{"message":"The conversation is longer than this model accepts (81,920 characters across all messages, counting an inline image or audio clip at the size of its payload). Drop older turns, shorten the tool results you are sending back, or send a smaller image.","type":"invalid_request_error","param":"messages","code":null}}',
+      "Request is 90,000 characters across all messages",
     ]
 
     expect(messages.every(isContextOverflow)).toBe(true)

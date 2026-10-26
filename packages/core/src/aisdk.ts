@@ -4,7 +4,7 @@ import { makeLocationNode } from "./effect/app-node"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { Cause, Context, Effect, Layer, Schema, Scope } from "effect"
 import { ModelV2 } from "./model"
-import { budgetConsoleBodyText } from "./plugin/provider/redrob-body-budget"
+import { sendConsoleBudgeted } from "./plugin/provider/redrob-body-budget"
 import { ProviderV2 } from "./provider"
 import { State } from "./state"
 
@@ -111,14 +111,18 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
       }
     }
 
-    // Console requests (Vercel, 2 MB body limit) are shrunk to CONSOLE_MAX_BODY_BYTES first.
-    if (model.providerID === ProviderV2.ID.redrob && typeof opts.body === "string" && opts.method === "POST")
-      opts.body = budgetConsoleBodyText(opts.body)
-
-    const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
-      ...opts,
-      timeout: false,
-    })
+    const send = (body: RequestInit["body"]) =>
+      (typeof customFetch === "function" ? customFetch : fetch)(input, {
+        ...opts,
+        body,
+        timeout: false,
+      })
+    // Console requests are shrunk to the console's byte limit and the model's learned character
+    // limit first, and re-sent once when the model reports its character limit.
+    const res =
+      model.providerID === ProviderV2.ID.redrob && typeof opts.body === "string" && opts.method === "POST"
+        ? await sendConsoleBudgeted(opts.body, send)
+        : await send(opts.body)
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }
