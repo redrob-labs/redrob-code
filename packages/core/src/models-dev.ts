@@ -461,6 +461,7 @@ function readDiskCache(apiKey: string): Effect.Effect<Record<string, Provider> |
 }
 
 function writeDiskCache(apiKey: string, catalog: Record<string, Provider>): Effect.Effect<void> {
+  if (Flag.REDROB_DISABLE_MODELS_CACHE) return Effect.void
   return Effect.tryPromise(() =>
     Bun.write(diskCachePath(), JSON.stringify({ key: keyFingerprint(apiKey), at: Date.now(), catalog })),
   ).pipe(Effect.ignore)
@@ -604,7 +605,7 @@ const layer = Layer.effect(
         next launch. Past MAX_STALE, or for a different key, the fetch is waited for as before, so a
         model the console added since is never missing for long.
       */
-      const cached = forceNetwork ? undefined : yield* readDiskCache(apiKey)
+      const cached = forceNetwork || Flag.REDROB_DISABLE_MODELS_CACHE ? undefined : yield* readDiskCache(apiKey)
       forceNetwork = false
       if (cached) {
         yield* fetchAndStore.pipe(Effect.ignore, Effect.forkDetach)
