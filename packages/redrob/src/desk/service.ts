@@ -24,7 +24,7 @@ export type DeskStatus = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string }
   readonly connected: boolean
-  /** The launcher's "Allow Auto all from phone" switch (`~/.redrob/desk/settings.json`). */
+  /** The launcher's "Allow Auto all from phone and web" switch (`~/.redrob/desk/settings.json`, missing means on). */
   readonly autoAll: boolean
   readonly login?: DeskLogin
   readonly pending: readonly { code: string; name: string; kind: DeviceKind; expiresAt: number }[]
