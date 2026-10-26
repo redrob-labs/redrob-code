@@ -14,6 +14,7 @@
  * so the launcher can tell the person at the PC. `GET /desk/capabilities` is answered here, not by
  * the daemon: the modes this machine offers right now.
  */
+import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
@@ -36,7 +37,7 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities"
+  readonly local?: "capabilities" | "attachment"
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -65,7 +66,66 @@ export const ROUTES: readonly Route[] = [
   },
   { method: "GET", path: /^\/v1\/apps$/ },
   { method: "GET", path: /^\/desk\/capabilities$/, local: "capabilities" },
+  // A file the session showed or handed to the user (`session.next.attachment`), in pieces.
+  { method: "GET", path: new RegExp(`^/desk/attachment/${ID}/${ID}$`), query: true, local: "attachment" },
 ]
+
+/** One attachment piece: at most this many bytes, which is also the default. */
+export const ATTACHMENT_CHUNK_BYTES = 512 * 1024
+/** Attachments kept per session; the oldest are forgotten first. */
+const MAX_ATTACHMENTS_PER_SESSION = 200
+
+export type Attachment = {
+  readonly sessionID: string
+  readonly id: string
+  readonly name: string
+  readonly mime: string
+  readonly size: number
+  readonly source: "read" | "share"
+  readonly path: string
+}
+
+const isAttachment = (data: Record<string, unknown> | undefined): data is Attachment =>
+  data !== undefined &&
+  typeof data.sessionID === "string" &&
+  typeof data.id === "string" &&
+  typeof data.name === "string" &&
+  typeof data.mime === "string" &&
+  typeof data.size === "number" &&
+  (data.source === "read" || data.source === "share") &&
+  typeof data.path === "string"
+
+/** `offset` and `limit` from a query string; undefined when either is not a whole number. */
+function attachmentRange(path: string): { offset: number; limit: number } | undefined {
+  const mark = path.indexOf("?")
+  const query = new URLSearchParams(mark >= 0 ? path.slice(mark + 1) : "")
+  const number = (name: string, fallback: number) => {
+    const value = query.get(name)
+    if (value === null) return fallback
+    return /^\d{1,12}$/.test(value) ? Number(value) : undefined
+  }
+  const offset = number("offset", 0)
+  const limit = number("limit", ATTACHMENT_CHUNK_BYTES)
+  if (offset === undefined || limit === undefined) return undefined
+  return { offset, limit: Math.min(Math.max(limit, 1), ATTACHMENT_CHUNK_BYTES) }
+}
+
+/** One piece of an attachment's file, base64. */
+export async function readAttachment(
+  attachment: Attachment,
+  range: { offset: number; limit: number },
+): Promise<{ name: string; mime: string; size: number; offset: number; data: string }> {
+  const file = await open(attachment.path, "r")
+  try {
+    const size = (await file.stat()).size
+    const offset = Math.min(range.offset, size)
+    const buffer = Buffer.alloc(Math.min(range.limit, size - offset))
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, offset)
+    return { name: attachment.name, mime: attachment.mime, size, offset, data: buffer.subarray(0, bytesRead).toString("base64") }
+  } finally {
+    await file.close()
+  }
+}
 
 /** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
 export async function capabilities(): Promise<{ v: 1; approvalModes: MobileProfile.ApprovalMode[]; defaultApproval: "edits" }> {
@@ -96,7 +156,7 @@ const COALESCE_MS = 100
 export type Request = { readonly method: Method; readonly path: string; readonly body?: unknown }
 
 /** The route a request matches, and the session id it names; undefined when not allowed. */
-export function match(request: Request): { route: Route; sessionID?: string } | undefined {
+export function match(request: Request): { route: Route; sessionID?: string; params: string[] } | undefined {
   if (request.method !== "GET" && request.method !== "POST") return undefined
   if (typeof request.path !== "string" || request.path.length > 2048 || !request.path.startsWith("/")) return undefined
   const mark = request.path.indexOf("?")
@@ -108,7 +168,7 @@ export function match(request: Request): { route: Route; sessionID?: string } | 
     if (!found) continue
     if (mark >= 0 && !route.query) return undefined
     if (route.body && !route.body(request.body)) return undefined
-    return { route, sessionID: found[1] }
+    return { route, sessionID: found[1], params: found.slice(1) }
   }
   return undefined
 }
@@ -131,6 +191,8 @@ export class Forwarder {
   private readonly waiting = new Set<string>()
   /** Sessions whose current step has called a tool. */
   private readonly toolStep = new Set<string>()
+  /** Attachments announced on the bus, by session: the only files `/desk/attachment` serves. */
+  private readonly attachments = new Map<string, Map<string, Attachment>>()
   private abort?: AbortController
 
   constructor(
@@ -173,6 +235,7 @@ export class Forwarder {
 
     const { route, sessionID } = allowed
     if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
+    if (route.local === "attachment") return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     const requested = route.mark ? requestedMode(value.headers) : undefined
     const mode = requested ? await appliedMode(requested) : "ask"
     const headers = requested && requested !== mode ? { headers: { "X-Redrob-Approval-Applied": mode } } : {}
@@ -195,6 +258,33 @@ export class Forwarder {
       return link.send({ t: "res", id, status: 413, ...headers })
     }
     await link.send({ t: "res", id, status: result.status, ...headers, ...(result.body !== undefined ? { body: result.body } : {}) })
+  }
+
+  /** `GET /desk/attachment/:sessionID/:id`: a piece of an announced attachment, 404 for anything else. */
+  async attachment(params: string[], path: string): Promise<{ status: number; body?: unknown }> {
+    const [sessionID, attachmentID] = params
+    const attachment = sessionID && attachmentID ? this.attachments.get(sessionID)?.get(attachmentID) : undefined
+    if (!attachment) return { status: 404 }
+    const range = attachmentRange(path)
+    if (!range) return { status: 400 }
+    return readAttachment(attachment, range).then(
+      (body) => ({ status: 200, body }),
+      (error: unknown) => {
+        this.log(`attachment read failed: ${error instanceof Error ? error.message : String(error)}`)
+        return { status: 404 }
+      },
+    )
+  }
+
+  /** Remember an attachment the bus announced. */
+  private remember(attachment: Attachment): void {
+    let session = this.attachments.get(attachment.sessionID)
+    if (!session) {
+      session = new Map()
+      this.attachments.set(attachment.sessionID, session)
+    }
+    session.set(attachment.id, attachment)
+    if (session.size > MAX_ATTACHMENTS_PER_SESSION) session.delete(session.keys().next().value!)
   }
 
   /** Mark a session, and note on the PC when it first turns to `all`. */
@@ -255,6 +345,7 @@ export class Forwarder {
   private onEvent(event: BusEvent): void {
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
+    if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
     if (event.type === "permission.v2.asked" && sessionID && MobileProfile.isMobile(sessionID) && !this.watched(sessionID)) {
       void this.notify("approval", sessionID).catch(() => undefined)
     }

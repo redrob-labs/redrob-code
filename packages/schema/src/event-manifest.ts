@@ -22,6 +22,7 @@ import { Question } from "./question"
 import { QuestionV1 } from "./question-v1"
 import { Reference } from "./reference"
 import { ServerEvent } from "./server-event"
+import { SessionAttachment } from "./session-attachment"
 import { SessionCompactionEvent } from "./session-compaction-event"
 import { SessionEvent } from "./session-event"
 import { SessionStatusEvent } from "./session-status-event"
@@ -54,6 +55,7 @@ const featureDefinitions = Event.inventory(
   ...Pty.Event.Definitions,
   ...Question.Event.Definitions,
   ...BrowserRequest.Event.Definitions,
+  ...SessionAttachment.Event.Definitions,
 )
 
 export const ServerDefinitions = Event.inventory(

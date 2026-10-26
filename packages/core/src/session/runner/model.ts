@@ -13,10 +13,12 @@ import { Credential } from "../../credential"
 import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
 import {
-  budgetConsoleBody,
   consoleCharLimit,
+  describeConsoleSwitch,
   parseConsoleCharLimit,
   rememberConsoleCharLimit,
+  routeConsoleBody,
+  type ConsoleRouteBudget,
 } from "../../plugin/provider/redrob-body-budget"
 import { ProviderV2 } from "../../provider"
 import { SessionSchema } from "../schema"
@@ -140,30 +142,34 @@ const consoleLengthLimit = (error: unknown) => {
 }
 
 // Console requests are shrunk to the console's byte limit and the model's learned character limit
-// before they are sent. When the console reports the model's character limit, it is remembered and
-// the same request is re-sent once, budgeted to it, before the error reaches the runner (which then
-// compacts; the compaction request goes through here too).
+// before they are sent, and a step whose images the selected model cannot take goes to a vision model
+// for that one request (routeConsoleBody). When the console reports the model's character limit, it is
+// remembered (not for a router id such as `auto`) and the same request is re-sent once, budgeted to it,
+// before the error reaches the runner (which then compacts; the compaction request goes through here
+// too).
 const withConsoleBodyBudget = <Body, Prepared extends object>(
   transport: TransportDef<Body, Prepared, unknown>,
 ): TransportDef<Body, Prepared, unknown> => {
   type Input = Parameters<TransportDef<Body, Prepared, unknown>["prepare"]>[0]
-  // The unbudgeted input each prepared request came from, and the character limit it was already
-  // budgeted to, for the one re-send.
-  const inputs = new WeakMap<Prepared, { input: Input; chars: number | undefined }>()
+  // The unbudgeted input each prepared request came from, the model id it was sent to, and the
+  // character limit it was already budgeted to, for the one re-send.
+  const inputs = new WeakMap<Prepared, { input: Input; model: string | undefined; chars: number | undefined }>()
   const modelOf = (body: unknown) =>
     body !== null && typeof body === "object" && "model" in body && typeof body.model === "string"
       ? body.model
       : undefined
+  const prepare = (input: Input, limit?: ConsoleRouteBudget) =>
+    Effect.gen(function* () {
+      const route = routeConsoleBody(input.body, limit)
+      if (route.switched) yield* Effect.logInfo(describeConsoleSwitch(route.switched))
+      const prepared = yield* transport.prepare({ ...input, body: route.body })
+      const model = modelOf(route.body)
+      inputs.set(prepared, { input, model, chars: limit?.charsByModel?.[model ?? ""] ?? consoleCharLimit(model) })
+      return prepared
+    })
   return {
     ...transport,
-    prepare: (input) =>
-      transport
-        .prepare({ ...input, body: budgetConsoleBody(input.body) })
-        .pipe(
-          Effect.tap((prepared) =>
-            Effect.sync(() => void inputs.set(prepared, { input, chars: consoleCharLimit(modelOf(input.body)) })),
-          ),
-        ),
+    prepare: (input) => prepare(input),
     frames: (prepared, request, runtime) => {
       let started = false
       return transport.frames(prepared, request, runtime).pipe(
@@ -171,16 +177,15 @@ const withConsoleBodyBudget = <Body, Prepared extends object>(
         Stream.catch((error) => {
           const sent = inputs.get(prepared)
           const limit = started || sent === undefined ? undefined : consoleLengthLimit(error)
-          const model = modelOf(sent?.input.body)
+          const model = sent?.model
           if (sent === undefined || limit === undefined || model === undefined) return Stream.fail(error)
-          rememberConsoleCharLimit(model, limit)
           // Already budgeted to this limit: re-sending would send the same body.
           if (sent.chars === limit) return Stream.fail(error)
-          const input = sent.input
+          const remembered = rememberConsoleCharLimit(model, limit)
           return Stream.unwrap(
-            transport
-              .prepare({ ...input, body: budgetConsoleBody(input.body, { modelChars: limit }) })
-              .pipe(Effect.map((next) => transport.frames(next, request, runtime))),
+            prepare(sent.input, remembered ? undefined : { charsByModel: { [model]: limit } }).pipe(
+              Effect.map((next) => transport.frames(next, request, runtime)),
+            ),
           )
         }),
       )
