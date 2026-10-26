@@ -324,6 +324,24 @@ describe("ProviderTransform.options - setCacheKey", () => {
       expect(result.reasoningEffort).toBe("medium")
     })
   }
+
+  test("defaults Console thinking to medium when the model offers it, and not otherwise", () => {
+    const consoleModel = (variants: any) =>
+      ({
+        ...mockModel,
+        id: "redrob/claude-sonnet-5-5",
+        providerID: "redrob",
+        api: { id: "claude-sonnet-5-5", url: "https://console.redrob.ai/api/backend/v1", npm: "@ai-sdk/openai-compatible" },
+        variants,
+      }) as any
+    const levels = { low: { thinking: "low" }, medium: { thinking: "medium" }, high: { thinking: "high" } }
+    expect(ProviderTransform.options({ model: consoleModel(levels), sessionID, providerOptions: {} }).thinking).toBe("medium")
+    expect(ProviderTransform.options({ model: consoleModel(undefined), sessionID, providerOptions: {} }).thinking).toBeUndefined()
+    expect(
+      ProviderTransform.options({ model: { ...consoleModel(levels), providerID: "openrouter" }, sessionID, providerOptions: {} })
+        .thinking,
+    ).toBeUndefined()
+  })
 })
 
 describe("ProviderTransform.options - zai/zhipuai thinking", () => {

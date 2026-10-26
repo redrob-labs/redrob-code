@@ -1192,6 +1192,13 @@ export function options(input: {
     }
   }
 
+  // A console model that takes thinking levels gets `medium` unless a variant picks another. Sent
+  // nothing, the model thinks at its own default, which on the hard set cost ~2x the hidden output
+  // tokens and ~40% more wall time than medium. A chosen variant is merged after this and wins.
+  if (input.model.providerID === "redrob" && input.model.variants?.["medium"]?.["thinking"] === "medium") {
+    result["thinking"] = "medium"
+  }
+
   if (
     input.model.providerID === "baseten" ||
     (input.model.providerID === "redrob" && ["kimi-k2-thinking", "glm-4.6"].includes(input.model.api.id))
