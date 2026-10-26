@@ -9,6 +9,7 @@ import { Credential } from "./credential"
 import { EventV2 } from "./event"
 import { Integration } from "./integration"
 import { SharedAccount } from "./shared-account"
+import { Hash } from "./util/hash"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
 import {
@@ -440,6 +441,36 @@ function authStoreApiKey(): Effect.Effect<string | undefined> {
   )
 }
 
+/** How old the saved console listing may be and still be used without waiting for a refetch. */
+const MAX_STALE_MS = 24 * 60 * 60 * 1000
+const diskCachePath = () => join(Global.Path.cache, "console-models.json")
+/** Which key a saved listing belongs to, without writing the key itself to disk. */
+const keyFingerprint = (apiKey: string) => Hash.sha256(apiKey).slice(0, 16)
+
+/**
+ * The last console listing, when it belongs to this key and is younger than MAX_STALE_MS.
+ * Anything else (no file, unreadable JSON, another key, too old) is "no copy", never an error.
+ */
+function readDiskCache(apiKey: string): Effect.Effect<Record<string, Provider> | undefined> {
+  return Effect.tryPromise(() => Bun.file(diskCachePath()).json()).pipe(
+    Effect.map((data) => {
+      const saved = data as { key?: unknown; at?: unknown; catalog?: unknown }
+      if (saved?.key !== keyFingerprint(apiKey)) return undefined
+      if (typeof saved.at !== "number" || Date.now() - saved.at > MAX_STALE_MS) return undefined
+      if (typeof saved.catalog !== "object" || saved.catalog === null) return undefined
+      return saved.catalog as Record<string, Provider>
+    }),
+    Effect.orElseSucceed(() => undefined),
+  )
+}
+
+function writeDiskCache(apiKey: string, catalog: Record<string, Provider>): Effect.Effect<void> {
+  if (Flag.REDROB_DISABLE_MODELS_CACHE) return Effect.void
+  return Effect.tryPromise(() =>
+    Bun.write(diskCachePath(), JSON.stringify({ key: keyFingerprint(apiKey), at: Date.now(), catalog })),
+  ).pipe(Effect.ignore)
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -550,6 +581,9 @@ const layer = Layer.effect(
       return yield* Effect.promise(() => SharedAccount.apiKey())
     })
 
+    /** Set by `refresh` so the next populate goes to the network instead of the disk copy. */
+    let forceNetwork = false
+
     const populate = Effect.gen(function* () {
       // Test-only seam: when REDROB_MODELS_FIXTURE points at a catalog JSON file, load it and
       // skip the network entirely. This lets the offline test suites drive the V1 provider
@@ -565,7 +599,8 @@ const layer = Layer.effect(
       }
       const apiKey = yield* resolveApiKey()
       if (Flag.REDROB_DISABLE_MODELS_FETCH || !apiKey) return fallbackCatalog()
-      return yield* fetchModels(apiKey).pipe(
+      const fetchAndStore = fetchModels(apiKey).pipe(
+        Effect.tap((catalog) => writeDiskCache(apiKey, catalog)),
         Effect.tapCause((cause) =>
           // A bot challenge is not the same event as a bad key or a timeout, and reporting it as
           // "fetch failed" is what made a blocked CLI look like an empty catalogue. The named error
@@ -574,8 +609,21 @@ const layer = Layer.effect(
             ? Effect.logError(`ModelsDev: ${String(cause)}`)
             : Effect.logWarning("ModelsDev console /models fetch failed; using static fallback", { cause }),
         ),
-        Effect.orElseSucceed(fallbackCatalog),
       )
+      /*
+        The listing used to be fetched before every session's first request, which put a round trip
+        to the console (about half a second) in front of every `redrob run`. The last listing is now
+        kept on disk: a fresh-enough copy is used at once and refetched in the background for the
+        next launch. Past MAX_STALE, or for a different key, the fetch is waited for as before, so a
+        model the console added since is never missing for long.
+      */
+      const cached = forceNetwork || Flag.REDROB_DISABLE_MODELS_CACHE ? undefined : yield* readDiskCache(apiKey)
+      forceNetwork = false
+      if (cached) {
+        yield* fetchAndStore.pipe(Effect.ignore, Effect.forkDetach)
+        return cached
+      }
+      return yield* fetchAndStore.pipe(Effect.orElseSucceed(fallbackCatalog))
     }).pipe(Effect.withSpan("ModelsDev.populate"))
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
@@ -589,7 +637,9 @@ const layer = Layer.effect(
       if (Flag.REDROB_DISABLE_MODELS_FETCH) return
       if (!(yield* resolveApiKey())) return
       // Invalidate the in-memory cache so the next get() re-fetches /models, then notify
-      // ModelsDevPlugin so it reprojects the V2 catalog.
+      // ModelsDevPlugin so it reprojects the V2 catalog. The disk copy is skipped for that fetch:
+      // a refresh asks for the console's answer, not the last one we saved.
+      forceNetwork = true
       yield* invalidate
       yield* events.publish(Event.Refreshed, {})
     })

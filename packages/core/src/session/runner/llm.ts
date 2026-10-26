@@ -58,7 +58,7 @@ import { llmClient } from "../../effect/app-node-platform"
  *   - [ ] Bound provider retries and repeated identical tool calls.
  *
  * - Runtime context assembly
- *   - Track V1 runtime-context parity canonically in `specs/v2/session.md`.
+ *   - [ ] Match V1 runtime-context parity.
  *
  * - One provider turn
  *   - [x] Translate every projected V2 Session message variant into canonical

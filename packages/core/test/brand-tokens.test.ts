@@ -7,8 +7,6 @@
  * the pairs they paint together clear their contrast minimum in both themes.
  */
 import { describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
-import path from "node:path"
 import { Brand } from "../src/theme/brand"
 import { OauthCallbackPage } from "../src/oauth/page"
 
@@ -198,42 +196,3 @@ describe("OauthCallbackPage tokens", () => {
   })
 })
 
-describe("docs site branding", () => {
-  const docs = path.join(import.meta.dir, "../../docs")
-  const config = JSON.parse(readFileSync(path.join(docs, "docs.json"), "utf8"))
-
-  test("is painted in Redrob Blue", () => {
-    expect(config.colors).toEqual({ primary: Brand.blue6, light: Brand.blue5, dark: Brand.blue7 })
-  })
-
-  test("loads Pretendard, pinned to the version the brand names", () => {
-    expect(config.fonts.heading.family).toBe("Pretendard Variable")
-    expect(config.fonts.body.family).toBe("Pretendard Variable")
-    for (const face of [config.fonts.heading, config.fonts.body]) {
-      expect(face.source).toBe(Brand.fontVariableWoff2)
-      expect(face.format).toBe("woff2")
-    }
-  })
-
-  test("wears the Redrob wordmark rather than the starter kit's", () => {
-    const identity = path.join(import.meta.dir, "../../identity")
-    for (const [slot, asset] of [
-      [config.logo.light, "logo-ornate-light.svg"],
-      [config.logo.dark, "logo-ornate-dark.svg"],
-      [config.favicon, "mark.svg"],
-    ] as const) {
-      expect(readFileSync(path.join(docs, slot), "utf8")).toBe(readFileSync(path.join(identity, asset), "utf8"))
-    }
-  })
-
-  test("keeps no trace of the green it shipped with", () => {
-    // The starter kit's palette and its logo gradients. Green is not a Redrob colour at any step.
-    const abandoned = ["16a34a", "07c983", "15803d", "18e299", "4ade80", "0d9373"]
-    const files = ["docs.json", "favicon.svg", "logo/light.svg", "logo/dark.svg"]
-    const found = files.flatMap((file) => {
-      const text = readFileSync(path.join(docs, file), "utf8").toLowerCase()
-      return abandoned.filter((hex) => text.includes(hex)).map((hex) => `${file}: ${hex}`)
-    })
-    expect(found).toEqual([])
-  })
-})

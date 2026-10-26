@@ -37,3 +37,6 @@ process.env.REDROB_DB = ":memory:"
 // ModelsDev.Service then serves the static console fallback catalog (redrob/auto and the rest of
 // CONSOLE_MODELS).
 process.env.REDROB_DISABLE_MODELS_FETCH = "true"
+// The saved /models listing lives in the user's real cache directory and would carry one test's
+// mocked catalogue into the next, so tests never touch it.
+process.env.REDROB_DISABLE_MODELS_CACHE = "true"

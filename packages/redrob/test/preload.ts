@@ -40,6 +40,8 @@ process.env["XDG_STATE_HOME"] = path.join(dir, "state")
 // machine never satisfies a "no credential" branch here.
 process.env["REDROB_SHARED_DIR"] = path.join(dir, "shared")
 process.env["REDROB_DISABLE_MODELS_FETCH"] = "true"
+// Same reason as packages/core/test/preload.ts: no saved /models listing carried between tests.
+process.env["REDROB_DISABLE_MODELS_CACHE"] = "true"
 // Feed the provider tests a realistic multi-provider catalog (with paid redrob models) through
 // the test-only fixture seam instead of the console /models network fetch.
 process.env["REDROB_MODELS_FIXTURE"] = path.join(import.meta.dir, "tool", "fixtures", "models-api.json")

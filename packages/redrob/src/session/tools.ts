@@ -74,7 +74,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             metadata: val.metadata,
             status: "running",
             input: args,
-            time: { start: Date.now() },
+            /*
+              Kept from the running state. Restamping it here made every metadata update (bash sends
+              one per chunk of output) move the start forward, so a three-minute test run was
+              recorded as taking a few milliseconds.
+            */
+            time: { start: match.state.status === "running" ? match.state.time.start : Date.now() },
           },
         }
       }),

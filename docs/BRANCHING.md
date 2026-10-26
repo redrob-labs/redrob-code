@@ -33,54 +33,17 @@ every pull request: `feat fix chore docs test refactor perf ci build sync hotfix
 caller in `.github/workflows/gitflow.yml` is a verbatim copy of the organization template and
 carries no list of its own.
 
-## Syncing upstream
+## Upstream
 
-This is the part gitflow has no opinion about, and the part that matters most here.
+Redrob Code no longer merges upstream (opencode) releases; that stopped on 2026-10-26.
+Upstream files are ours to change like any other. `UPSTREAM_VERSION` still records the
+upstream release this tree was last merged from, because attribution needs it and the
+release notes state it.
 
-We follow upstream **tags**, not its `dev` branch. A tag is a point upstream themselves
-decided was coherent; `dev` is whatever was pushed an hour ago.
-
-```sh
-# once
-git remote add upstream https://github.com/anomalyco/opencode.git
-
-# each sync
-git fetch upstream --tags
-git switch develop && git pull
-git switch -c sync/upstream-v1.18.32
-git merge v1.18.32
-```
-
-The `upstream-sync` workflow does exactly this and pushes the branch for you; run it from
-the Actions tab and it prints a link that opens the pull request. When the merge conflicts
-it says which paths conflicted and stops, because resolving a fork's conflicts is a
-judgement call about which side is right, and a machine that guesses at that produces a
-tree nobody can review.
-
-Neither workflow opens a pull request itself. Doing so needs "Allow GitHub Actions to
-create and approve pull requests", and that single setting grants both — in a public
-repository, a workflow able to approve pull requests can approve its own, which is worth
-more than not clicking a link.
-
-Three things to know before your first sync:
-
-**The merge base is real, so most of upstream arrives for free.** Our own history sits
-directly on an upstream tag. A three-way merge takes upstream's version of every file we
-never touched, and every region of a file our changes do not overlap. You resolve only
-genuine disagreements — measured at 40 files on the first sync, against 229 total
-conflicts of which the rest were "upstream changed something we deliberately deleted".
-
-**Conflicts cluster on rebranding.** Where upstream edits a line we renamed, the merge
-cannot know which side wins. Keep ours, take their surrounding change.
-
-**Some `opencode` strings are load-bearing.** Do not "finish the rebrand" while resolving
-a conflict. The legacy `.opencode` config directory is read on purpose so existing
-checkouts keep working, and `@gitlab/opencode-gitlab-auth`, `opencode-gitlab-auth` and
-`opencode-poe-auth` are real published packages that are not ours to rename. See
-[NOTICE.md](../NOTICE.md).
-
-Resolve, push, and open the pull request into `develop`. Never merge upstream straight
-into `main`.
+Some `opencode` strings are still load-bearing and stay as they are. The legacy
+`.opencode` config directory is read on purpose so existing checkouts keep working, and
+`@gitlab/opencode-gitlab-auth`, `opencode-gitlab-auth` and `opencode-poe-auth` are real
+published packages that are not ours to rename. See [NOTICE.md](../NOTICE.md).
 
 ## Releasing
 
