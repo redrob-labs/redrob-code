@@ -49,7 +49,7 @@ export const DeskStatus = Schema.Struct({
   account: Schema.optional(Schema.Struct({ email: Schema.String })),
   /** The relay connection is open. */
   connected: Schema.Boolean,
-  /** The launcher's "Allow Auto all from phone" switch (`~/.redrob/desk/settings.json` `allowAutoAll`). */
+  /** The launcher's "Allow Auto all from phone and web" switch (`~/.redrob/desk/settings.json` `allowAutoAll`, missing means on). */
   autoAll: Schema.optional(Schema.Boolean),
   /** A sign-in started with `desk.login` and still waiting for the person. */
   login: Schema.optional(DeskLogin),

@@ -1289,7 +1289,16 @@ const layer = Layer.effect(
             const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
-              instruction.system().pipe(Effect.orDie),
+              instruction
+                .system(
+                  // Manual steering files are switched on by `#name` anywhere in what the user has
+                  // said this session, so they stay in place (and in the prompt cache) once named.
+                  msgs
+                    .filter((msg) => msg.info.role === "user")
+                    .flatMap((msg) => msg.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
+                    .join("\n"),
+                )
+                .pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])

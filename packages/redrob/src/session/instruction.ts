@@ -11,8 +11,57 @@ import { Flag } from "@redrob-code/core/flag/flag"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { Global } from "@redrob-code/core/global"
+import { ConfigMarkdown } from "@redrob-code/core/config/markdown"
 import type { MessageV2 } from "./message-v2"
 import type { MessageID } from "./schema"
+
+/**
+ * Steering files, the way Kiro has them: markdown under a `steering/` directory, each with an
+ * optional front matter saying when it applies.
+ *
+ *   ---
+ *   inclusion: always            # default: in the system prompt of every session
+ *   inclusion: fileMatch         # attached when the agent reads a file matching fileMatchPattern
+ *   fileMatchPattern: "src/**\/*.ts"   # a glob relative to the project root, or a list of them
+ *   inclusion: manual            # attached when the user writes #<file name> in a message
+ *   ---
+ *
+ * Read from `.redrob/steering/` in the project and `steering/` in the global config directory, and
+ * also from `.kiro/steering/` in both places, so a Kiro project's steering works unchanged.
+ */
+export type Steering = {
+  path: string
+  name: string
+  inclusion: "always" | "fileMatch" | "manual"
+  patterns: string[]
+  content: string
+}
+
+export function parseSteering(filepath: string, raw: string): Steering {
+  const parsed = ConfigMarkdown.parseOption(raw)
+  const data = (parsed?.data ?? {}) as Record<string, unknown>
+  const inclusion =
+    data["inclusion"] === "fileMatch" || data["inclusion"] === "manual" ? data["inclusion"] : "always"
+  const pattern = data["fileMatchPattern"]
+  const patterns = (Array.isArray(pattern) ? pattern : [pattern]).filter(
+    (item): item is string => typeof item === "string" && item.trim() !== "",
+  )
+  return {
+    path: filepath,
+    name: path.basename(filepath, path.extname(filepath)),
+    inclusion,
+    patterns,
+    content: (parsed?.content ?? raw).trim(),
+  }
+}
+
+/** True when the text names this steering file as `#name` (not part of a longer word). */
+export function mentionsSteering(text: string, name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(`(^|[^\\w#])#${escaped}(?![\\w-])`).test(text)
+}
+
+const steeringText = (item: Steering) => `Steering from: ${item.path}\n${item.content}`
 
 function extract(messages: SessionV1.WithParts[]) {
   const paths = new Set<string>()
@@ -34,7 +83,9 @@ function extract(messages: SessionV1.WithParts[]) {
 export interface Interface {
   readonly clear: (messageID: MessageID) => Effect.Effect<void>
   readonly systemPaths: () => Effect.Effect<Set<string>, FSUtil.Error>
-  readonly system: () => Effect.Effect<string[], FSUtil.Error>
+  /** `prompt` is the conversation's user text, which decides the manual steering files. */
+  readonly system: (prompt?: string) => Effect.Effect<string[], FSUtil.Error>
+  readonly steering: () => Effect.Effect<Steering[]>
   readonly find: (dir: string) => Effect.Effect<string | undefined, FSUtil.Error>
   readonly resolve: (
     messages: SessionV1.WithParts[],
@@ -107,6 +158,33 @@ const layer: Layer.Layer<
       s.claims.delete(messageID)
     })
 
+    /** Every steering file in reach, project first. Unreadable files and missing directories are skipped. */
+    const steering = Effect.fn("Instruction.steering")(function* () {
+      const ctx = yield* InstanceState.context
+      const dirs = [
+        ...(!Flag.REDROB_DISABLE_PROJECT_CONFIG
+          ? [path.join(ctx.worktree, ".redrob", "steering"), path.join(ctx.worktree, ".kiro", "steering")]
+          : []),
+        path.join(global.config, "steering"),
+        path.join(global.home, ".kiro", "steering"),
+      ]
+      const found: Steering[] = []
+      const seen = new Set<string>()
+      for (const dir of dirs) {
+        const files = yield* fs
+          .glob("*.md", { cwd: dir, absolute: true, include: "file" })
+          .pipe(Effect.catch(() => Effect.succeed([] as string[])))
+        for (const file of files.toSorted()) {
+          const resolved = path.resolve(file)
+          if (seen.has(resolved)) continue
+          seen.add(resolved)
+          const raw = yield* read(resolved)
+          if (raw.trim()) found.push(parseSteering(resolved, raw))
+        }
+      }
+      return found
+    })
+
     const systemPaths = Effect.fn("Instruction.systemPaths")(function* () {
       const config = yield* cfg.get()
       const ctx = yield* InstanceState.context
@@ -152,7 +230,7 @@ const layer: Layer.Layer<
       return paths
     })
 
-    const system = Effect.fn("Instruction.system")(function* () {
+    const system = Effect.fn("Instruction.system")(function* (prompt?: string) {
       const config = yield* cfg.get()
       const paths = yield* systemPaths()
       const urls = (config.instructions ?? []).filter(
@@ -161,10 +239,16 @@ const layer: Layer.Layer<
 
       const files = yield* Effect.forEach(Array.from(paths), read, { concurrency: 8 })
       const remote = yield* Effect.forEach(urls, fetch, { concurrency: 4 })
+      const steered = (yield* steering()).filter(
+        (item) =>
+          !paths.has(item.path) &&
+          (item.inclusion === "always" || (item.inclusion === "manual" && !!prompt && mentionsSteering(prompt, item.name))),
+      )
 
       return [
         ...Array.from(paths).flatMap((item, i) => (files[i] ? [`Instructions from: ${item}\n${files[i]}`] : [])),
         ...urls.flatMap((item, i) => (remote[i] ? [`Instructions from: ${item}\n${remote[i]}`] : [])),
+        ...steered.map(steeringText),
       ]
     })
 
@@ -217,10 +301,28 @@ const layer: Layer.Layer<
         current = path.dirname(current)
       }
 
+      // fileMatch steering: attached the first time this message reads a file its pattern covers.
+      const ctx = yield* InstanceState.context
+      const relativeTarget = path.relative(ctx.worktree, target).split(path.sep).join("/")
+      if (!relativeTarget.startsWith("..")) {
+        for (const item of yield* steering()) {
+          if (item.inclusion !== "fileMatch" || already.has(item.path)) continue
+          if (!item.patterns.some((pattern) => new Bun.Glob(pattern).match(relativeTarget))) continue
+          let set = s.claims.get(messageID)
+          if (!set) {
+            set = new Set()
+            s.claims.set(messageID, set)
+          }
+          if (set.has(item.path)) continue
+          set.add(item.path)
+          results.push({ filepath: item.path, content: steeringText(item) })
+        }
+      }
+
       return results
     })
 
-    return Service.of({ clear, systemPaths, system, find, resolve })
+    return Service.of({ clear, systemPaths, system, steering, find, resolve })
   }),
 )
 
