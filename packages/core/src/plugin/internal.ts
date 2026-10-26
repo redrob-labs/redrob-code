@@ -106,7 +106,9 @@ const layer = Layer.effectDiscard(
       return plugin.add(PluginV2.ID.make(loaded.id), loaded.effect)
     }
 
-    yield* State.batch(
+    // Marked as a catalog load: the catalog is empty until this batch ends, and a session's first
+    // turn waits for it (SessionRunnerModel) instead of failing "No model is available".
+    yield* catalog.loading(State.batch(
       Effect.gen(function* () {
         yield* add(ConfigReferencePlugin.Plugin)
         yield* add(AgentPlugin.Plugin)
@@ -124,7 +126,7 @@ const layer = Layer.effectDiscard(
         yield* add(LocalModelsPlugin.Plugin)
         yield* add(VariantPlugin.Plugin)
       }),
-    ).pipe(Effect.withSpan("PluginInternal.boot"), Effect.forkScoped({ startImmediately: true }))
+    )).pipe(Effect.withSpan("PluginInternal.boot"), Effect.forkScoped({ startImmediately: true }))
   }),
 )
 

@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Fiber, Layer, Stream } from "effect"
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { Catalog } from "@redrob-code/core/catalog"
 import { Integration } from "@redrob-code/core/integration"
 import { Credential } from "@redrob-code/core/credential"
@@ -348,6 +348,36 @@ describe("CatalogV2", () => {
       expect(yield* catalog.provider.all()).toEqual([])
       expect(yield* catalog.model.all()).toEqual([])
       expect(yield* catalog.provider.get(providerID)).toBeUndefined()
+    }),
+  )
+
+  it.effect("loaded waits for a running load and resolves at once when none runs", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.make("late")
+      yield* catalog.loaded()
+
+      const gate = yield* Deferred.make<void>()
+      const load = yield* catalog
+        .loading(
+          Deferred.await(gate).pipe(
+            Effect.andThen(catalog.transform((editor) => editor.provider.update(providerID, () => {}))),
+          ),
+        )
+        .pipe(Effect.forkScoped({ startImmediately: true }))
+      const waiter = yield* catalog
+        .loaded()
+        .pipe(
+          Effect.andThen(catalog.provider.get(providerID)),
+          Effect.forkScoped({ startImmediately: true }),
+        )
+      yield* Effect.yieldNow
+      expect(waiter.pollUnsafe()).toBeUndefined()
+
+      yield* Deferred.succeed(gate, undefined)
+      yield* Fiber.join(load)
+      expect((yield* Fiber.join(waiter))?.id).toBe(providerID)
+      yield* catalog.loaded()
     }),
   )
 })

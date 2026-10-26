@@ -252,6 +252,9 @@ export const supported = (model: ModelV2.Info) =>
     model.api.package === "@ai-sdk/anthropic" ||
     (model.api.package === "@ai-sdk/openai-compatible" && model.api.url !== undefined))
 
+/** How long a turn waits for the location's catalog to finish loading. */
+const LOAD_WAIT = "30 seconds"
+
 /** Resolves models from the catalog belonging to the current Location runtime. */
 export const locationLayer = Layer.effect(
   Service,
@@ -260,7 +263,12 @@ export const locationLayer = Layer.effect(
     const integrations = yield* Integration.Service
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session) {
-        // Location plugins populate and filter the catalog asynchronously during layer startup.
+        // Location plugins populate and filter the catalog asynchronously during layer startup, and
+        // the catalog stays empty until that boot ends (it includes the console `/models` fetch).
+        // A session's first turn right after a location starts (the desk relay's phone and web
+        // turns after `redrob service restart`) waits for it rather than fail "No model is
+        // available". Bounded: a boot that never ends must not hang the turn.
+        yield* catalog.loaded().pipe(Effect.timeoutOption(LOAD_WAIT))
         const defaultModel = session.model ? undefined : yield* catalog.model.default()
         const selected = session.model
           ? (yield* catalog.model.available()).find(
