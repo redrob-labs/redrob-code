@@ -1,18 +1,23 @@
 export * as SessionRunnerModel from "./model"
 
 import { makeLocationNode } from "../../effect/app-node"
-import { type Model } from "@redrob-code/llm"
+import { LLMError, type Model } from "@redrob-code/llm"
 import * as AnthropicMessages from "@redrob-code/llm/protocols/anthropic-messages"
 import * as OpenAICompatibleChat from "@redrob-code/llm/protocols/openai-compatible-chat"
 import * as OpenAIResponses from "@redrob-code/llm/protocols/openai-responses"
 import { Auth, type AnyRoute, type TransportDef } from "@redrob-code/llm/route"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 import { produce } from "immer"
 import { Catalog } from "../../catalog"
 import { Credential } from "../../credential"
 import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
-import { budgetConsoleBody } from "../../plugin/provider/redrob-body-budget"
+import {
+  budgetConsoleBody,
+  consoleCharLimit,
+  parseConsoleCharLimit,
+  rememberConsoleCharLimit,
+} from "../../plugin/provider/redrob-body-budget"
 import { ProviderV2 } from "../../provider"
 import { SessionSchema } from "../schema"
 
@@ -126,12 +131,62 @@ const withVariant = (
   )
 }
 
-const withConsoleBodyBudget = <Body, Prepared>(
+/** The console's "longer than this model accepts (N characters ...)" limit, from a failed request. */
+const consoleLengthLimit = (error: unknown) => {
+  if (!(error instanceof LLMError) || error.reason._tag !== "InvalidRequest") return undefined
+  const status = error.reason.http?.response?.status
+  if (status !== undefined && status !== 400 && status !== 413) return undefined
+  return parseConsoleCharLimit(error.reason.http?.body ?? error.reason.message)
+}
+
+// Console requests are shrunk to the console's byte limit and the model's learned character limit
+// before they are sent. When the console reports the model's character limit, it is remembered and
+// the same request is re-sent once, budgeted to it, before the error reaches the runner (which then
+// compacts; the compaction request goes through here too).
+const withConsoleBodyBudget = <Body, Prepared extends object>(
   transport: TransportDef<Body, Prepared, unknown>,
-): TransportDef<Body, Prepared, unknown> => ({
-  ...transport,
-  prepare: (input) => transport.prepare({ ...input, body: budgetConsoleBody(input.body) }),
-})
+): TransportDef<Body, Prepared, unknown> => {
+  type Input = Parameters<TransportDef<Body, Prepared, unknown>["prepare"]>[0]
+  // The unbudgeted input each prepared request came from, and the character limit it was already
+  // budgeted to, for the one re-send.
+  const inputs = new WeakMap<Prepared, { input: Input; chars: number | undefined }>()
+  const modelOf = (body: unknown) =>
+    body !== null && typeof body === "object" && "model" in body && typeof body.model === "string"
+      ? body.model
+      : undefined
+  return {
+    ...transport,
+    prepare: (input) =>
+      transport
+        .prepare({ ...input, body: budgetConsoleBody(input.body) })
+        .pipe(
+          Effect.tap((prepared) =>
+            Effect.sync(() => void inputs.set(prepared, { input, chars: consoleCharLimit(modelOf(input.body)) })),
+          ),
+        ),
+    frames: (prepared, request, runtime) => {
+      let started = false
+      return transport.frames(prepared, request, runtime).pipe(
+        Stream.tap(() => Effect.sync(() => void (started = true))),
+        Stream.catch((error) => {
+          const sent = inputs.get(prepared)
+          const limit = started || sent === undefined ? undefined : consoleLengthLimit(error)
+          const model = modelOf(sent?.input.body)
+          if (sent === undefined || limit === undefined || model === undefined) return Stream.fail(error)
+          rememberConsoleCharLimit(model, limit)
+          // Already budgeted to this limit: re-sending would send the same body.
+          if (sent.chars === limit) return Stream.fail(error)
+          const input = sent.input
+          return Stream.unwrap(
+            transport
+              .prepare({ ...input, body: budgetConsoleBody(input.body, { modelChars: limit }) })
+              .pipe(Effect.map((next) => transport.frames(next, request, runtime))),
+          )
+        }),
+      )
+    },
+  }
+}
 
 const apiName = (model: ModelV2.Info) =>
   model.api.type === "aisdk" ? `${model.api.type}:${model.api.package}` : model.api.type

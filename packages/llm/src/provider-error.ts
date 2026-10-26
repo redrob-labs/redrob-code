@@ -23,6 +23,10 @@ const patterns = [
   /request entity too large/i,
   // console.redrob.ai (Vercel) 2 MB body limit: "The request body is larger than this endpoint accepts (2mb)".
   /request body is larger than this endpoint accepts/i,
+  // console.redrob.ai per-model character cap: "The conversation is longer than this model accepts
+  // (81,920 characters across all messages, ...)".
+  /longer than this model accepts/i,
+  /characters across all messages/i,
   /context length is only \d+ tokens/i,
   /input length.*exceeds.*context length/i,
   /prompt too long; exceeded (?:max )?context length/i,

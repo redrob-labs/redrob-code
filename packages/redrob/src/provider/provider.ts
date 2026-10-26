@@ -39,7 +39,7 @@ import {
   CONSOLE_URL,
 } from "@redrob-code/core/plugin/provider/redrob"
 import type { ConsoleModelInfo } from "@redrob-code/core/plugin/provider/redrob-constants"
-import { budgetConsoleBodyText } from "@redrob-code/core/plugin/provider/redrob-body-budget"
+import { sendConsoleBudgeted } from "@redrob-code/core/plugin/provider/redrob-body-budget"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
@@ -1981,17 +1981,22 @@ const layer = Layer.effect(
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
 
-          // The console runs on Vercel and 413s bodies over 2 MB; compaction resends the same
-          // history, so every console request (compaction included) is shrunk to
-          // CONSOLE_MAX_BODY_BYTES here. See packages/core/src/plugin/provider/redrob-body-budget.ts.
-          if (model.providerID === "redrob" && typeof opts.body === "string" && opts.method === "POST")
-            opts.body = budgetConsoleBodyText(opts.body)
-
-          const res = await fetchFn(input, {
-            ...opts,
-            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-            timeout: false,
-          }).finally(() => headerTimeoutCtl?.clear())
+          const send = (body: BunFetchRequestInit["body"]) =>
+            fetchFn(input, {
+              ...opts,
+              body,
+              // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+              timeout: false,
+            })
+          // The console runs on Vercel and 413s bodies over 2 MB, and some console models cap the
+          // conversation at N characters (400 "longer than this model accepts"). Every console
+          // request (compaction included) is shrunk to both limits here, and re-sent once with the
+          // character limit the model reports. See packages/core/src/plugin/provider/redrob-body-budget.ts.
+          const res = await (
+            model.providerID === "redrob" && typeof opts.body === "string" && opts.method === "POST"
+              ? sendConsoleBudgeted(opts.body, send)
+              : send(opts.body)
+          ).finally(() => headerTimeoutCtl?.clear())
 
           if (!chunkAbortCtl) return res
           return wrapSSE(res, chunkTimeout, chunkAbortCtl)
