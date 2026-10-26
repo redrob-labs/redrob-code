@@ -13,6 +13,13 @@
  * When a session first gets `all`, one `auto_all_on` line is appended to `~/.redrob/desk/events.jsonl`
  * so the launcher can tell the person at the PC. `GET /desk/capabilities` is answered here, not by
  * the daemon: the modes this machine offers right now.
+ *
+ * Models: session create and prompt may also carry `X-Redrob-Model: <provider>/<model>` (the web's
+ * chosen Redrob Console model `X` is `redrob/X`). When the daemon's catalog (`GET /api/model`) has it,
+ * create gets it as the session's `model` and a prompt switches the session to it first
+ * (`POST /api/session/:id/model`), so that turn runs on it; anything else is ignored and the session
+ * keeps the PC's model. The `res` then carries `X-Redrob-Model-Applied`: the model the turn uses, or
+ * `default` for the PC's default. `GET /desk/models` lists the catalog (id, name, imageInput).
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
@@ -37,7 +44,7 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment"
+  readonly local?: "capabilities" | "attachment" | "models"
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -66,6 +73,7 @@ export const ROUTES: readonly Route[] = [
   },
   { method: "GET", path: /^\/v1\/apps$/ },
   { method: "GET", path: /^\/desk\/capabilities$/, local: "capabilities" },
+  { method: "GET", path: /^\/desk\/models$/, local: "models" },
   // A file the session showed or handed to the user (`session.next.attachment`), in pieces.
   { method: "GET", path: new RegExp(`^/desk/attachment/${ID}/${ID}$`), query: true, local: "attachment" },
 ]
@@ -147,6 +155,69 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
 async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<MobileProfile.ApprovalMode> {
   if (requested !== "all") return requested
   return (await allowAutoAll()) ? "all" : "edits"
+}
+
+/** A model a device may ask for: `<provider>/<model>`, split at the first `/`. */
+export type ModelRef = { readonly providerID: string; readonly id: string }
+
+/** One `GET /desk/models` entry. `id` is `<provider>/<model>`, as `X-Redrob-Model` takes it. */
+export type DeskModel = { readonly id: string; readonly name: string; readonly imageInput: boolean }
+
+/** `X-Redrob-Model` value meaning "the PC's own default model". */
+export const DEFAULT_MODEL = "default"
+
+/** How long a read of the daemon's model catalog is reused. */
+const MODELS_TTL_MS = 60_000
+
+/** The raw `X-Redrob-Model` value (any case), or undefined when missing or not a string. */
+export function requestedModel(headers: unknown): string | undefined {
+  if (typeof headers !== "object" || headers === null) return undefined
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() !== "x-redrob-model") continue
+    return typeof value === "string" ? value.trim() : undefined
+  }
+  return undefined
+}
+
+/** `<provider>/<model>` as a ref; undefined for anything malformed. The model part may hold `/`. */
+export function parseModel(value: string): ModelRef | undefined {
+  if (value.length > 256) return undefined
+  const slash = value.indexOf("/")
+  if (slash <= 0) return undefined
+  const providerID = value.slice(0, slash)
+  const id = value.slice(slash + 1)
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(providerID)) return undefined
+  if (!/^[A-Za-z0-9._:/@+-]{1,191}$/.test(id)) return undefined
+  return { providerID, id }
+}
+
+const modelName = (ref: { providerID: string; id: string }) => `${ref.providerID}/${ref.id}`
+
+/** The daemon's `GET /api/model` body as desk models; undefined when it is not a model list. */
+export function deskModels(body: unknown): DeskModel[] | undefined {
+  const data = (body as { data?: unknown } | undefined)?.data
+  if (!Array.isArray(data)) return undefined
+  const models: DeskModel[] = []
+  for (const item of data) {
+    if (typeof item !== "object" || item === null) continue
+    const model = item as { id?: unknown; providerID?: unknown; name?: unknown; capabilities?: { input?: unknown } }
+    if (typeof model.id !== "string" || typeof model.providerID !== "string") continue
+    const input = Array.isArray(model.capabilities?.input) ? model.capabilities.input : []
+    models.push({
+      id: modelName({ providerID: model.providerID, id: model.id }),
+      name: typeof model.name === "string" ? model.name : model.id,
+      imageInput: input.includes("image"),
+    })
+  }
+  return models
+}
+
+/** A session's current model (`GET /api/session/:id` body), as `<provider>/<model>`, else `default`. */
+function sessionModel(body: unknown): string {
+  const model = (body as { data?: { model?: { providerID?: unknown; id?: unknown } } } | undefined)?.data?.model
+  return typeof model?.providerID === "string" && typeof model.id === "string"
+    ? modelName({ providerID: model.providerID, id: model.id })
+    : DEFAULT_MODEL
 }
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
@@ -261,11 +332,22 @@ export class Forwarder {
     const { route, sessionID } = allowed
     if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
     if (route.local === "attachment") return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
+    if (route.local === "models") {
+      const models = await this.models()
+      return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
+    }
     const requested = route.mark ? requestedMode(value.headers) : undefined
     const mode = requested ? await appliedMode(requested) : "ask"
-    const headers = requested && requested !== mode ? { headers: { "X-Redrob-Approval-Applied": mode } } : {}
+    const wantedModel = route.mark ? requestedModel(value.headers) : undefined
+    const model = wantedModel !== undefined ? await this.applyModel(route, sessionID, request, wantedModel) : undefined
+    const headers = {
+      ...(requested && requested !== mode ? { "X-Redrob-Approval-Applied": mode } : {}),
+      ...(model ? { "X-Redrob-Model-Applied": model.applied } : {}),
+    }
+    const body = model?.body !== undefined ? model.body : request.body
+    const extra = Object.keys(headers).length > 0 ? { headers } : {}
     if (route.mark === "named" && sessionID) this.mark(link, sessionID, mode)
-    const result = await this.daemon.raw(request.method, request.path, request.body).catch((error: unknown) => {
+    const result = await this.daemon.raw(request.method, request.path, body).catch((error: unknown) => {
       this.log(`forward ${request.method} failed: ${error instanceof Error ? error.message : String(error)}`)
       return { status: 502, body: undefined }
     })
@@ -280,9 +362,58 @@ export class Forwarder {
     // The relay drops a frame over 8 MB and the phone would wait forever. Say 413 instead;
     // the phone asks for a smaller history page.
     if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
-      return link.send({ t: "res", id, status: 413, ...headers })
+      return link.send({ t: "res", id, status: 413, ...extra })
     }
-    await link.send({ t: "res", id, status: result.status, ...headers, ...(result.body !== undefined ? { body: result.body } : {}) })
+    await link.send({ t: "res", id, status: result.status, ...extra, ...(result.body !== undefined ? { body: result.body } : {}) })
+  }
+
+  private catalog?: { at: number; models: DeskModel[] }
+
+  /** The daemon's model catalog, reused for MODELS_TTL_MS; undefined when it cannot be read. */
+  async models(fresh = false): Promise<DeskModel[] | undefined> {
+    if (!fresh && this.catalog && Date.now() - this.catalog.at < MODELS_TTL_MS) return this.catalog.models
+    const result = await this.daemon.raw("GET", "/api/model").catch(() => undefined)
+    const models = result && result.status >= 200 && result.status < 300 ? deskModels(result.body) : undefined
+    if (!models) return undefined
+    // An empty list is a location still booting; read again next time.
+    if (models.length > 0) this.catalog = { at: Date.now(), models }
+    return models
+  }
+
+  /**
+   * `X-Redrob-Model` on session create or prompt. A model the catalog has goes into the create body,
+   * or the session is switched to it before the prompt. Anything else changes nothing: the session
+   * keeps the model it has (`default` when it has none, the PC's default). Returns the applied model,
+   * and the create body to send instead when it changed.
+   */
+  private async applyModel(
+    route: Route,
+    sessionID: string | undefined,
+    request: Request,
+    wanted: string,
+  ): Promise<{ applied: string; body?: unknown }> {
+    const ref = parseModel(wanted)
+    const has = (models: DeskModel[] | undefined) => models?.some((model) => model.id === modelName(ref!)) === true
+    // A model added since the cached read is found on a fresh one.
+    const known = ref ? has(await this.models()) || has(await this.models(true)) : false
+    if (route.mark === "created") {
+      const body = typeof request.body === "object" && request.body !== null ? (request.body as Record<string, unknown>) : {}
+      if (ref && known) return { applied: modelName(ref), body: { ...body, model: { id: ref.id, providerID: ref.providerID } } }
+      if (wanted !== DEFAULT_MODEL) this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; using its default`)
+      return { applied: sessionModel({ data: body }) }
+    }
+    if (!sessionID) return { applied: DEFAULT_MODEL }
+    if (ref && known) {
+      const switched = await this.daemon
+        .raw("POST", `/api/session/${sessionID}/model`, { model: { id: ref.id, providerID: ref.providerID } })
+        .catch(() => ({ status: 502 }))
+      if (switched.status >= 200 && switched.status < 300) return { applied: modelName(ref) }
+      this.log(`model switch failed: ${switched.status}`)
+    } else if (wanted !== DEFAULT_MODEL) {
+      this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; keeping the session's model`)
+    }
+    const current = await this.daemon.raw("GET", `/api/session/${sessionID}`).catch(() => undefined)
+    return { applied: sessionModel(current?.body) }
   }
 
   /** `GET /desk/attachment/:sessionID/:id`: a piece of an announced attachment, 404 for anything else. */
