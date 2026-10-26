@@ -254,6 +254,41 @@ function tail(text: string, maxLines: number, maxBytes: number) {
   }
 }
 
+/** The model sees at most this much shell output; the full output is saved to a file when cut. */
+const SHELL_MAX_BYTES = 40 * 1024
+
+/**
+ * The start and the end of a long output, with the middle dropped.
+ *
+ * Only the tail used to be kept, up to 50 KB. A test run's failures and summary are at the end, but
+ * a collection error or the first traceback is at the start, and 50 KB of passing-test lines is
+ * read again on every later turn. So a quarter of the budget goes to the head and the rest to the
+ * tail, the way Codex CLI trims exec output.
+ */
+function headTail(text: string, maxLines: number, maxBytes: number) {
+  const bytes = Math.min(maxBytes, SHELL_MAX_BYTES)
+  const lines = text.split("\n")
+  if (lines.length <= maxLines && Buffer.byteLength(text, "utf-8") <= bytes) return { text, cut: false }
+
+  const headLines: string[] = []
+  let headBytes = 0
+  const headBudget = Math.floor(bytes / 4)
+  const headMax = Math.floor(maxLines / 4)
+  for (const line of lines) {
+    const size = Buffer.byteLength(line, "utf-8") + 1
+    if (headLines.length >= headMax || headBytes + size > headBudget) break
+    headLines.push(line)
+    headBytes += size
+  }
+  const rest = lines.slice(headLines.length).join("\n")
+  const end = tail(rest, maxLines - headLines.length, bytes - headBytes)
+  const omitted = lines.length - headLines.length - end.text.split("\n").length
+  return {
+    text: [...headLines, `... ${Math.max(omitted, 0)} lines omitted ...`, end.text].join("\n"),
+    cut: true,
+  }
+}
+
 const parse = Effect.fn("ShellTool.parse")(function* (command: string, ps: boolean) {
   const tree = yield* Effect.promise(() => parser().then((p) => (ps ? p.ps : p.bash).parse(command)))
   if (!tree) throw new Error("Failed to parse command")
@@ -566,7 +601,7 @@ export const ShellTool = Tool.define(
       }
       if (aborted) meta.push("User aborted the command")
       const raw = list.map((item) => item.text).join("")
-      const end = tail(raw, limits.maxLines, limits.maxBytes)
+      const end = headTail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
       if (!file && end.cut) {
         file = yield* trunc.write(raw)

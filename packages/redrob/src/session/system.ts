@@ -106,10 +106,12 @@ const layer = Layer.effect(
           */
           [
             `Working efficiently:`,
-            `- Every tool round trip costs time, so gather context in as few steps as you can. Put several look-ups in one shell command (for example \`sed -n 1,80p a.py; grep -n "name" b.py; ls tests\`) or make several read/grep calls in the same message. In a large file, search for the part you need instead of reading all of it.`,
+            `- Every tool round trip costs time, so gather context in as few steps as you can. When you need several look-ups (cat, sed -n, grep/rg, ls, git show, wc), issue them as parallel tool calls in one message, or put them in one shell command (for example \`sed -n 1,80p a.py; grep -n "name" b.py; ls tests\`). In a large file, search for the part you need instead of reading all of it.`,
+            `- Do not re-read a file after editing it to check the edit: the edit tool reports an error if the change did not apply.`,
             `- To check a change, run the tests that cover it (that test file or test name) rather than the whole suite. Run the full suite only when the task calls for it.`,
             `- Do not run the same tests again without changing code in between. If they pass, move on; if they fail, read the output and fix the cause before running them again. Where you can, make an edit and run its check in the same step.`,
             `- Once you understand the change, make it in one edit rather than many small rewrites of the same file.`,
+            `- Keep progress notes between tool calls to a short line, and the final answer brief (about ten lines) unless the user asks for more.`,
           ].join("\n"),
           references.length === 0
             ? undefined
