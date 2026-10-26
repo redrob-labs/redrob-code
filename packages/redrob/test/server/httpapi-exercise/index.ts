@@ -833,6 +833,40 @@ const scenarios: Scenario[] = [
       object(body)
       check(Array.isArray(body.running), "running channels should be a list")
     }),
+  // Desk relay. The exerciser is not the registered daemon: status reads as off and every
+  // other desk route refuses with 503 before touching sign-in or pairing.
+  http.protected.get("/desk/status", "v2.desk.status").json(200, (body) => {
+    object(body)
+    check(body.connected === false, "the desk relay should not be connected")
+  }),
+  http.protected
+    .post("/desk/enable", "v2.desk.enable")
+    .mutating()
+    .at((ctx) => ({ path: "/desk/enable", headers: ctx.headers(), body: { enabled: false } }))
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/desk/login", "v2.desk.login")
+    .mutating()
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/desk/logout", "v2.desk.logout")
+    .mutating()
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/desk/pending/{code}/approve", "v2.desk.approve")
+    .mutating()
+    .at((ctx) => ({ path: route("/desk/pending/{code}/approve", { code: "000000" }), headers: ctx.headers() }))
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/desk/pending/{code}/deny", "v2.desk.deny")
+    .mutating()
+    .at((ctx) => ({ path: route("/desk/pending/{code}/deny", { code: "000000" }), headers: ctx.headers() }))
+    .status(503, undefined, "status"),
+  http.protected
+    .post("/desk/devices/{id}/revoke", "v2.desk.revoke")
+    .mutating()
+    .at((ctx) => ({ path: route("/desk/devices/{id}/revoke", { id: "httpapi-missing" }), headers: ctx.headers() }))
+    .status(503, undefined, "status"),
   http.protected.get("/api/privacy", "v2.privacy.get").json(200, (body) => {
     object(body)
     check(body.mode === "off", "masking should be off until someone turns it on")

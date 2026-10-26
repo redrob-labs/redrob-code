@@ -29,6 +29,22 @@ export type ClientNotFoundError = {
 export const isClientNotFoundError = (value: unknown): value is ClientNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ClientNotFoundError"
 
+export type ServiceUnavailableError = {
+  readonly _tag: "ServiceUnavailableError"
+  readonly message: string
+  readonly service?: string | undefined
+}
+export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
+
+export type ConflictError = {
+  readonly _tag: "ConflictError"
+  readonly message: string
+  readonly resource?: string | undefined
+}
+export const isConflictError = (value: unknown): value is ConflictError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConflictError"
+
 export type DeskNotFoundError = { readonly _tag: "DeskNotFoundError"; readonly message: string }
 export const isDeskNotFoundError = (value: unknown): value is DeskNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "DeskNotFoundError"
@@ -48,22 +64,6 @@ export type SessionNotFoundError = {
 }
 export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
-
-export type ConflictError = {
-  readonly _tag: "ConflictError"
-  readonly message: string
-  readonly resource?: string | undefined
-}
-export const isConflictError = (value: unknown): value is ConflictError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConflictError"
-
-export type ServiceUnavailableError = {
-  readonly _tag: "ServiceUnavailableError"
-  readonly message: string
-  readonly service?: string | undefined
-}
-export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
 
 export type MessageNotFoundError = {
   readonly _tag: "MessageNotFoundError"
@@ -186,7 +186,9 @@ export type ServerChannelsDeskStatusOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
-  readonly login?: { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number } | undefined
+  readonly login?:
+    | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+    | undefined
   readonly pending: ReadonlyArray<{
     readonly code: string
     readonly name: string
@@ -209,7 +211,9 @@ export type ServerChannelsDeskEnableOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
-  readonly login?: { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number } | undefined
+  readonly login?:
+    | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+    | undefined
   readonly pending: ReadonlyArray<{
     readonly code: string
     readonly name: string
@@ -236,7 +240,9 @@ export type ServerChannelsDeskLogoutOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
-  readonly login?: { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number } | undefined
+  readonly login?:
+    | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+    | undefined
   readonly pending: ReadonlyArray<{
     readonly code: string
     readonly name: string
@@ -254,15 +260,27 @@ export type ServerChannelsDeskLogoutOutput = {
 
 export type ServerChannelsDeskApproveInput = { readonly code: { readonly code: string }["code"] }
 
-export type ServerChannelsDeskApproveOutput = { readonly id: string; readonly name: string; readonly kind: "phone" | "web" }
+export type ServerChannelsDeskApproveOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "phone" | "web"
+}
 
 export type ServerChannelsDeskDenyInput = { readonly code: { readonly code: string }["code"] }
 
-export type ServerChannelsDeskDenyOutput = { readonly id: string; readonly name: string; readonly kind: "phone" | "web" }
+export type ServerChannelsDeskDenyOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "phone" | "web"
+}
 
 export type ServerChannelsDeskRevokeInput = { readonly id: { readonly id: string }["id"] }
 
-export type ServerChannelsDeskRevokeOutput = { readonly id: string; readonly name: string; readonly kind: "phone" | "web" }
+export type ServerChannelsDeskRevokeOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "phone" | "web"
+}
 
 export type ServerAppsListOutput = {
   readonly apps: ReadonlyArray<{
