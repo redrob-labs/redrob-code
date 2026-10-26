@@ -2,6 +2,8 @@ import { Effect, Semaphore, Stream } from "effect"
 import type { Scope } from "effect"
 import { define } from "@redrob-code/plugin/v2/effect/plugin"
 import { EventV2 } from "../../event"
+import { ConsoleKey } from "../../console-key"
+import { SharedAccount } from "../../shared-account"
 import { Integration } from "../../integration"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
@@ -37,9 +39,20 @@ export const RedrobPlugin = define<EventV2.Service | Scope.Scope>({
     const events = yield* EventV2.Service
     const loading = Semaphore.makeUnsafe(1)
     let connected = false
+    /**
+     * The key `redrob auth login` and the launcher sign-in leave outside the SQL credential store
+     * (`auth.json`, then the launcher's shared account), in ConsoleKey's order. The V1 engine reads
+     * these; without them here a V2 session (the desk relay's phone and web turns) sent the
+     * "public" placeholder and the console answered 401 invalid_api_key.
+     */
+    let fallbackKey: string | undefined
 
     const load = Effect.fn("RedrobPlugin.load")(function* () {
       connected = (yield* ctx.integration.connection.active("redrob")) !== undefined
+      fallbackKey = undefined
+      if (connected || process.env.REDROB_API_KEY) return
+      fallbackKey =
+        (yield* ConsoleKey.fromAuthStore()) ?? (yield* Effect.promise(() => SharedAccount.apiKey())) ?? undefined
     })
 
     yield* ctx.integration.transform((draft) => {
@@ -49,7 +62,7 @@ export const RedrobPlugin = define<EventV2.Service | Scope.Scope>({
       draft.method.update({ integrationID: "redrob", method: { type: "key", label: "Redrob API key" } })
     })
 
-    connected = (yield* ctx.integration.connection.active("redrob")) !== undefined
+    yield* load()
     yield* ctx.catalog.transform((catalog) => {
       catalog.provider.update(ProviderV2.ID.redrob, (provider) => {
         provider.integrationID = Integration.ID.make("redrob")
@@ -84,6 +97,13 @@ export const RedrobPlugin = define<EventV2.Service | Scope.Scope>({
       // the listing's real rates are projected that loop would have emptied the catalog for every
       // keyless user instead of leaving it browsable.
       if (hasKey) return
+      if (fallbackKey) {
+        const key = fallbackKey
+        catalog.provider.update(item.provider.id, (provider) => {
+          provider.request.body.apiKey = key
+        })
+        return
+      }
       catalog.provider.update(item.provider.id, (provider) => {
         provider.request.body.apiKey = "public"
       })

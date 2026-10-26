@@ -35,7 +35,7 @@ import { SharedAccount } from "./shared-account"
  */
 
 /** `auth.json`, the desktop app's store. Absent or malformed reads as "no key" rather than failing. */
-function fromAuthStore(): Effect.Effect<string | undefined> {
+export function fromAuthStore(): Effect.Effect<string | undefined> {
   return Effect.tryPromise(() => Bun.file(join(Global.Path.data, "auth.json")).json()).pipe(
     Effect.map((data) => {
       if (typeof data !== "object" || data === null) return undefined
