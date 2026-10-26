@@ -186,6 +186,7 @@ export type ServerChannelsDeskStatusOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
+  readonly autoAll?: boolean | undefined
   readonly login?:
     | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
     | undefined
@@ -211,6 +212,7 @@ export type ServerChannelsDeskEnableOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
+  readonly autoAll?: boolean | undefined
   readonly login?:
     | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
     | undefined
@@ -240,6 +242,7 @@ export type ServerChannelsDeskLogoutOutput = {
   readonly signedIn: boolean
   readonly account?: { readonly email: string } | undefined
   readonly connected: boolean
+  readonly autoAll?: boolean | undefined
   readonly login?:
     | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
     | undefined

@@ -21,8 +21,9 @@ and cost three things to get it.
 ## Where the provenance went
 
 `UPSTREAM_VERSION` at the repository root. One line, the upstream version this tree is
-merged up to, without the `v`. `upstream-sync.yml` updates it when it absorbs an upstream
-release, and the release notes read it so every release still states what it is built on.
+merged up to, without the `v`. Upstream is no longer merged (see BRANCHING.md), so it is
+fixed at the last release taken, and the release notes read it so every release still
+states what it is built on.
 
 That file is the only place the upstream version lives now. Deleting it does not break a
 build; it silently removes the answer to "what is this built on", which is worse.

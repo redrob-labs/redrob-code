@@ -447,9 +447,13 @@ export const RunCommand = effectCmd({
             },
           ]
 
+      /*
+        A one-shot run is titled from its prompt unless --title names one. Leaving it unset made the
+        session ask the model for a title, a second paid call on the same model on every `redrob run`,
+        for a session nobody browses.
+      */
       function title() {
-        if (args.title === undefined) return
-        if (args.title !== "") return args.title
+        if (args.title !== undefined && args.title !== "") return args.title
         return message.slice(0, 50) + (message.length > 50 ? "..." : "")
       }
 
@@ -552,7 +556,7 @@ export const RunCommand = effectCmd({
         input: { agent: string | undefined; model: ModelInput | undefined; variant: string | undefined },
       ): Promise<SessionInfo> {
         const result = await sdk.session.create({
-          title: args.title !== undefined && args.title !== "" ? args.title : undefined,
+          title: title(),
           agent: input.agent,
           model: input.model
             ? {

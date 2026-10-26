@@ -96,6 +96,23 @@ const layer = Layer.effect(
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
           ].join("\n"),
+          /*
+            Shared by every model and agent, so it is not tuned to one vendor's prompt. Measured
+            against Claude Code on the same model (2026-10-26): redrob took ~36% more turns and wrote
+            ~66% more output, mostly from one-file-at-a-time reads, whole test files read in full, and
+            whole test suites run to check one change. The first version of these rules cut exploring
+            steps by ~23% but doubled back-to-back test runs (38 vs Claude Code's 15 on 16 tasks),
+            hence the line on not re-running unchanged tests.
+          */
+          [
+            `Working efficiently:`,
+            `- Every tool round trip costs time, so gather context in as few steps as you can. When you need several look-ups (cat, sed -n, grep/rg, ls, git show, wc), issue them as parallel tool calls in one message, or put them in one shell command (for example \`sed -n 1,80p a.py; grep -n "name" b.py; ls tests\`). In a large file, search for the part you need instead of reading all of it.`,
+            `- Do not re-read a file after editing it to check the edit: the edit tool reports an error if the change did not apply.`,
+            `- To check a change, run the tests that cover it (that test file or test name) rather than the whole suite. Run the full suite only when the task calls for it.`,
+            `- Do not run the same tests again without changing code in between. If they pass, move on; if they fail, read the output and fix the cause before running them again. Where you can, make an edit and run its check in the same step.`,
+            `- Once you understand the change, make it in one edit rather than many small rewrites of the same file.`,
+            `- Keep progress notes between tool calls to a short line, and the final answer brief (about ten lines) unless the user asks for more.`,
+          ].join("\n"),
           references.length === 0
             ? undefined
             : [

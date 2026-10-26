@@ -40,6 +40,8 @@ export const Flag = {
   REDROB_SHOW_TTFD: truthy("REDROB_SHOW_TTFD"),
   REDROB_DISABLE_AUTOCOMPACT: truthy("REDROB_DISABLE_AUTOCOMPACT"),
   REDROB_DISABLE_MODELS_FETCH: truthy("REDROB_DISABLE_MODELS_FETCH"),
+  /** Never read or write the saved console /models listing (tests, which mock the fetch). */
+  REDROB_DISABLE_MODELS_CACHE: truthy("REDROB_DISABLE_MODELS_CACHE"),
   REDROB_DISABLE_MOUSE: truthy("REDROB_DISABLE_MOUSE"),
   REDROB_FAKE_VCS: process.env["REDROB_FAKE_VCS"],
   REDROB_SERVER_PASSWORD: process.env["REDROB_SERVER_PASSWORD"],
