@@ -3,9 +3,10 @@
  *
  * The daemon gets a ticket from `POST <chat>/mobile/relay-ticket {as:"desk"}`, joins the room
  * `desk:<user id>` on the Design relay, says `hello`, and broadcasts `desk.announce` after
- * connecting and after every `hello` it sees. A known phone's `desk.hello` is answered with
- * `desk.accept` and becomes an encrypted session handed to the forwarder; an unknown phone's gets
- * `desk.pending` and waits for `redrob mobile approve <code>` on this PC. The relay closes every
+ * connecting and after every `hello` it sees. A device is the phone app or a web browser profile
+ * (`desk.hello` `kind`, missing means "phone"). A known device's `desk.hello` is answered with
+ * `desk.accept` and becomes an encrypted session handed to the forwarder; an unknown device's gets
+ * `desk.pending` and waits for the launcher's "allow once" (or `redrob desk approve <code>`). The relay closes every
  * connection after 30 minutes; the daemon gets a fresh ticket and reconnects, with backoff after
  * failures.
  */
@@ -17,7 +18,7 @@ import * as DeskCrypto from "./crypto"
 import { DaemonApi } from "./daemon"
 import { Forwarder, type Link } from "./forward"
 import { decodeAction, decodeControl, encodeAction, encodeControl } from "./frames"
-import { Pairing, type PendingRequest, type Phone } from "./pairing"
+import { Pairing, deviceKind, type Device, type DeviceKind, type PendingRequest } from "./pairing"
 import { ToolCatalog } from "./tools"
 
 const encoder = new TextEncoder()
@@ -25,10 +26,11 @@ const decoder = new TextDecoder()
 
 type Peer = {
   readonly peerId: string
-  phoneId?: string
-  phonePub?: Uint8Array
-  phoneEph?: Uint8Array
+  deviceId?: string
+  devicePub?: Uint8Array
+  deviceEph?: Uint8Array
   name?: string
+  kind?: DeviceKind
   channel?: DeskCrypto.Channel
   link?: Link
   /** Sealed frames go out in counter order. */
@@ -42,11 +44,11 @@ export const consoleLogger: Logger = {
   warn: (m) => console.warn(`[desk] ${m}`),
 }
 
-/** What `redrob mobile pending|list` shows. */
-export type DeskStatus = {
+/** Relay-side state for `GET /desk/status`. */
+export type RelayStatus = {
   readonly connected: boolean
-  readonly pending: readonly { phoneId: string; name: string; code: string; expiresAt: number }[]
-  readonly phones: readonly { id: string; name: string; addedAt: number; online: boolean }[]
+  /** Ids of approved devices with an open encrypted session right now. */
+  readonly online: ReadonlySet<string>
 }
 
 export class DeskRelay {
@@ -199,41 +201,42 @@ export class DeskRelay {
   }
 
   private async onHello(peerId: string, payload: Uint8Array): Promise<void> {
-    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown }
+    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown; kind?: unknown }
     try {
       hello = JSON.parse(decoder.decode(payload))
     } catch {
       return
     }
     if (hello.v !== 1 || typeof hello.phone !== "string" || typeof hello.eph !== "string") return
-    const phonePub = DeskCrypto.fromB64url(hello.phone)
-    const phoneEph = DeskCrypto.fromB64url(hello.eph)
+    const devicePub = DeskCrypto.fromB64url(hello.phone)
+    const deviceEph = DeskCrypto.fromB64url(hello.eph)
     try {
-      await DeskCrypto.importPublic(phonePub)
-      await DeskCrypto.importPublic(phoneEph)
+      await DeskCrypto.importPublic(devicePub)
+      await DeskCrypto.importPublic(deviceEph)
     } catch {
       return
     }
     this.drop(peerId)
-    const phoneId = await DeskCrypto.keyId(phonePub)
-    const name = typeof hello.name === "string" ? hello.name.slice(0, 100) : "phone"
-    const peer: Peer = { peerId, phoneId, phonePub, phoneEph, name, sending: Promise.resolve() }
+    const deviceId = await DeskCrypto.keyId(devicePub)
+    const kind = deviceKind(hello.kind)
+    const name = typeof hello.name === "string" && hello.name.trim() ? hello.name.slice(0, 100) : kind
+    const peer: Peer = { peerId, deviceId, devicePub, deviceEph, name, kind, sending: Promise.resolve() }
     this.peers.set(peerId, peer)
-    const known = await this.pairing.phone(phoneId)
+    const known = await this.pairing.device(deviceId)
     if (known && known.pub === hello.phone) return this.accept(peer)
-    const request = await this.pairing.request({ phonePub, name, peerId })
-    this.log.info(`pairing request from "${request.name}"; run: redrob mobile approve ${request.code}`)
+    const request = await this.pairing.request({ devicePub, name, kind, peerId })
+    this.log.info(`pairing request from "${request.name}" (${request.kind}); run: redrob desk approve ${request.code}`)
     this.sendJson("desk.pending", { v: 1 }, peerId)
   }
 
   private async accept(peer: Peer): Promise<void> {
-    if (!peer.phonePub || !peer.phoneEph || !this.ticket) return
+    if (!peer.devicePub || !peer.deviceEph || !this.ticket) return
     const ephemeral = await DeskCrypto.generate()
     const channel = await DeskCrypto.Channel.create({
       desk: await this.pairing.key(),
       ephemeral,
-      phonePub: peer.phonePub,
-      phoneEph: peer.phoneEph,
+      phonePub: peer.devicePub,
+      phoneEph: peer.deviceEph,
       ownPeerId: this.ticket.peerId,
       phonePeerId: peer.peerId,
     })
@@ -263,7 +266,7 @@ export class DeskRelay {
     try {
       plain = await peer.channel.open(payload)
     } catch {
-      // A bad tag ends the session; the phone says hello again.
+      // A bad tag ends the session; the device says hello again.
       this.drop(peerId)
       return
     }
@@ -303,46 +306,43 @@ export class DeskRelay {
   // -- pairing (the CLI surface) ---------------------------------------------------------------
 
   private expire(): void {
-    for (const request of this.pairing.sweep()) this.refuse(request.peerId, request.phoneId, "expired")
+    for (const request of this.pairing.sweep()) this.refuse(request.peerId, request.deviceId, "expired")
   }
 
-  private refuse(peerId: string, phoneId: string, reason: "denied" | "revoked" | "expired"): void {
+  private refuse(peerId: string, deviceId: string, reason: "denied" | "revoked" | "expired"): void {
     const peer = this.peers.get(peerId)
-    if (!peer || peer.phoneId !== phoneId) return
+    if (!peer || peer.deviceId !== deviceId) return
     this.sendJson("desk.denied", { v: 1, reason }, peerId)
     this.drop(peerId)
   }
 
-  async status(): Promise<DeskStatus> {
-    const online = new Set([...this.peers.values()].filter((peer) => peer.channel).map((peer) => peer.phoneId))
-    return {
-      connected: this.connected,
-      pending: this.pairing.list().map(({ phoneId, name, code, expiresAt }) => ({ phoneId, name, code, expiresAt })),
-      phones: (await this.pairing.phones()).map(({ id, name, addedAt }) => ({ id, name, addedAt, online: online.has(id) })),
-    }
+  status(): RelayStatus {
+    const online = new Set<string>()
+    for (const peer of this.peers.values()) if (peer.channel && peer.deviceId) online.add(peer.deviceId)
+    return { connected: this.connected, online }
   }
 
-  async approve(code: string): Promise<Phone> {
-    const { request, phone } = await this.pairing.approve(code)
+  async approve(code: string): Promise<Device> {
+    const { request, device } = await this.pairing.approve(code)
     const peer = this.peers.get(request.peerId)
-    if (peer && peer.phoneId === request.phoneId && !peer.channel) await this.accept(peer)
-    return phone
+    if (peer && peer.deviceId === request.deviceId && !peer.channel) await this.accept(peer)
+    return device
   }
 
   deny(code: string): PendingRequest {
     const request = this.pairing.deny(code)
-    this.refuse(request.peerId, request.phoneId, "denied")
+    this.refuse(request.peerId, request.deviceId, "denied")
     return request
   }
 
-  async revoke(id: string): Promise<Phone> {
-    const phone = await this.pairing.revoke(id)
-    for (const peer of [...this.peers.values()]) if (peer.phoneId === id) this.refuse(peer.peerId, id, "revoked")
-    return phone
+  async revoke(id: string): Promise<Device> {
+    const device = await this.pairing.revoke(id)
+    for (const peer of [...this.peers.values()]) if (peer.deviceId === id) this.refuse(peer.peerId, id, "revoked")
+    return device
   }
 }
 
-/** Whether `redrob mobile login` has been run on this machine. */
+/** Whether this machine is signed in for the desk relay (`redrob desk login` or the launcher). */
 export async function signedIn(pairing: Pairing = new Pairing()): Promise<boolean> {
   return Boolean(await pairing.tokens().get("refreshToken"))
 }

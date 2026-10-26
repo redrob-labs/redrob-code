@@ -1,10 +1,10 @@
 /**
- * The desk forwarder (redrob-mobile `docs/desk-relay.md`, section 4): what a paired phone may ask
- * of this daemon, and the live events it gets back.
+ * The desk forwarder (redrob-mobile `docs/desk-relay.md`, section 4): what a paired device (the
+ * phone app or a web browser) may ask of this daemon, and the live events it gets back.
  *
  * `ROUTES` is the only security boundary. A `req` outside it is answered 403 without touching the
- * daemon. A session created or prompted from here is marked with `MobileProfile.mark`, so saved
- * approvals do not apply to it and dangerous actions always ask.
+ * daemon. A session created or prompted from any device, phone or web alike, is marked with
+ * `MobileProfile.mark`, so saved approvals do not apply to it and dangerous actions always ask.
  */
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"

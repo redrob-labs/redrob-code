@@ -1,12 +1,14 @@
 /**
- * Desk pairing state (redrob-mobile `docs/desk-relay.md`, "Pairing").
+ * Desk pairing state (redrob-mobile `docs/desk-relay.md`, "Pairing" and "Devices").
  *
- * Kept in the secret store (`~/.redrob/channels/secrets.json`, 0600) under the `desk` scope:
- * `key` is the daemon's long-term P-256 key `D` (private JWK), `phones` the approved phones
- * `[{ id, pub, name, addedAt }]`. Nothing about pairing is on the server.
+ * A device is the phone app or a web browser profile. Kept in the secret store
+ * (`~/.redrob/channels/secrets.json`, 0600) under the `desk` scope: `key` is the daemon's
+ * long-term P-256 key `D` (private JWK), `devices` the approved devices
+ * `[{ id, pub, name, kind, addedAt }]`. v1 stored phones under `phones`; that list is still read,
+ * as kind "phone". Nothing about pairing is on the server.
  *
- * Pending requests are memory only: an unknown phone's `desk.hello` records one for 10 minutes,
- * and `redrob mobile approve|deny <code>` answers it.
+ * Pending requests are memory only: an unknown device's `desk.hello` records one for 10 minutes,
+ * and the launcher or `redrob desk approve|deny <code>` answers it.
  */
 import { FileSecretStore, type SecretStore } from "@redrob-code/channels-core"
 import * as DeskCrypto from "./crypto"
@@ -14,18 +16,34 @@ import * as DeskCrypto from "./crypto"
 export const SCOPE = "desk"
 export const PENDING_MS = 10 * 60_000
 
-export type Phone = { readonly id: string; readonly pub: string; readonly name: string; readonly addedAt: number }
+export type DeviceKind = "phone" | "web"
 
-export type PendingRequest = {
-  readonly phoneId: string
-  /** P_pub, base64url. */
+export function deviceKind(value: unknown): DeviceKind {
+  return value === "web" ? "web" : "phone"
+}
+
+export type Device = {
+  readonly id: string
   readonly pub: string
   readonly name: string
+  readonly kind: DeviceKind
+  readonly addedAt: number
+}
+
+export type PendingRequest = {
+  readonly deviceId: string
+  /** The device's long-term public key, base64url. */
+  readonly pub: string
+  readonly name: string
+  readonly kind: DeviceKind
   readonly code: string
   readonly expiresAt: number
   /** The relay peer that asked, so an approval can answer it while it is still in the room. */
   readonly peerId: string
 }
+
+/** No pending request with that code, or no paired device with that id. The routes answer 404. */
+export class NotFound extends Error {}
 
 export class Pairing {
   private readonly pending = new Map<string, PendingRequest>()
@@ -38,6 +56,7 @@ export class Pairing {
     return {
       get: (key: string) => this.store.get(SCOPE, key),
       set: (key: string, value: string) => this.store.set(SCOPE, key, value),
+      delete: (key: string) => this.store.delete(SCOPE, key).then(() => undefined),
     }
   }
 
@@ -58,46 +77,63 @@ export class Pairing {
     return this.desk
   }
 
-  async phones(): Promise<Phone[]> {
-    const raw = await this.store.get(SCOPE, "phones")
+  async devices(): Promise<Device[]> {
+    const raw = (await this.store.get(SCOPE, "devices")) ?? (await this.store.get(SCOPE, "phones"))
     if (!raw) return []
     try {
       const value = JSON.parse(raw) as unknown
-      return Array.isArray(value) ? (value as Phone[]).filter((phone) => typeof phone?.id === "string") : []
+      if (!Array.isArray(value)) return []
+      return (value as Partial<Device>[])
+        .filter((device) => typeof device?.id === "string" && typeof device.pub === "string")
+        .map((device) => ({
+          id: device.id!,
+          pub: device.pub!,
+          name: typeof device.name === "string" ? device.name : "",
+          kind: deviceKind(device.kind),
+          addedAt: typeof device.addedAt === "number" ? device.addedAt : 0,
+        }))
     } catch {
       return []
     }
   }
 
-  private async savePhones(phones: Phone[]): Promise<void> {
-    await this.store.set(SCOPE, "phones", JSON.stringify(phones))
+  private async saveDevices(devices: Device[]): Promise<void> {
+    await this.store.set(SCOPE, "devices", JSON.stringify(devices))
+    await this.store.delete(SCOPE, "phones").catch(() => undefined)
   }
 
-  async phone(id: string): Promise<Phone | undefined> {
-    return (await this.phones()).find((phone) => phone.id === id)
+  async device(id: string): Promise<Device | undefined> {
+    return (await this.devices()).find((device) => device.id === id)
   }
 
-  /** Record (or refresh) a request for an unknown phone. Returns it with its code. */
-  async request(input: { phonePub: Uint8Array; name: string; peerId: string; now?: number }): Promise<PendingRequest> {
+  /** Record (or refresh) a request for an unknown device. Returns it with its code. */
+  async request(input: {
+    devicePub: Uint8Array
+    name: string
+    kind: DeviceKind
+    peerId: string
+    now?: number
+  }): Promise<PendingRequest> {
     const now = input.now ?? Date.now()
     this.sweep(now)
-    const phoneId = await DeskCrypto.keyId(input.phonePub)
-    const code = await DeskCrypto.pairingCode(await this.key(), input.phonePub)
+    const deviceId = await DeskCrypto.keyId(input.devicePub)
+    const code = await DeskCrypto.pairingCode(await this.key(), input.devicePub)
     const existing = this.pending.get(code)
     const request: PendingRequest = {
-      phoneId,
-      pub: DeskCrypto.b64url(input.phonePub),
+      deviceId,
+      pub: DeskCrypto.b64url(input.devicePub),
       name: input.name.slice(0, 100),
+      kind: input.kind,
       code,
-      // A phone that says hello again keeps its original deadline.
-      expiresAt: existing?.phoneId === phoneId ? existing.expiresAt : now + PENDING_MS,
+      // A device that says hello again keeps its original deadline.
+      expiresAt: existing?.deviceId === deviceId ? existing.expiresAt : now + PENDING_MS,
       peerId: input.peerId,
     }
     this.pending.set(code, request)
     return request
   }
 
-  /** Drop expired requests and return them, so the relay can tell those phones. */
+  /** Drop expired requests and return them, so the relay can tell those devices. */
   sweep(now = Date.now()): PendingRequest[] {
     const expired: PendingRequest[] = []
     for (const [code, request] of this.pending) {
@@ -115,28 +151,28 @@ export class Pairing {
   private take(code: string): PendingRequest {
     const digits = code.replace(/\D/g, "")
     const request = this.pending.get(digits)
-    if (!request || request.expiresAt <= Date.now()) throw new Error(`no pending request with code ${code}`)
+    if (!request || request.expiresAt <= Date.now()) throw new NotFound(`no pending request with code ${code}`)
     this.pending.delete(digits)
     return request
   }
 
-  async approve(code: string, now = Date.now()): Promise<{ request: PendingRequest; phone: Phone }> {
+  async approve(code: string, now = Date.now()): Promise<{ request: PendingRequest; device: Device }> {
     const request = this.take(code)
-    const phone: Phone = { id: request.phoneId, pub: request.pub, name: request.name, addedAt: now }
-    const phones = (await this.phones()).filter((known) => known.id !== phone.id)
-    await this.savePhones([...phones, phone])
-    return { request, phone }
+    const device: Device = { id: request.deviceId, pub: request.pub, name: request.name, kind: request.kind, addedAt: now }
+    const devices = (await this.devices()).filter((known) => known.id !== device.id)
+    await this.saveDevices([...devices, device])
+    return { request, device }
   }
 
   deny(code: string): PendingRequest {
     return this.take(code)
   }
 
-  async revoke(id: string): Promise<Phone> {
-    const phones = await this.phones()
-    const phone = phones.find((known) => known.id === id)
-    if (!phone) throw new Error(`no paired phone ${id}`)
-    await this.savePhones(phones.filter((known) => known.id !== id))
-    return phone
+  async revoke(id: string): Promise<Device> {
+    const devices = await this.devices()
+    const device = devices.find((known) => known.id === id)
+    if (!device) throw new NotFound(`no paired device ${id}`)
+    await this.saveDevices(devices.filter((known) => known.id !== id))
+    return device
   }
 }
