@@ -16,7 +16,9 @@ export function settingsPath(): string {
 async function readSettings(): Promise<Record<string, unknown>> {
   try {
     const value = JSON.parse(await readFile(settingsPath(), "utf8")) as unknown
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
   } catch {
     return {}
   }
@@ -25,7 +27,9 @@ async function readSettings(): Promise<Record<string, unknown>> {
 /** Writes are serialized and replace the file whole, so the launcher never reads half a file. */
 let writing: Promise<unknown> = Promise.resolve()
 
-function updateSettings<A>(change: (settings: Record<string, unknown>) => { settings: Record<string, unknown>; result: A }): Promise<A> {
+function updateSettings<A>(
+  change: (settings: Record<string, unknown>) => { settings: Record<string, unknown>; result: A },
+): Promise<A> {
   const run = writing.then(async () => {
     const { settings, result } = change(await readSettings())
     const file = settingsPath()

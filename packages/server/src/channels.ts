@@ -28,7 +28,11 @@ export type Controller = {
 
 export type DeskKind = "phone" | "web"
 
-export type DeskLogin = { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+export type DeskLogin = {
+  readonly userCode: string
+  readonly verificationUriComplete: string
+  readonly expiresAt: number
+}
 
 export type DeskDevice = { readonly id: string; readonly name: string; readonly kind: DeskKind }
 

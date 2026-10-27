@@ -136,7 +136,13 @@ export async function readAttachment(
     const offset = Math.min(range.offset, size)
     const buffer = Buffer.alloc(Math.min(range.limit, size - offset))
     const { bytesRead } = await file.read(buffer, 0, buffer.length, offset)
-    return { name: attachment.name, mime: attachment.mime, size, offset, data: buffer.subarray(0, bytesRead).toString("base64") }
+    return {
+      name: attachment.name,
+      mime: attachment.mime,
+      size,
+      offset,
+      data: buffer.subarray(0, bytesRead).toString("base64"),
+    }
   } finally {
     await file.close()
   }
@@ -165,7 +171,9 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
   if (typeof headers !== "object" || headers === null) return undefined
   for (const [name, value] of Object.entries(headers)) {
     if (name.toLowerCase() !== "x-redrob-approval") continue
-    return MobileProfile.APPROVAL_MODES.includes(value as MobileProfile.ApprovalMode) ? (value as MobileProfile.ApprovalMode) : "ask"
+    return MobileProfile.APPROVAL_MODES.includes(value as MobileProfile.ApprovalMode)
+      ? (value as MobileProfile.ApprovalMode)
+      : "ask"
   }
   return undefined
 }
@@ -174,7 +182,10 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
  * The mode a session actually gets. `all` needs this machine's access `trusted` and the launcher's
  * switch on; otherwise it is lowered to `edits`, where commands still ask.
  */
-async function appliedMode(requested: MobileProfile.ApprovalMode, access: MachineAccess): Promise<MobileProfile.ApprovalMode> {
+async function appliedMode(
+  requested: MobileProfile.ApprovalMode,
+  access: MachineAccess,
+): Promise<MobileProfile.ApprovalMode> {
   if (requested !== "all") return requested
   return access === "trusted" && (await allowAutoAll()) ? "all" : "edits"
 }
@@ -359,7 +370,9 @@ export class Forwarder {
     if (typeof message !== "object" || message === null) return
     const value = message as Record<string, unknown>
     if (value.t === "sub") {
-      const sessions = Array.isArray(value.sessions) ? value.sessions.filter((id): id is string => typeof id === "string") : []
+      const sessions = Array.isArray(value.sessions)
+        ? value.sessions.filter((id): id is string => typeof id === "string")
+        : []
       link.subscriptions = new Set(sessions.slice(0, 200))
       return
     }
@@ -379,7 +392,8 @@ export class Forwarder {
 
     const { route, sessionID } = allowed
     if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
-    if (route.local === "attachment") return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
+    if (route.local === "attachment")
+      return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
@@ -412,7 +426,13 @@ export class Forwarder {
     if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
       return link.send({ t: "res", id, status: 413, ...extra })
     }
-    await link.send({ t: "res", id, status: result.status, ...extra, ...(result.body !== undefined ? { body: result.body } : {}) })
+    await link.send({
+      t: "res",
+      id,
+      status: result.status,
+      ...extra,
+      ...(result.body !== undefined ? { body: result.body } : {}),
+    })
   }
 
   private catalog?: { at: number; models: DeskModel[] }
@@ -445,9 +465,12 @@ export class Forwarder {
     // A model added since the cached read is found on a fresh one.
     const known = ref ? has(await this.models()) || has(await this.models(true)) : false
     if (route.mark === "created") {
-      const body = typeof request.body === "object" && request.body !== null ? (request.body as Record<string, unknown>) : {}
-      if (ref && known) return { applied: modelName(ref), body: { ...body, model: { id: ref.id, providerID: ref.providerID } } }
-      if (wanted !== DEFAULT_MODEL) this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; using its default`)
+      const body =
+        typeof request.body === "object" && request.body !== null ? (request.body as Record<string, unknown>) : {}
+      if (ref && known)
+        return { applied: modelName(ref), body: { ...body, model: { id: ref.id, providerID: ref.providerID } } }
+      if (wanted !== DEFAULT_MODEL)
+        this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; using its default`)
       return { applied: sessionModel({ data: body }) }
     }
     if (!sessionID) return { applied: DEFAULT_MODEL }
@@ -496,8 +519,12 @@ export class Forwarder {
     const first = mode === "all" && !(MobileProfile.isMobile(sessionID) && MobileProfile.mode(sessionID) === "all")
     MobileProfile.mark(sessionID, mode)
     if (!first) return
-    void appendEvent({ type: "auto_all_on", sessionId: sessionID, ...(link.device ? { device: link.device } : {}) }).catch(
-      (error: unknown) => this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
+    void appendEvent({
+      type: "auto_all_on",
+      sessionId: sessionID,
+      ...(link.device ? { device: link.device } : {}),
+    }).catch((error: unknown) =>
+      this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
     )
   }
 
@@ -552,13 +579,20 @@ export class Forwarder {
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
     if (event.type === "permission.v2.asked" && typeof event.data?.id === "string") this.asked.add(event.data.id)
-    if (event.type === "permission.v2.replied" && typeof event.data?.requestID === "string") this.asked.delete(event.data.requestID)
+    if (event.type === "permission.v2.replied" && typeof event.data?.requestID === "string")
+      this.asked.delete(event.data.requestID)
     if (ACTIVITY_EVENTS.has(event.type)) this.onActivity()
-    if (event.type === "permission.v2.asked" && sessionID && MobileProfile.isMobile(sessionID) && !this.watched(sessionID)) {
+    if (
+      event.type === "permission.v2.asked" &&
+      sessionID &&
+      MobileProfile.isMobile(sessionID) &&
+      !this.watched(sessionID)
+    ) {
       void this.notify("approval", sessionID).catch(() => undefined)
     }
     for (const link of this.links) {
-      const wanted = permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
+      const wanted =
+        permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
       if (!wanted) continue
       link.queue.push(event)
       if (link.timer) continue
@@ -569,10 +603,12 @@ export class Forwarder {
     if (sessionID && this.waiting.has(sessionID)) {
       const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
       if (event.type === "session.next.step.started") this.toolStep.delete(sessionID)
-      else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called") this.toolStep.add(sessionID)
+      else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called")
+        this.toolStep.add(sessionID)
       else if (event.type === "session.next.step.failed") this.turnEnded(sessionID, stepError(event.data))
       // Some console models finish a tool step with "stop"/"other"; a step that called a tool is not the end.
-      else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID)) this.turnEnded(sessionID)
+      else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID))
+        this.turnEnded(sessionID)
     }
   }
 

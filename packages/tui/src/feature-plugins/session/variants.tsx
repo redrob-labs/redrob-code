@@ -88,7 +88,11 @@ export function servedSlots(result: VariantResult): SlotResult[] {
  * pushes the other options off the screen -- which is the opposite of what a chooser needs.
  */
 export function previewOf(text: string, width = 72): string {
-  const firstLine = text.split("\n").find((line) => line.trim().length > 0)?.trim() ?? ""
+  const firstLine =
+    text
+      .split("\n")
+      .find((line) => line.trim().length > 0)
+      ?.trim() ?? ""
   if (firstLine.length <= width) return firstLine
   return `${firstLine.slice(0, width - 1)}…`
 }
@@ -368,10 +372,7 @@ const tui: TuiPlugin = async (api) => {
         },
       },
     ],
-    bindings: api.tuiConfig.keybinds.gather("variants.palette", [
-      "variants.paraphrase",
-      "variants.compare",
-    ]),
+    bindings: api.tuiConfig.keybinds.gather("variants.palette", ["variants.paraphrase", "variants.compare"]),
   })
 }
 

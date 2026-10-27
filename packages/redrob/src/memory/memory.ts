@@ -114,7 +114,8 @@ export function render(entries: readonly Entry[], budget: number) {
       ...facts.map(line),
       "</memory>",
     )
-  if (dropped > 0) out.push(`(${dropped} older memory entries omitted to fit the budget; use the memory tool to list them.)`)
+  if (dropped > 0)
+    out.push(`(${dropped} older memory entries omitted to fit the budget; use the memory tool to list them.)`)
   return out.join("\n")
 }
 
@@ -130,7 +131,7 @@ const layer = Layer.effect(
     const read = Effect.fn("Memory.read")(function* () {
       const text = yield* fs.readFileStringSafe(file).pipe(Effect.orElseSucceed(() => undefined))
       if (!text) return [] as Entry[]
-      const parsed = yield* Effect.try(() => JSON.parse(text) as unknown).pipe(Effect.orElseSucceed(() => undefined))
+      const parsed = yield* Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => undefined }).pipe(Effect.orElseSucceed(() => undefined))
       const decoded = decodeFile(parsed)
       return decoded._tag === "Some" ? [...decoded.value.entries] : []
     })

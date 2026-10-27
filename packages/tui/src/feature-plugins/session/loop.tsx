@@ -125,7 +125,7 @@ const tui: TuiPlugin = async (api) => {
                     await api.client.routine.stop({ routineID: autopilot.id }, { throwOnError: true })
                   }
                   await api.client.routine.create(
-                    { sessionID, goal, trigger: { type: "after_turn" } },
+                    { routineCreateInput: { sessionID, goal, trigger: { type: "after_turn" } } },
                     { throwOnError: true },
                   )
                   api.ui.toast({ title: t.t("loop.started.title"), message: goal, variant: "info" })

@@ -1,5 +1,7 @@
 import type { TuiPlugin, TuiPluginApi } from "@redrob-code/plugin/tui"
-import type { MemoryEntry } from "@redrob-labs/sdk/v2"
+import type { MemoryListResponse } from "@redrob-labs/sdk/v2"
+
+type MemoryEntry = MemoryListResponse[number]
 import type { BuiltinTuiPlugin } from "../builtins"
 import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import { createMemo, createResource, createSignal } from "solid-js"

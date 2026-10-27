@@ -52,18 +52,25 @@ export const MemoryTool = Tool.define<typeof Parameters, Metadata, Memory.Servic
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
-          const project =
-            params.scope === "project" ? (yield* InstanceState.context).worktree : undefined
+          const project = params.scope === "project" ? (yield* InstanceState.context).worktree : undefined
 
           switch (params.action) {
             case "list": {
               const entries = yield* memory.list()
-              return { title: `${entries.length} memory entries`, output: format(entries), metadata: { count: entries.length } }
+              return {
+                title: `${entries.length} memory entries`,
+                output: format(entries),
+                metadata: { count: entries.length },
+              }
             }
             case "search": {
               if (!params.query) return yield* fail("search needs `query`")
               const entries = yield* memory.search(params.query)
-              return { title: `${entries.length} matches`, output: format(entries), metadata: { count: entries.length } }
+              return {
+                title: `${entries.length} matches`,
+                output: format(entries),
+                metadata: { count: entries.length },
+              }
             }
             case "add_lesson": {
               if (!params.text?.trim()) return yield* fail("add_lesson needs `text`")

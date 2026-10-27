@@ -15,7 +15,11 @@ import { allowAutoAll, machine, updateMachine, type Machine, type MachineUpdate 
 
 export { NotFound }
 
-export type DeskLogin = { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+export type DeskLogin = {
+  readonly userCode: string
+  readonly verificationUriComplete: string
+  readonly expiresAt: number
+}
 
 export type DeskDevice = { readonly id: string; readonly name: string; readonly kind: DeviceKind }
 
@@ -135,7 +139,11 @@ export class DeskService {
   private currentLogin(): DeskLogin | undefined {
     const device = this.login?.device
     if (!device || device.expiresAt <= Date.now()) return undefined
-    return { userCode: device.userCode, verificationUriComplete: device.verificationUriComplete, expiresAt: device.expiresAt }
+    return {
+      userCode: device.userCode,
+      verificationUriComplete: device.verificationUriComplete,
+      expiresAt: device.expiresAt,
+    }
   }
 
   /**
@@ -162,12 +170,17 @@ export class DeskService {
         await this.reconcile()
       })
       .catch((error: unknown) => {
-        if (!abort.signal.aborted) this.log.warn(`sign-in failed: ${error instanceof Error ? error.message : String(error)}`)
+        if (!abort.signal.aborted)
+          this.log.warn(`sign-in failed: ${error instanceof Error ? error.message : String(error)}`)
       })
       .finally(() => {
         if (this.login === login) this.login = undefined
       })
-    return { userCode: device.userCode, verificationUriComplete: device.verificationUriComplete, expiresAt: device.expiresAt }
+    return {
+      userCode: device.userCode,
+      verificationUriComplete: device.verificationUriComplete,
+      expiresAt: device.expiresAt,
+    }
   }
 
   /** Drop the refresh token and disconnect. Approved devices are kept. */

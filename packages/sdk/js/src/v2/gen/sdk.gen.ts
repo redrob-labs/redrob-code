@@ -15,6 +15,7 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  BridgedAppRegisterRequest,
   BrowserRequestRefusal,
   BrowserRequestReply,
   ChatCompletionRequest,
@@ -27,6 +28,7 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DeskMachineUpdate,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -114,6 +116,12 @@ import type {
   McpRemoteConfig,
   McpStatusErrors,
   McpStatusResponses,
+  MemoryAddErrors,
+  MemoryAddResponses,
+  MemoryListErrors,
+  MemoryListResponses,
+  MemoryRemoveErrors,
+  MemoryRemoveResponses,
   ModelRef,
   MoveSessionDestination,
   OutputFormat,
@@ -183,6 +191,19 @@ import type {
   RedrobSpeechResponses,
   RedrobTranscribeErrors,
   RedrobTranscribeResponses,
+  RoutineCreateErrors,
+  RoutineCreateInput,
+  RoutineCreateResponses,
+  RoutineGetErrors,
+  RoutineGetResponses,
+  RoutineListErrors,
+  RoutineListResponses,
+  RoutinePauseErrors,
+  RoutinePauseResponses,
+  RoutineResumeErrors,
+  RoutineResumeResponses,
+  RoutineStopErrors,
+  RoutineStopResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -271,6 +292,14 @@ import type {
   TuiShowToastResponses,
   TuiSubmitPromptErrors,
   TuiSubmitPromptResponses,
+  V1AppsHeartbeatErrors,
+  V1AppsHeartbeatResponses,
+  V1AppsListErrors,
+  V1AppsListResponses,
+  V1AppsRegisterErrors,
+  V1AppsRegisterResponses,
+  V1AppsUnregisterErrors,
+  V1AppsUnregisterResponses,
   V1BrowserRequestListErrors,
   V1BrowserRequestListResponses,
   V1ChatCompletionsErrors,
@@ -283,6 +312,10 @@ import type {
   V1SessionBrowserReplyResponses,
   V2AgentListErrors,
   V2AgentListResponses,
+  V2ChannelsReloadErrors,
+  V2ChannelsReloadResponses,
+  V2ChannelsStatusErrors,
+  V2ChannelsStatusResponses,
   V2ClientsAttachErrors,
   V2ClientsAttachResponses,
   V2ClientsDetachErrors,
@@ -297,6 +330,24 @@ import type {
   V2CredentialRemoveResponses,
   V2CredentialUpdateErrors,
   V2CredentialUpdateResponses,
+  V2DeskApproveErrors,
+  V2DeskApproveResponses,
+  V2DeskDenyErrors,
+  V2DeskDenyResponses,
+  V2DeskEnableErrors,
+  V2DeskEnableResponses,
+  V2DeskLoginErrors,
+  V2DeskLoginResponses,
+  V2DeskLogoutErrors,
+  V2DeskLogoutResponses,
+  V2DeskMachineGetErrors,
+  V2DeskMachineGetResponses,
+  V2DeskMachineUpdateErrors,
+  V2DeskMachineUpdateResponses,
+  V2DeskRevokeErrors,
+  V2DeskRevokeResponses,
+  V2DeskStatusErrors,
+  V2DeskStatusResponses,
   V2EventSubscribeErrors,
   V2EventSubscribeResponses,
   V2FsFindErrors,
@@ -442,12 +493,6 @@ import type {
   WorktreeResetErrors,
   WorktreeResetInput,
   WorktreeResetResponses,
-  MemoryAddErrors,
-  MemoryAddResponses,
-  MemoryListErrors,
-  MemoryListResponses,
-  MemoryRemoveErrors,
-  MemoryRemoveResponses,
 } from "./types.gen.js"
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<
@@ -2647,6 +2692,119 @@ export class Mcp extends HeyApiClient {
   }
 }
 
+export class Memory extends HeyApiClient {
+  /**
+   * List memory
+   *
+   * Get every saved lesson and fact, global and per project.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<MemoryListResponses, MemoryListErrors, ThrowOnError>({
+      url: "/memory",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Add memory
+   *
+   * Save a lesson or a fact. A fact with an existing key in the same scope is replaced.
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      kind?: "lesson" | "fact"
+      text?: string
+      negative?: string
+      key?: string
+      value?: string
+      scope?: "global" | "project"
+      repo?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "kind" },
+            { in: "body", key: "text" },
+            { in: "body", key: "negative" },
+            { in: "body", key: "key" },
+            { in: "body", key: "value" },
+            { in: "body", key: "scope" },
+            { in: "body", key: "repo" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<MemoryAddResponses, MemoryAddErrors, ThrowOnError>({
+      url: "/memory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove memory
+   *
+   * Delete a saved lesson or fact by id.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<MemoryRemoveResponses, MemoryRemoveErrors, ThrowOnError>({
+      url: "/memory/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Project extends HeyApiClient {
   /**
    * List all projects
@@ -3202,16 +3360,17 @@ export class Question extends HeyApiClient {
   }
 }
 
-export class Memory extends HeyApiClient {
+export class Routine extends HeyApiClient {
   /**
-   * List memory
+   * List routines
    *
-   * Get every saved lesson and fact, global and per project.
+   * List routines, optionally only those of one session.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       workspace?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3222,33 +3381,28 @@ export class Memory extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<MemoryListResponses, MemoryListErrors, ThrowOnError>({
-      url: "/memory",
+    return (options?.client ?? this.client).get<RoutineListResponses, RoutineListErrors, ThrowOnError>({
+      url: "/routine",
       ...options,
       ...params,
     })
   }
 
   /**
-   * Add memory
+   * Create routine
    *
-   * Save a lesson or a fact. A fact with an existing key in the same scope is replaced.
+   * Start a routine in a session: an autopilot (after_turn), a schedule (cron or interval), or a watch on a GitHub pull request.
    */
-  public add<ThrowOnError extends boolean = false>(
-    parameters: {
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
       directory?: string
       workspace?: string
-      kind: "lesson" | "fact"
-      text?: string
-      negative?: string
-      key?: string
-      value?: string
-      scope?: "global" | "project"
-      repo?: string
+      routineCreateInput?: RoutineCreateInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3259,19 +3413,13 @@ export class Memory extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
-            { in: "body", key: "kind" },
-            { in: "body", key: "text" },
-            { in: "body", key: "negative" },
-            { in: "body", key: "key" },
-            { in: "body", key: "value" },
-            { in: "body", key: "scope" },
-            { in: "body", key: "repo" },
+            { key: "routineCreateInput", map: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<MemoryAddResponses, MemoryAddErrors, ThrowOnError>({
-      url: "/memory",
+    return (options?.client ?? this.client).post<RoutineCreateResponses, RoutineCreateErrors, ThrowOnError>({
+      url: "/routine",
       ...options,
       ...params,
       headers: {
@@ -3283,13 +3431,13 @@ export class Memory extends HeyApiClient {
   }
 
   /**
-   * Remove memory
+   * Get routine
    *
-   * Delete a saved lesson or fact by id.
+   * Get one routine.
    */
-  public remove<ThrowOnError extends boolean = false>(
+  public get<ThrowOnError extends boolean = false>(
     parameters: {
-      id: string
+      routineID: string
       directory?: string
       workspace?: string
     },
@@ -3300,15 +3448,111 @@ export class Memory extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "id" },
+            { in: "path", key: "routineID" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).delete<MemoryRemoveResponses, MemoryRemoveErrors, ThrowOnError>({
-      url: "/memory/{id}",
+    return (options?.client ?? this.client).get<RoutineGetResponses, RoutineGetErrors, ThrowOnError>({
+      url: "/routine/{routineID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stop routine
+   *
+   * Stop a routine for good, whatever wakes it. A turn already in flight finishes.
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters: {
+      routineID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "routineID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RoutineStopResponses, RoutineStopErrors, ThrowOnError>({
+      url: "/routine/{routineID}/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Pause routine
+   *
+   * Pause a running routine.
+   */
+  public pause<ThrowOnError extends boolean = false>(
+    parameters: {
+      routineID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "routineID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RoutinePauseResponses, RoutinePauseErrors, ThrowOnError>({
+      url: "/routine/{routineID}/pause",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resume routine
+   *
+   * Resume a paused or blocked routine. Approaches it already ruled out are kept.
+   */
+  public resume<ThrowOnError extends boolean = false>(
+    parameters: {
+      routineID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "routineID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RoutineResumeResponses, RoutineResumeErrors, ThrowOnError>({
+      url: "/routine/{routineID}/resume",
       ...options,
       ...params,
     })
@@ -5356,6 +5600,196 @@ export class Clients extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+}
+
+export class Channels extends HeyApiClient {
+  /**
+   * Chat channel status
+   *
+   * Per channel: enabled in channels.json, connected right now, who owns it, whether it is waiting for its owner's first message, and the last error if any.
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2ChannelsStatusResponses, V2ChannelsStatusErrors, ThrowOnError>({
+      url: "/channels/status",
+      ...options,
+    })
+  }
+
+  /**
+   * Re-read channels.json
+   *
+   * Start newly enabled channels, stop disabled ones, restart changed ones.
+   */
+  public reload<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<V2ChannelsReloadResponses, V2ChannelsReloadErrors, ThrowOnError>({
+      url: "/channels/reload",
+      ...options,
+    })
+  }
+}
+
+export class Machine extends HeyApiClient {
+  /**
+   * This machine
+   *
+   * Machine id, name, kind, OS and the access phones and the web have here. 503 on a server that is not the registered daemon.
+   */
+  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2DeskMachineGetResponses, V2DeskMachineGetErrors, ThrowOnError>({
+      url: "/desk/machine",
+      ...options,
+    })
+  }
+
+  /**
+   * Rename this machine or change its access
+   *
+   * Fields left out keep their value; an empty name keeps the old one. The relay is told at once. 503 on a server that is not the registered daemon.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      deskMachineUpdate?: DeskMachineUpdate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "deskMachineUpdate", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2DeskMachineUpdateResponses, V2DeskMachineUpdateErrors, ThrowOnError>(
+      {
+        url: "/desk/machine",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
+export class Desk extends HeyApiClient {
+  /**
+   * Desk relay status
+   *
+   * The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2DeskStatusResponses, V2DeskStatusErrors, ThrowOnError>({
+      url: "/desk/status",
+      ...options,
+    })
+  }
+
+  /**
+   * Turn the desk relay on or off
+   *
+   * Persisted in channels.json as channel desk. The relay runs while this is on and the machine is signed in. 503 on a server that is not the registered daemon.
+   */
+  public enable<ThrowOnError extends boolean = false>(
+    parameters?: {
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "enabled" }] }])
+    return (options?.client ?? this.client).post<V2DeskEnableResponses, V2DeskEnableErrors, ThrowOnError>({
+      url: "/desk/enable",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Sign this machine in for the desk relay
+   *
+   * Starts the RFC 8628 device grant (or returns the one already running). The daemon polls and stores the token. 409 when already signed in.
+   */
+  public login<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<V2DeskLoginResponses, V2DeskLoginErrors, ThrowOnError>({
+      url: "/desk/login",
+      ...options,
+    })
+  }
+
+  /**
+   * Sign out of the desk relay
+   *
+   * Drops the refresh token and disconnects. Approved devices are kept.
+   */
+  public logout<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<V2DeskLogoutResponses, V2DeskLogoutErrors, ThrowOnError>({
+      url: "/desk/logout",
+      ...options,
+    })
+  }
+
+  /**
+   * Allow a device
+   *
+   * Approve the pending device showing this six-digit code. 404 when none matches.
+   */
+  public approve<ThrowOnError extends boolean = false>(
+    parameters: {
+      code: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "code" }] }])
+    return (options?.client ?? this.client).post<V2DeskApproveResponses, V2DeskApproveErrors, ThrowOnError>({
+      url: "/desk/pending/{code}/approve",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Refuse a device
+   *
+   * Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.
+   */
+  public deny<ThrowOnError extends boolean = false>(
+    parameters: {
+      code: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "code" }] }])
+    return (options?.client ?? this.client).post<V2DeskDenyResponses, V2DeskDenyErrors, ThrowOnError>({
+      url: "/desk/pending/{code}/deny",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove an approved device
+   *
+   * Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<V2DeskRevokeResponses, V2DeskRevokeErrors, ThrowOnError>({
+      url: "/desk/devices/{id}/revoke",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _machine?: Machine
+  get machine(): Machine {
+    return (this._machine ??= new Machine({ client: this.client }))
   }
 }
 
@@ -7436,6 +7870,16 @@ export class V2 extends HeyApiClient {
     return (this._clients ??= new Clients({ client: this.client }))
   }
 
+  private _channels?: Channels
+  get channels(): Channels {
+    return (this._channels ??= new Channels({ client: this.client }))
+  }
+
+  private _desk?: Desk
+  get desk(): Desk {
+    return (this._desk ??= new Desk({ client: this.client }))
+  }
+
   private _location?: Location
   get location(): Location {
     return (this._location ??= new Location({ client: this.client }))
@@ -7524,6 +7968,82 @@ export class V2 extends HeyApiClient {
   private _projectCopy?: ProjectCopy2
   get projectCopy(): ProjectCopy2 {
     return (this._projectCopy ??= new ProjectCopy2({ client: this.client }))
+  }
+}
+
+export class Apps extends HeyApiClient {
+  /**
+   * List bridged apps
+   *
+   * The desktop apps whose MCP tool servers this engine is connected to.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V1AppsListResponses, V1AppsListErrors, ThrowOnError>({
+      url: "/v1/apps",
+      ...options,
+    })
+  }
+
+  /**
+   * Bridge an app
+   *
+   * Register the app's loopback MCP server; the engine connects it as `app:<name>` for every session. Send a heartbeat at least every ttlMs/2 while the app runs. 400 when mcp_url is not loopback.
+   */
+  public register<ThrowOnError extends boolean = false>(
+    parameters?: {
+      bridgedAppRegisterRequest?: BridgedAppRegisterRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "bridgedAppRegisterRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V1AppsRegisterResponses, V1AppsRegisterErrors, ThrowOnError>({
+      url: "/v1/apps/register",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Keep a bridge alive
+   *
+   * 404 when the registration expired or was never made; register again.
+   */
+  public heartbeat<ThrowOnError extends boolean = false>(
+    parameters: {
+      appID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "appID" }] }])
+    return (options?.client ?? this.client).post<V1AppsHeartbeatResponses, V1AppsHeartbeatErrors, ThrowOnError>({
+      url: "/v1/apps/{appID}/heartbeat",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Unbridge an app
+   *
+   * The engine disconnects the app's MCP server and forgets the registration.
+   */
+  public unregister<ThrowOnError extends boolean = false>(
+    parameters: {
+      appID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "appID" }] }])
+    return (options?.client ?? this.client).delete<V1AppsUnregisterResponses, V1AppsUnregisterErrors, ThrowOnError>({
+      url: "/v1/apps/{appID}",
+      ...options,
+      ...params,
+    })
   }
 }
 
@@ -7703,6 +8223,11 @@ export class Chat extends HeyApiClient {
 }
 
 export class V1 extends HeyApiClient {
+  private _apps?: Apps
+  get apps(): Apps {
+    return (this._apps ??= new Apps({ client: this.client }))
+  }
+
   private _browser?: Browser
   get browser(): Browser {
     return (this._browser ??= new Browser({ client: this.client }))
@@ -7817,6 +8342,11 @@ export class RedrobClient extends HeyApiClient {
     return (this._mcp ??= new Mcp({ client: this.client }))
   }
 
+  private _memory?: Memory
+  get memory(): Memory {
+    return (this._memory ??= new Memory({ client: this.client }))
+  }
+
   private _project?: Project
   get project(): Project {
     return (this._project ??= new Project({ client: this.client }))
@@ -7832,9 +8362,9 @@ export class RedrobClient extends HeyApiClient {
     return (this._question ??= new Question({ client: this.client }))
   }
 
-  private _memory?: Memory
-  get memory(): Memory {
-    return (this._memory ??= new Memory({ client: this.client }))
+  private _routine?: Routine
+  get routine(): Routine {
+    return (this._routine ??= new Routine({ client: this.client }))
   }
 
   private _permission?: Permission

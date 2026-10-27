@@ -105,7 +105,10 @@ const layer = Layer.effect(
           before = after
           yield* store.record(routine.info.id, { fingerprint })
           if (RoutineWatch.isFinished(after)) {
-            yield* store.record(routine.info.id, { status: "done", reason: `The pull request is already ${after.state}.` })
+            yield* store.record(routine.info.id, {
+              status: "done",
+              reason: `The pull request is already ${after.state}.`,
+            })
             return undefined
           }
           continue
@@ -149,7 +152,11 @@ const layer = Layer.effect(
         if (reply._tag === "Failure") {
           // A failed send ends the routine rather than retrying blind into a session it cannot see.
           yield* store
-            .record(id, { status: "stopped", cycles: cycle, reason: `The prompt could not be sent: ${String(reply.failure)}` })
+            .record(id, {
+              status: "stopped",
+              cycles: cycle,
+              reason: `The prompt could not be sent: ${String(reply.failure)}`,
+            })
             .pipe(Effect.uninterruptible)
           return
         }
@@ -203,7 +210,10 @@ const layer = Layer.effect(
             Cause.hasInterruptsOnly(cause)
               ? Effect.void
               : store
-                  .record(id, { status: "stopped", reason: `The routine engine failed: ${Cause.pretty(cause).split("\n")[0]}` })
+                  .record(id, {
+                    status: "stopped",
+                    reason: `The routine engine failed: ${Cause.pretty(cause).split("\n")[0]}`,
+                  })
                   .pipe(Effect.asVoid),
           ),
           Effect.ensuring(store.release(id)),

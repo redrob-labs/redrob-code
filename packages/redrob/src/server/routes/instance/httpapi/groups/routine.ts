@@ -5,7 +5,11 @@ import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable
 import { InvalidRequestError, RoutineNotFoundError } from "../errors"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
-import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery, WorkspaceRoutingQueryFields } from "../middleware/workspace-routing"
+import {
+  WorkspaceRoutingMiddleware,
+  WorkspaceRoutingQuery,
+  WorkspaceRoutingQueryFields,
+} from "../middleware/workspace-routing"
 import { described } from "./metadata"
 
 const root = "/routine"
@@ -68,7 +72,11 @@ export const RoutineApi = HttpApi.make("routine")
           success: described(Routine.Info, "The paused routine"),
           error: [RoutineNotFoundError, InvalidRequestError],
         }).annotateMerge(
-          OpenApi.annotations({ identifier: "routine.pause", summary: "Pause routine", description: "Pause a running routine." }),
+          OpenApi.annotations({
+            identifier: "routine.pause",
+            summary: "Pause routine",
+            description: "Pause a running routine.",
+          }),
         ),
         HttpApiEndpoint.post("resume", `${root}/:routineID/resume`, {
           params: { routineID: Routine.ID },

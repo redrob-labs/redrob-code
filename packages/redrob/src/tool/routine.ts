@@ -16,7 +16,9 @@ export const Parameters = Schema.Struct({
   every: Schema.optional(Schema.Number).annotate({ description: "For a schedule: interval in seconds (min 60)" }),
   timezone: Schema.optional(Schema.String).annotate({ description: "For a cron schedule: IANA time zone" }),
   url: Schema.optional(Schema.String).annotate({ description: "For a watch: full GitHub pull request URL" }),
-  interval: Schema.optional(Schema.Number).annotate({ description: "For a watch: seconds between polls (default 300)" }),
+  interval: Schema.optional(Schema.Number).annotate({
+    description: "For a watch: seconds between polls (default 300)",
+  }),
   maxRuns: Schema.optional(Schema.Number).annotate({ description: "For create: most runs before it stops itself" }),
   id: Schema.optional(Schema.String).annotate({ description: "For stop: the routine id" }),
 })
@@ -93,7 +95,13 @@ export const RoutineTool = Tool.define<typeof Parameters, Metadata, Routine.Serv
           // Asked before anything is stored: a routine spends turns later, when nobody is watching.
           yield* ctx.ask({
             permission: "routine",
-            patterns: [trigger.type === "watch" ? trigger.url : (trigger.cron ?? `every ${trigger.every}s`)],
+            patterns: [
+              trigger.type === "watch"
+                ? trigger.url
+                : trigger.type === "schedule"
+                  ? (trigger.cron ?? `every ${trigger.every}s`)
+                  : "after_turn",
+            ],
             always: ["*"],
             metadata: { goal, trigger },
           })
@@ -107,7 +115,6 @@ export const RoutineTool = Tool.define<typeof Parameters, Metadata, Routine.Serv
           })
           return { title: `Created ${info.id}`, output: describe(info), metadata: { routines: [info] } }
         }).pipe(
-          Effect.catchTag("Routine.InvalidError", (error) => Effect.fail(new Error(error.message))),
           Effect.catchTag("Routine.NotFoundError", (error) => Effect.fail(new Error(error.message))),
           // As the other tools do: a thrown error becomes the tool call's error text.
           Effect.orDie,

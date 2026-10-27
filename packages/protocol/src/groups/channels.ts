@@ -119,7 +119,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.status",
         summary: "Desk relay status",
-        description: "The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.",
+        description:
+          "The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.",
       }),
     ),
   )
@@ -151,7 +152,10 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
     ),
   )
   .add(
-    HttpApiEndpoint.post("desk.logout", "/desk/logout", { success: DeskStatus, error: ServiceUnavailableError }).annotateMerge(
+    HttpApiEndpoint.post("desk.logout", "/desk/logout", {
+      success: DeskStatus,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
       OpenApi.annotations({
         identifier: "v2.desk.logout",
         summary: "Sign out of the desk relay",
@@ -181,7 +185,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.deny",
         summary: "Refuse a device",
-        description: "Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.",
+        description:
+          "Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.",
       }),
     ),
   )
@@ -194,7 +199,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.revoke",
         summary: "Remove an approved device",
-        description: "Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.",
+        description:
+          "Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.",
       }),
     ),
   )
@@ -206,7 +212,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.machine.get",
         summary: "This machine",
-        description: "Machine id, name, kind, OS and the access phones and the web have here. 503 on a server that is not the registered daemon.",
+        description:
+          "Machine id, name, kind, OS and the access phones and the web have here. 503 on a server that is not the registered daemon.",
       }),
     ),
   )

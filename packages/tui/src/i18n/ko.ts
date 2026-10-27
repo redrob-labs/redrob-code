@@ -608,8 +608,7 @@ export const dict: Record<TuiI18nKey, string> = {
   "session.revert.restore": "/redo로 다시 살릴 수 있어요",
   "session.move.deleting": "{{path}} 지우는 중",
   "session.move.load_error": "프로젝트 폴더를 불러오지 못했어요",
-  "session.delete_failed.body":
-    '"{{workspace}}" 작업 영역을 쓸 수 없어서 "{{session}}" 세션을 지우지 못했어요.',
+  "session.delete_failed.body": '"{{workspace}}" 작업 영역을 쓸 수 없어서 "{{session}}" 세션을 지우지 못했어요.',
   "session.delete_failed.choose": "망가진 작업 영역의 이 세션을 어떻게 살릴지 선택하세요.",
   "prompt.new_working_copy": "(새 작업 사본)",
   "prompt.hint.agents": "에이전트",
@@ -919,8 +918,7 @@ export const dict: Record<TuiI18nKey, string> = {
   "tip.cli_run_attach": "{highlight}redrob run --attach{/highlight}로 돌고 있는 서버에 연결해요",
   "tip.cli_upgrade": "{highlight}redrob upgrade{/highlight}를 실행해 최신 버전으로 올리세요",
   "tip.cli_auth_list": "{highlight}redrob auth list{/highlight}를 실행하면 연결한 AI 서비스를 모두 볼 수 있어요",
-  "tip.cli_agent_create":
-    "{highlight}redrob agent create{/highlight}를 실행하면 안내를 따라 에이전트를 만들 수 있어요",
+  "tip.cli_agent_create": "{highlight}redrob agent create{/highlight}를 실행하면 안내를 따라 에이전트를 만들 수 있어요",
   "tip.github_slash": "GitHub 이슈나 PR에서 {highlight}/redrob{/highlight}을 쓰면 AI가 일을 해요",
   "tip.github_install": "{highlight}redrob github install{/highlight}을 실행해 GitHub 워크플로를 설정하세요",
   "tip.github_fix": "이슈에 {highlight}/redrob fix this{/highlight}라고 댓글을 달면 PR이 저절로 만들어져요",

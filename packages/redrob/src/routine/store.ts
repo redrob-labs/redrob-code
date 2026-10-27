@@ -167,8 +167,7 @@ const layer = Layer.effect(
     const { db } = yield* Database.Service
     const events = yield* EventV2Bridge.Service
 
-    const row = (id: ID) =>
-      db.select().from(RoutineTable).where(eq(RoutineTable.id, id)).get().pipe(Effect.orDie)
+    const row = (id: ID) => db.select().from(RoutineTable).where(eq(RoutineTable.id, id)).get().pipe(Effect.orDie)
 
     const publish = (info: Info) => events.publish(Event.Updated, { info }).pipe(Effect.asVoid)
 
@@ -267,7 +266,9 @@ const layer = Layer.effect(
       const found = yield* require(id)
       if (found.status === "paused") return toInfo(found)
       if (found.status !== "running") {
-        return yield* new InvalidError({ message: `Only a running routine can be paused; this one is ${found.status}.` })
+        return yield* new InvalidError({
+          message: `Only a running routine can be paused; this one is ${found.status}.`,
+        })
       }
       const info = yield* write(id, { status: "paused", reason: null, owner: null, lease: null })
       return info ?? toInfo(found)

@@ -59,9 +59,13 @@ export function readMarkers(text: string): Markers {
 /** Whether the recent plans repeat. Compared after normalising whitespace, case and end punctuation. */
 export function isStalled(recentNext: readonly string[], threshold = STALL_THRESHOLD): boolean {
   if (recentNext.length < threshold) return false
-  const tail = recentNext
-    .slice(-threshold)
-    .map((line) => line.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/, ""))
+  const tail = recentNext.slice(-threshold).map((line) =>
+    line
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[.!]+$/, ""),
+  )
   return tail.every((line) => line.length > 0 && line === tail[0])
 }
 
@@ -99,7 +103,11 @@ export function cyclePrompt(input: {
   if (input.wake.type === "watch") parts.push("", "WHAT CHANGED", input.wake.change)
 
   if (input.ledger.rejected.length > 0) {
-    parts.push("", "ALREADY TRIED AND REJECTED -- do not repeat these:", ...input.ledger.rejected.map((item) => `- ${item}`))
+    parts.push(
+      "",
+      "ALREADY TRIED AND REJECTED -- do not repeat these:",
+      ...input.ledger.rejected.map((item) => `- ${item}`),
+    )
   }
 
   parts.push(

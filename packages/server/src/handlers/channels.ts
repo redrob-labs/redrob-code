@@ -9,7 +9,10 @@ function message(error: unknown): string {
 }
 
 const noDesk = () =>
-  new ServiceUnavailableError({ message: "the desk runs only in the registered daemon (redrob service start)", service: "desk" })
+  new ServiceUnavailableError({
+    message: "the desk runs only in the registered daemon (redrob service start)",
+    service: "desk",
+  })
 
 const OFF = { enabled: false, signedIn: false, connected: false, pending: [], devices: [] }
 
@@ -22,7 +25,9 @@ function desk() {
 function lookup<A>(run: () => Promise<A>) {
   return Effect.tryPromise({ try: run, catch: (error) => error }).pipe(
     Effect.catch((error) =>
-      error instanceof Channels.DeskNotFound ? Effect.fail(new DeskNotFoundError({ message: message(error) })) : Effect.die(error),
+      error instanceof Channels.DeskNotFound
+        ? Effect.fail(new DeskNotFoundError({ message: message(error) }))
+        : Effect.die(error),
     ),
   )
 }

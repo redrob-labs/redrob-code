@@ -26,7 +26,8 @@ export const memoryHandlers = HttpApiBuilder.group(InstanceHttpApi, "memory", (h
     })
 
     const remove = Effect.fn("MemoryHttpApi.remove")(function* (ctx: { params: { id: string } }) {
-      if (!(yield* svc.remove(ctx.params.id))) return yield* Effect.fail(notFound(`Memory entry not found: ${ctx.params.id}`))
+      if (!(yield* svc.remove(ctx.params.id)))
+        return yield* Effect.fail(notFound(`Memory entry not found: ${ctx.params.id}`))
       return true
     })
 

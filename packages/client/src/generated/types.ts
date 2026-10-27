@@ -285,6 +285,40 @@ export type ServerChannelsDeskRevokeOutput = {
   readonly kind: "phone" | "web"
 }
 
+export type ServerChannelsDeskMachineOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "desktop" | "server" | "cloud"
+  readonly os: string
+  readonly access: "read_only" | "ask" | "trusted"
+}
+
+export type ServerChannelsDeskMachineUpdateInput = {
+  readonly name?: {
+    readonly name?: string | undefined
+    readonly kind?: "desktop" | "server" | "cloud" | undefined
+    readonly access?: "read_only" | "ask" | "trusted" | undefined
+  }["name"]
+  readonly kind?: {
+    readonly name?: string | undefined
+    readonly kind?: "desktop" | "server" | "cloud" | undefined
+    readonly access?: "read_only" | "ask" | "trusted" | undefined
+  }["kind"]
+  readonly access?: {
+    readonly name?: string | undefined
+    readonly kind?: "desktop" | "server" | "cloud" | undefined
+    readonly access?: "read_only" | "ask" | "trusted" | undefined
+  }["access"]
+}
+
+export type ServerChannelsDeskMachineUpdateOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "desktop" | "server" | "cloud"
+  readonly os: string
+  readonly access: "read_only" | "ask" | "trusted"
+}
+
 export type ServerAppsListOutput = {
   readonly apps: ReadonlyArray<{
     readonly id: string

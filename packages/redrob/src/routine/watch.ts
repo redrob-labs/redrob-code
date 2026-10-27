@@ -52,7 +52,9 @@ export function snapshot(raw: Raw): Snapshot {
     head: raw.headRefOid ?? "",
     reviewDecision: (raw.reviewDecision ?? "").toLowerCase(),
     checks,
-    reviews: (raw.reviews ?? []).map((review) => `${review.author?.login ?? "?"}:${(review.state ?? "").toLowerCase()}`),
+    reviews: (raw.reviews ?? []).map(
+      (review) => `${review.author?.login ?? "?"}:${(review.state ?? "").toLowerCase()}`,
+    ),
   }
 }
 
