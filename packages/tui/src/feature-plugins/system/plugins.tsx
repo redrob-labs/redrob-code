@@ -166,7 +166,6 @@ function View(props: { api: TuiPluginApi }) {
   const language = useLanguage()
   const size = useTerminalDimensions()
   const [list, setList] = createSignal(props.api.plugins.list())
-  const [cur, setCur] = createSignal<string | undefined>()
   const [lock, setLock] = createSignal(false)
 
   createEffect(() => {
@@ -218,15 +217,13 @@ function View(props: { api: TuiPluginApi }) {
     <DialogSelect
       title={language.t("plugins.dialog.title")}
       options={rows()}
-      current={cur()}
-      onMove={(item) => setCur(item.value)}
+      preserveSelection
       actions={[
         {
           title: language.t("action.toggle"),
           command: "plugins.toggle",
           hidden: lock(),
           onTrigger: (item) => {
-            setCur(item.value)
             flip(item.value)
           },
         },
@@ -240,7 +237,6 @@ function View(props: { api: TuiPluginApi }) {
         },
       ]}
       onSelect={(item) => {
-        setCur(item.value)
         flip(item.value)
       }}
     />
