@@ -792,6 +792,13 @@ export const dict = {
   "plugins.state.inactive": "inactive",
   "plugins.source.builtin": "Built-in plugin",
   "plugins.source.builtin.short": "Built-in",
+  "memory.dialog.title": "Memory",
+  "memory.loading": "Loading...",
+  "memory.category.lessons": "Lessons",
+  "memory.category.facts": "Facts",
+  "memory.scope.global": "global",
+  "memory.removed": "Removed from memory",
+  "memory.remove_failed": "Could not remove the entry",
 
   // Home tips. Values keep {highlight}...{/highlight} spans, literal command tokens and
   // config keys verbatim; only the surrounding prose is translated.
