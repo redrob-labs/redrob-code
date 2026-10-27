@@ -8,7 +8,7 @@ import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { resetDatabase } from "../fixture/db"
 import { testEffect } from "../lib/effect"
 
-// The OpenAI-compatible route is what every Redrob app (Grow, Canvas, Query, Recall, Office) calls
+// The OpenAI-compatible route is what every Redrob app (Grow, Canvas, Recall, Office) calls
 // on the shared daemon. v0.6.4 shipped with the route's service graph missing the LLM client, so
 // every call -- with or without tools, any model -- died with a 500 "Service not found:
 // @redrob/LLMClient" before a provider was even chosen. This test drives the production route tree

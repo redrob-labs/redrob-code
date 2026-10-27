@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/redrob-labs/redrob-code"
 description = "Find, start, watch and stop the shared Redrob Code daemon from a Rust app: the record in ~/.redrob/run/server.json, its health, who is attached, and the engine's OpenAI-compatible base"
 # Lives beside the engine contract it implements (docs/LOCAL-ENGINE-API.md, section 3) so that
-# every Rust Redrob app (Shape, Canvas, Query, Recall, the launcher) reaches the one daemon the
+# every Rust Redrob app (Shape, Canvas, Recall, the launcher) reaches the one daemon the
 # same way. Apps depend on it as a git dependency pinned to the engine tag they target:
 #   redrob-engine-client = { git = "https://github.com/redrob-labs/redrob-code", tag = "v0.6.3" }
 # No crates.io publish yet; flip `publish` when a registry token exists.

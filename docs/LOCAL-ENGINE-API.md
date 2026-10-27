@@ -214,7 +214,7 @@ Attached apps are counted. `POST /api/clients {app, pid}` attaches, `POST
 for you), `DELETE /api/clients/:id` detaches, `GET /api/clients` lists them with `idleForMs` and
 the daemon's `idleExitAfterMs`. A registered daemon exits once nobody has needed it for
 `--idle-exit` minutes (default 10; 0 keeps it up): no app attached, no request in flight, and no
-authorized request since -- so an app that only calls the API (the Rust apps: Shape, Canvas, Query,
+authorized request since -- so an app that only calls the API (the Rust apps: Shape, Canvas,
 Recall, through `redrob-engine-client`) keeps it alive by using it, and it never leaves under a
 request still being answered. Status polls (`/api/health`, `/api/clients`) do not count: the
 launcher's engine card asks every few seconds. It also exits when another daemon has taken over
@@ -254,7 +254,7 @@ binary (not on `PATH`, no `REDROB_BIN`) is the "engine not installed" case: the 
 and point at the launcher or the Code install, never fall back to calling a provider directly --
 two paths would mean the user cannot tell whether masking applied. The Rust crate
 `redrob-engine-client` (`crates/engine-client` in this repository, pinned by apps as a git
-dependency on the engine tag they target) wraps all of this for Shape, Canvas, Query, Recall and
+dependency on the engine tag they target) wraps all of this for Shape, Canvas, Recall and
 the launcher.
 
 That file is the auth boundary — it carries the Basic secret. It is per-user by
@@ -305,7 +305,7 @@ nothing is written to the user's config. Full contract, payloads and SDK/Rust ex
 | redrob-office                              | drop the bundled binary and the packaging guard; point the engine route at the local daemon; keep its editor-owned tool loop |
 | redrob-cowork                              | drop the download-and-stage step and the duplicate alias copy; keep driving the session API for agent work                   |
 | redrob-shape                               | either pass the local base URL and allow loopback HTTP in its sidecar, or delete the LOCAL transport that cannot work        |
-| redrob-canvas, redrob-query, redrob-recall | optional: switching from the Console to the local daemon buys them one shared login                                          |
+| redrob-canvas, redrob-recall | optional: switching from the Console to the local daemon buys them one shared login                                          |
 | redrob-extension, redrob-cad               | unchanged; they want engine-owned tools and the session API already serves that                                              |
 
 ## Open items
