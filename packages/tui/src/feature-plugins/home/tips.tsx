@@ -16,6 +16,7 @@ function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connec
         title: props.hidden ? language.t("command.tips.show") : language.t("command.tips.hide"),
         category: "System",
         namespace: "palette",
+        hidden: true,
         run() {
           props.api.kv.set("tips_hidden", !props.api.kv.get("tips_hidden", false))
           props.api.ui.dialog.clear()

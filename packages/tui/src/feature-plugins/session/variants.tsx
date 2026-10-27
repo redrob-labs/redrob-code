@@ -152,6 +152,9 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "variants.paraphrase",
+        get desc() {
+          return kvTranslator(api.kv).t("command.desc.variants.paraphrase")
+        },
         get title() {
           return kvTranslator(api.kv).t("variants.paraphrase.title")
         },
@@ -224,6 +227,9 @@ const tui: TuiPlugin = async (api) => {
       },
       {
         name: "variants.compare",
+        get desc() {
+          return kvTranslator(api.kv).t("command.desc.variants.compare")
+        },
         get title() {
           return kvTranslator(api.kv).t("variants.compare.title")
         },
