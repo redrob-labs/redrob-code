@@ -28,6 +28,8 @@ import { Vcs } from "@/project/vcs"
 import { ProviderAuth } from "@/provider/auth"
 import { Provider } from "@/provider/provider"
 import { Question } from "@/question"
+import { Routine } from "@/routine/store"
+import { RoutineEngine } from "@/routine/engine"
 import { SessionCompaction } from "@/session/compaction"
 import { Instruction } from "@/session/instruction"
 import { LLM } from "@/session/llm"
@@ -39,6 +41,7 @@ import { Session } from "@/session/session"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
+import { Memory } from "@/memory/memory"
 import { SessionShare } from "@/share/session"
 import { ShareNext } from "@/share/share-next"
 import { Skill } from "@/skill"
@@ -89,12 +92,14 @@ import { fileHandlers } from "./handlers/file"
 import { globalHandlers } from "./handlers/global"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
+import { memoryHandlers } from "./handlers/memory"
 import { permissionHandlers } from "./handlers/permission"
 import { projectHandlers } from "./handlers/project"
 import { projectCopyHandlers } from "./handlers/project-copy"
 import { providerHandlers } from "./handlers/provider"
 import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
+import { routineHandlers } from "./handlers/routine"
 import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
@@ -156,10 +161,12 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     fileHandlers,
     instanceHandlers,
     mcpHandlers,
+    memoryHandlers,
     projectHandlers,
     projectCopyHandlers,
     ptyHandlers,
     questionHandlers,
+    routineHandlers,
     permissionHandlers,
     providerHandlers,
     sessionHandlers,
@@ -216,9 +223,14 @@ const app = LayerNode.group([
   Skill.node,
   Discovery.node,
   Question.node,
+  Routine.node,
+  // Runs routines in the background. Only the server builds it, so a one-shot CLI command never
+  // adopts a schedule it will exit before firing.
+  RoutineEngine.node,
   Permission.node,
   PermissionSaved.node,
   Todo.node,
+  Memory.node,
   Session.node,
   SessionProjector.node,
   SessionStatus.node,

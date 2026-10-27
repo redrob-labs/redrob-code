@@ -20,6 +20,9 @@ import type {
   ServerChannelsDeskDenyOutput,
   ServerChannelsDeskRevokeInput,
   ServerChannelsDeskRevokeOutput,
+  ServerChannelsDeskMachineOutput,
+  ServerChannelsDeskMachineUpdateInput,
+  ServerChannelsDeskMachineUpdateOutput,
   ServerAppsListOutput,
   ServerAppsRegisterInput,
   ServerAppsRegisterOutput,
@@ -413,6 +416,23 @@ export function make(options: ClientOptions) {
             path: `/desk/devices/${encodeURIComponent(input.id)}/revoke`,
             successStatus: 200,
             declaredStatuses: [404, 503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskMachine: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskMachineOutput>(
+          { method: "GET", path: `/desk/machine`, successStatus: 200, declaredStatuses: [503, 401, 400], empty: false },
+          requestOptions,
+        ),
+      deskMachineUpdate: (input?: ServerChannelsDeskMachineUpdateInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskMachineUpdateOutput>(
+          {
+            method: "POST",
+            path: `/desk/machine`,
+            body: { name: input?.["name"], kind: input?.["kind"], access: input?.["access"] },
+            successStatus: 200,
+            declaredStatuses: [503, 401, 400],
             empty: false,
           },
           requestOptions,

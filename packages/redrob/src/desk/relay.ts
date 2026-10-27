@@ -10,16 +10,27 @@
  * connection after 30 minutes; the daemon gets a fresh ticket and reconnects, with backoff after
  * failures.
  */
-import os from "node:os"
 import type { DaemonConnection } from "@redrob-code/channels-core"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import { AccessTokens, ChatApi, endpoints, type RelayTicket } from "./auth"
 import * as DeskCrypto from "./crypto"
 import { DaemonApi } from "./daemon"
 import { Forwarder, type Link } from "./forward"
-import { decodeAction, decodeControl, encodeAction, encodeControl } from "./frames"
+import {
+  MACHINE_NAMESPACE,
+  decodeAction,
+  decodeControl,
+  encodeAction,
+  encodeControl,
+  encodeMachine,
+  type MachineFrame,
+} from "./frames"
 import { Pairing, deviceKind, type Device, type DeviceKind, type PendingRequest } from "./pairing"
+import { machine } from "./settings"
 import { ToolCatalog } from "./tools"
+
+/** State changes closer together than this go out as one `desk.machine`. */
+const MACHINE_DEBOUNCE_MS = 1_000
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -65,17 +76,26 @@ export class DeskRelay {
   private timers: ReturnType<typeof setInterval>[] = []
   /** Inbound frames are handled one at a time, so receive counters see them in order. */
   private inbound: Promise<void> = Promise.resolve()
+  /** The last `desk.machine` sent on the current connection. */
+  private machineSent?: MachineFrame
+  private machineTimer?: ReturnType<typeof setTimeout>
 
   constructor(
     daemon: DaemonConnection,
     private readonly pairing: Pairing = new Pairing(),
     private readonly log: Logger = consoleLogger,
-    private readonly name: string = os.hostname(),
+    /** Overrides the machine name from the desk settings (hostname by default). */
+    private readonly name?: string,
   ) {
     const { issuer, chatApi } = endpoints()
     this.api = new DaemonApi(daemon)
     this.chat = new ChatApi(chatApi, new AccessTokens(issuer, pairing.tokens()))
-    this.forwarder = new Forwarder(this.api, (kind, sessionId) => this.notify(kind, sessionId), (m) => this.log.warn(m))
+    this.forwarder = new Forwarder(
+      this.api,
+      (kind, sessionId) => this.notify(kind, sessionId),
+      (m) => this.log.warn(m),
+      () => this.machineChanged(),
+    )
     this.tools = new ToolCatalog(this.api, InstallationVersion)
   }
 
@@ -89,7 +109,12 @@ export class DeskRelay {
     this.forwarder.start()
     const refreshTools = () => void this.tools.refresh().catch(() => undefined)
     refreshTools()
-    this.timers.push(setInterval(refreshTools, 60_000), setInterval(() => this.expire(), 30_000))
+    this.timers.push(
+      setInterval(refreshTools, 60_000),
+      setInterval(() => this.expire(), 30_000),
+      // Turns that start and end without a bus event the forwarder sees are caught here.
+      setInterval(() => this.machineChanged(), 60_000),
+    )
     for (const timer of this.timers) timer.unref?.()
     void this.connect()
   }
@@ -99,6 +124,11 @@ export class DeskRelay {
     if (this.reconnect) clearTimeout(this.reconnect)
     for (const timer of this.timers) clearInterval(timer)
     this.timers = []
+    if (this.machineTimer) clearTimeout(this.machineTimer)
+    this.machineTimer = undefined
+    // Tell the room this machine is going off, while the socket is still open.
+    if (this.machineSent) this.sendRaw(MACHINE_NAMESPACE, encodeMachine({ ...this.machineSent, online: false }))
+    this.machineSent = undefined
     this.forwarder.stop()
     this.dropAll()
     this.socket?.close(1000, "stop")
@@ -145,6 +175,7 @@ export class DeskRelay {
     socket.addEventListener("close", (event) => {
       if (this.socket !== socket) return
       this.socket = undefined
+      this.machineSent = undefined
       this.dropAll()
       if (this.stopped) return
       // A connection that lived (the relay's 30-minute close, a server restart) comes straight
@@ -165,17 +196,64 @@ export class DeskRelay {
   }
 
   private sendJson(namespace: string, value: unknown, targetId?: string): void {
-    if (this.socket) this.send(this.socket, namespace, encoder.encode(JSON.stringify(value)), targetId)
+    this.sendRaw(namespace, encoder.encode(JSON.stringify(value)), targetId)
+  }
+
+  private sendRaw(namespace: string, payload: Uint8Array, targetId?: string): void {
+    if (this.socket) this.send(this.socket, namespace, payload, targetId)
   }
 
   private async announce(): Promise<void> {
-    const desk = await this.pairing.key()
+    const [desk, self] = await Promise.all([this.pairing.key(), machine()])
     this.sendJson("desk.announce", {
       v: 1,
       desk: DeskCrypto.b64url(desk.pub),
       deskId: await DeskCrypto.keyId(desk.pub),
-      name: this.name,
+      name: this.name ?? self.name,
+      machineId: self.id,
     })
+    await this.sendMachine(true)
+  }
+
+  // -- machine registration (desk.machine) -----------------------------------------------------
+
+  /** Something that may change the machine's state happened; send it soon. */
+  machineChanged(): void {
+    if (this.stopped || this.machineTimer) return
+    this.machineTimer = setTimeout(() => {
+      this.machineTimer = undefined
+      void this.sendMachine(false).catch(() => undefined)
+    }, MACHINE_DEBOUNCE_MS)
+    this.machineTimer.unref?.()
+  }
+
+  private async machineFrame(): Promise<MachineFrame> {
+    const [self, active] = await Promise.all([
+      machine(),
+      this.api.raw("GET", "/api/session/active").catch(() => undefined),
+    ])
+    const data = (active?.body as { data?: unknown } | undefined)?.data
+    const sessions = typeof data === "object" && data !== null ? Object.keys(data).length : 0
+    return {
+      v: 1,
+      machineId: self.id,
+      name: this.name ?? self.name,
+      kind: self.kind,
+      os: self.os,
+      online: true,
+      sessions,
+      approvals: this.forwarder.approvals(),
+    }
+  }
+
+  /** Send `desk.machine` when it differs from the last one sent (always when `force`). */
+  private async sendMachine(force: boolean): Promise<void> {
+    if (!this.connected) return
+    const frame = await this.machineFrame()
+    if (!force && this.machineSent && JSON.stringify(this.machineSent) === JSON.stringify(frame)) return
+    if (!this.connected) return
+    this.sendRaw(MACHINE_NAMESPACE, encodeMachine(frame))
+    this.machineSent = frame
   }
 
   // -- frames ----------------------------------------------------------------------------------
@@ -201,13 +279,15 @@ export class DeskRelay {
   }
 
   private async onHello(peerId: string, payload: Uint8Array): Promise<void> {
-    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown; kind?: unknown }
+    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown; kind?: unknown; machineId?: unknown }
     try {
       hello = JSON.parse(decoder.decode(payload))
     } catch {
       return
     }
     if (hello.v !== 1 || typeof hello.phone !== "string" || typeof hello.eph !== "string") return
+    // A hello for another machine in the room is that machine's to answer. No `machineId`: every desk answers, as before.
+    if (hello.machineId !== undefined && hello.machineId !== (await machine()).id) return
     const devicePub = DeskCrypto.fromB64url(hello.phone)
     const deviceEph = DeskCrypto.fromB64url(hello.eph)
     try {

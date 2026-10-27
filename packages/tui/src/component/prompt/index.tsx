@@ -362,6 +362,7 @@ export function Prompt(props: PromptProps) {
       {
         title: language.t("command.prompt.remove_editor_context"),
         name: "prompt.editor_context.clear",
+        desc: language.t("command.desc.prompt.editor_context.clear"),
         category: "Prompt",
         enabled: Boolean(editorContext()),
         run: () => {
@@ -426,6 +427,7 @@ export function Prompt(props: PromptProps) {
         title: language.t("command.prompt.editor"),
         category: "Session",
         name: "prompt.editor",
+        desc: language.t("command.desc.prompt.editor"),
         slashName: "editor",
         run: async () => {
           dialog.clear()
@@ -517,6 +519,7 @@ export function Prompt(props: PromptProps) {
       {
         title: language.t("command.prompt.skills"),
         name: "prompt.skills",
+        desc: language.t("command.desc.prompt.skills"),
         category: "Prompt",
         slashName: "skills",
         run: () => {
@@ -740,6 +743,7 @@ export function Prompt(props: PromptProps) {
       {
         title: language.t("command.prompt.stash"),
         name: "prompt.stash",
+        desc: language.t("command.desc.prompt.stash"),
         category: "Prompt",
         enabled: !!store.prompt.input,
         run: () => {
@@ -758,6 +762,7 @@ export function Prompt(props: PromptProps) {
       {
         title: language.t("command.prompt.stash_pop"),
         name: "prompt.stash.pop",
+        desc: language.t("command.desc.prompt.stash.pop"),
         category: "Prompt",
         enabled: stash.list().length > 0,
         run: () => {
@@ -774,6 +779,7 @@ export function Prompt(props: PromptProps) {
       {
         title: language.t("command.prompt.stash_list"),
         name: "prompt.stash.list",
+        desc: language.t("command.desc.prompt.stash.list"),
         category: "Prompt",
         enabled: stash.list().length > 0,
         run: () => {

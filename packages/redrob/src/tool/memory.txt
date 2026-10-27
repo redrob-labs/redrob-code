@@ -1,0 +1,10 @@
+Remember lessons and facts across sessions. What you save here is put in the system prompt of later sessions.
+
+Actions:
+- add_lesson: save a rule the user corrected you on and wants kept ("always X", "never Y", "remember that"). `text` is the rule, `negative` (optional) what not to do. Use `scope: "project"` for a rule about this project only, or `repo` (a path fragment) for a rule about one repository.
+- add_fact: save a fact about the user or the project as `key` + `value`, e.g. key `pref.language`, value `Korean`. Saving the same key again in the same scope replaces the value.
+- list: show every saved entry with its id.
+- search: entries whose text, key or negative contains `query` (case-insensitive substring).
+- remove: delete the entry with `id`.
+
+Save only what changes behavior in future, unrelated sessions. Do not save task progress, file contents, secrets or anything that is only true for the current task.

@@ -1,6 +1,8 @@
 export * from "./client.js"
 export * from "./server.js"
 export * from "../daemon.js"
+// The generated types now carry these too; the daemon client's own shapes win.
+export type { BridgedApp, BridgedAppList } from "../daemon.js"
 
 import { createRedrobClient } from "./client.js"
 import { createRedrobServer } from "./server.js"

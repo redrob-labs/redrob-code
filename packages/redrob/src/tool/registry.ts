@@ -12,6 +12,8 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@redrob-code/core/database/database"
 import { TodoWriteTool } from "./todo"
+import { RoutineTool } from "./routine"
+import { MemoryTool } from "./memory"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
@@ -43,6 +45,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
 import { Question } from "../question"
 import { Todo } from "../session/todo"
+import { Routine } from "../routine/store"
+import { Memory } from "../memory/memory"
 import { LSP } from "@/lsp/lsp"
 import { Instruction } from "../session/instruction"
 import { FSUtil } from "@redrob-code/core/fs-util"
@@ -104,6 +108,8 @@ const layer = Layer.effect(
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
+    const routine = yield* RoutineTool
+    const memorytool = yield* MemoryTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
     const webfetch = yield* WebFetchTool
@@ -221,6 +227,8 @@ const layer = Layer.effect(
           task: Tool.init(task),
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
+          routine: Tool.init(routine),
+          memory: Tool.init(memorytool),
           search: Tool.init(websearch),
           image: Tool.init(imageGenerate),
           speech: Tool.init(speechGenerate),
@@ -246,6 +254,8 @@ const layer = Layer.effect(
             tool.task,
             tool.fetch,
             tool.todo,
+            tool.routine,
+            tool.memory,
             tool.search,
             tool.image,
             tool.speech,
@@ -447,6 +457,8 @@ export const node = LayerNode.make({
     Plugin.node,
     Question.node,
     Todo.node,
+    Routine.node,
+    Memory.node,
     Agent.node,
     Skill.node,
     Session.node,

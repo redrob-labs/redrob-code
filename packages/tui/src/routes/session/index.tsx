@@ -469,6 +469,7 @@ export function Session() {
     {
       title: session()?.share?.url ? language.t("command.session.share_copy") : language.t("command.session.share"),
       value: "session.share",
+      description: language.t("command.desc.session.share"),
       suggested: route.type === "session",
       category: "Session",
       enabled: sync.data.config.share !== "disabled",
@@ -513,6 +514,7 @@ export function Session() {
     {
       title: language.t("command.session.rename"),
       value: "session.rename",
+      description: language.t("command.desc.session.rename"),
       category: "Session",
       slash: {
         name: "rename",
@@ -524,6 +526,7 @@ export function Session() {
     {
       title: language.t("command.session.timeline"),
       value: "session.timeline",
+      description: language.t("command.desc.session.timeline"),
       category: "Session",
       slash: {
         name: "timeline",
@@ -546,6 +549,7 @@ export function Session() {
     {
       title: language.t("command.session.fork"),
       value: "session.fork",
+      description: language.t("command.desc.session.fork"),
       category: "Session",
       slash: {
         name: "fork",
@@ -568,6 +572,7 @@ export function Session() {
     {
       title: language.t("command.session.compact"),
       value: "session.compact",
+      description: language.t("command.desc.session.compact"),
       category: "Session",
       slash: {
         name: "compact",
@@ -594,6 +599,7 @@ export function Session() {
     {
       title: language.t("command.session.unshare"),
       value: "session.unshare",
+      description: language.t("command.desc.session.unshare"),
       category: "Session",
       enabled: !!session()?.share?.url,
       slash: {
@@ -617,6 +623,7 @@ export function Session() {
     {
       title: language.t("command.session.undo"),
       value: "session.undo",
+      description: language.t("command.desc.session.undo"),
       category: "Session",
       slash: {
         name: "undo",
@@ -653,6 +660,7 @@ export function Session() {
     {
       title: language.t("command.session.redo"),
       value: "session.redo",
+      description: language.t("command.desc.session.redo"),
       category: "Session",
       enabled: !!session()?.revert?.messageID,
       slash: {
@@ -679,6 +687,7 @@ export function Session() {
     {
       title: sidebarVisible() ? language.t("command.session.sidebar.hide") : language.t("command.session.sidebar.show"),
       value: "session.sidebar.toggle",
+      description: language.t("command.desc.session.sidebar.toggle"),
       category: "Session",
       run: () => {
         batch(() => {
@@ -692,6 +701,7 @@ export function Session() {
     {
       title: conceal() ? language.t("command.session.conceal.disable") : language.t("command.session.conceal.enable"),
       value: "session.toggle.conceal",
+      description: language.t("command.desc.session.toggle.conceal"),
       category: "Session",
       run: () => {
         setConceal((prev) => !prev)
@@ -703,6 +713,7 @@ export function Session() {
         ? language.t("command.session.timestamps.hide")
         : language.t("command.session.timestamps.show"),
       value: "session.toggle.timestamps",
+      description: language.t("command.desc.session.toggle.timestamps"),
       category: "Session",
       slash: {
         name: "timestamps",
@@ -720,6 +731,7 @@ export function Session() {
         return language.t("command.session.thinking.expand")
       })(),
       value: "session.toggle.thinking",
+      description: language.t("command.desc.session.toggle.thinking"),
       category: "Session",
       slash: {
         name: "thinking",
@@ -735,6 +747,7 @@ export function Session() {
         ? language.t("command.session.tool_details.hide")
         : language.t("command.session.tool_details.show"),
       value: "session.toggle.actions",
+      description: language.t("command.desc.session.toggle.actions"),
       category: "Session",
       run: () => {
         setShowDetails((prev) => !prev)
@@ -744,6 +757,7 @@ export function Session() {
     {
       title: language.t("command.session.scrollbar.toggle"),
       value: "session.toggle.scrollbar",
+      description: language.t("command.desc.session.toggle.scrollbar"),
       category: "Session",
       run: () => {
         setShowScrollbar((prev) => !prev)
@@ -755,6 +769,7 @@ export function Session() {
         ? language.t("command.session.generic_tool_output.hide")
         : language.t("command.session.generic_tool_output.show"),
       value: "session.toggle.generic_tool_output",
+      description: language.t("command.desc.session.toggle.generic_tool_output"),
       category: "Session",
       run: () => {
         setShowGenericToolOutput((prev) => !prev)
@@ -889,6 +904,7 @@ export function Session() {
     {
       title: language.t("command.session.copy_last_message"),
       value: "messages.copy",
+      description: language.t("command.desc.messages.copy"),
       category: "Session",
       run: () => {
         const lastAssistantMessage = messagesBeforeRevert().findLast((message) => message.role === "assistant")
@@ -929,6 +945,7 @@ export function Session() {
     {
       title: language.t("command.session.copy_transcript"),
       value: "session.copy",
+      description: language.t("command.desc.session.copy"),
       category: "Session",
       slash: {
         name: "copy",
@@ -959,6 +976,7 @@ export function Session() {
     {
       title: language.t("command.session.export"),
       value: "session.export",
+      description: language.t("command.desc.session.export"),
       category: "Session",
       slash: {
         name: "export",

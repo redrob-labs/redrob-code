@@ -70,6 +70,8 @@ export type Event =
   | EventBrowserRequestAsked
   | EventBrowserRequestAnswered
   | EventBrowserRequestRefused
+  | EventSessionNextAttachment
+  | EventRoutineUpdated
   | EventTodoUpdated
   | EventLspUpdated
   | EventPermissionAsked
@@ -707,6 +709,50 @@ export type Pty = {
   status: "running" | "exited"
   pid: number
   exitCode?: number
+}
+
+export type RoutineTriggerAfterTurn = {
+  type: "after_turn"
+}
+
+export type RoutineTriggerSchedule = {
+  type: "schedule"
+  cron?: string
+  every?: number
+  timezone?: string
+}
+
+export type RoutineTriggerWatch = {
+  type: "watch"
+  kind: "github_pr"
+  /**
+   * Full pull request URL
+   */
+  url: string
+  interval?: number
+}
+
+export type RoutineTrigger = RoutineTriggerAfterTurn | RoutineTriggerSchedule | RoutineTriggerWatch
+
+export type RoutineStatus = "running" | "paused" | "done" | "blocked" | "stopped"
+
+export type Routine = {
+  id: string
+  sessionID: string
+  goal: string
+  trigger: RoutineTrigger
+  status: RoutineStatus
+  cycles: number
+  maxCycles: number
+  /**
+   * Approaches already tried and ruled out
+   */
+  rejected: Array<string>
+  reason?: string
+  time: {
+    created: number
+    updated: number
+  }
 }
 
 export type Todo = {
@@ -1452,6 +1498,26 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.next.attachment"
+        properties: {
+          sessionID: string
+          id: string
+          name: string
+          mime: string
+          size: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          source: "read" | "share"
+          path: string
+        }
+      }
+    | {
+        id: string
+        type: "routine.updated"
+        properties: {
+          info: Routine
+        }
+      }
+    | {
+        id: string
         type: "todo.updated"
         properties: {
           sessionID: string
@@ -2099,6 +2165,9 @@ export type Config = {
   enterprise?: {
     url?: string
   }
+  chat?: {
+    url?: string
+  }
   tool_output?: {
     max_lines?: number
     max_bytes?: number
@@ -2111,6 +2180,9 @@ export type Config = {
     reserved?: number
     threshold?: number
     maxTurnInputCostUsd?: number
+  }
+  memory?: {
+    budget?: number
   }
   experimental?: {
     disable_paste_summary?: boolean
@@ -2527,6 +2599,13 @@ export type McpServerNotFoundError = {
   message: string
 }
 
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
 export type Project = {
   id: string
   worktree: string
@@ -2568,6 +2647,19 @@ export type QuestionRequest = {
 export type QuestionNotFoundError = {
   _tag: "QuestionNotFoundError"
   requestID: string
+  message: string
+}
+
+export type RoutineCreateInput = {
+  sessionID: string
+  goal: string
+  trigger: RoutineTrigger
+  maxCycles?: number
+}
+
+export type RoutineNotFoundError = {
+  _tag: "RoutineNotFoundError"
+  routineID: string
   message: string
 }
 
@@ -2643,13 +2735,6 @@ export type ProviderAuthError1 = {
     field?: string
     message?: string
     kind?: string
-  }
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
   }
 }
 
@@ -2809,6 +2894,120 @@ export type ClientNotFoundError = {
   message: string
 }
 
+export type ChannelStatus = {
+  name: string
+  enabled: boolean
+  connected: boolean
+  available: boolean
+  lastError?: string
+  owner?: string
+  claimOpen: boolean
+}
+
+export type ChannelStatusList = {
+  channels: Array<ChannelStatus>
+}
+
+export type ChannelReloadResult = {
+  running: Array<string>
+}
+
+export type DeskLogin = {
+  userCode: string
+  verificationUriComplete: string
+  expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DeskStatus = {
+  enabled: boolean
+  signedIn: boolean
+  account?: {
+    email: string
+  }
+  connected: boolean
+  autoAll?: boolean
+  login?: DeskLogin
+  pending: Array<{
+    code: string
+    name: string
+    kind: "phone" | "web"
+    expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }>
+  devices: Array<{
+    id: string
+    name: string
+    kind: "phone" | "web"
+    addedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    online: boolean
+  }>
+}
+
+export type ConflictError = {
+  _tag: "ConflictError"
+  message: string
+  resource?: string
+}
+
+export type DeskDevice = {
+  id: string
+  name: string
+  kind: "phone" | "web"
+}
+
+export type DeskNotFoundError = {
+  _tag: "DeskNotFoundError"
+  message: string
+}
+
+export type DeskMachine = {
+  id: string
+  name: string
+  kind: "desktop" | "server" | "cloud"
+  os: string
+  access: "read_only" | "ask" | "trusted"
+}
+
+export type DeskMachineUpdate = {
+  name?: string
+  kind?: "desktop" | "server" | "cloud"
+  access?: "read_only" | "ask" | "trusted"
+}
+
+export type BridgedApp = {
+  id: string
+  name: string
+  mcpUrl: string
+  pid: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  version?: string
+  tools?: Array<string>
+  registeredAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  lastSeen: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type BridgedAppList = {
+  apps: Array<BridgedApp>
+  ttlMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type BridgedAppRegisterRequest = {
+  name: string
+  mcp_url: string
+  pid: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  version?: string
+  tools?: Array<string>
+}
+
+export type BridgedAppRegistration = {
+  id: string
+  ttlMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type AppNotFoundError = {
+  _tag: "AppNotFoundError"
+  appID: string
+  message: string
+}
+
 export type SessionsResponse = {
   data: Array<SessionV2Info>
   cursor: {
@@ -2836,12 +3035,6 @@ export type PromptInput = {
   text: string
   files?: Array<PromptInputFileAttachment>
   agents?: Array<PromptAgentAttachment>
-}
-
-export type ConflictError = {
-  _tag: "ConflictError"
-  message: string
-  resource?: string
 }
 
 export type MessageNotFoundError = {
@@ -3044,6 +3237,8 @@ export type V2Event =
   | BrowserRequestAsked
   | BrowserRequestAnswered
   | BrowserRequestRefused
+  | SessionNextAttachment
+  | RoutineUpdated
   | TodoUpdated
   | LspUpdated
   | PermissionAsked
@@ -3143,6 +3338,10 @@ export type ChatCompletionRequest = {
   presence_penalty?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   reasoning_effort?: string
   user?: string
+  redrob_context?: {
+    page_url?: string
+    page_title?: string
+  }
 }
 
 export type ChatCompletionResponse = {
@@ -6037,6 +6236,46 @@ export type BrowserRequestRefused = {
   }
 }
 
+export type SessionNextAttachment = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.next.attachment"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    id: string
+    name: string
+    mime: string
+    size: number | "NaN" | "Infinity" | "-Infinity"
+    source: "read" | "share"
+    path: string
+  }
+}
+
+export type RoutineUpdated = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "routine.updated"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    info: Routine
+  }
+}
+
 export type TodoUpdated = {
   id: string
   metadata?: {
@@ -7309,6 +7548,28 @@ export type EventBrowserRequestRefused = {
     sessionID: string
     requestID: string
     reason: string
+  }
+}
+
+export type EventSessionNextAttachment = {
+  id: string
+  type: "session.next.attachment"
+  properties: {
+    sessionID: string
+    id: string
+    name: string
+    mime: string
+    size: number | "NaN" | "Infinity" | "-Infinity"
+    source: "read" | "share"
+    path: string
+  }
+}
+
+export type EventRoutineUpdated = {
+  id: string
+  type: "routine.updated"
+  properties: {
+    info: Routine
   }
 }
 
@@ -9281,6 +9542,122 @@ export type McpDisconnectResponses = {
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
 
+export type MemoryListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type MemoryListError = MemoryListErrors[keyof MemoryListErrors]
+
+export type MemoryListResponses = {
+  /**
+   * Saved lessons and facts, newest first
+   */
+  200: Array<{
+    id: string
+    kind: "lesson" | "fact"
+    text: string
+    negative?: string
+    key?: string
+    project?: string
+    repo?: string
+    time: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }>
+}
+
+export type MemoryListResponse = MemoryListResponses[keyof MemoryListResponses]
+
+export type MemoryAddData = {
+  body?: {
+    kind: "lesson" | "fact"
+    text?: string
+    negative?: string
+    key?: string
+    value?: string
+    scope?: "global" | "project"
+    repo?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryAddErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type MemoryAddError = MemoryAddErrors[keyof MemoryAddErrors]
+
+export type MemoryAddResponses = {
+  /**
+   * The saved entry
+   */
+  200: {
+    id: string
+    kind: "lesson" | "fact"
+    text: string
+    negative?: string
+    key?: string
+    project?: string
+    repo?: string
+    time: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type MemoryAddResponse = MemoryAddResponses[keyof MemoryAddResponses]
+
+export type MemoryRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory/{id}"
+}
+
+export type MemoryRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type MemoryRemoveError = MemoryRemoveErrors[keyof MemoryRemoveErrors]
+
+export type MemoryRemoveResponses = {
+  /**
+   * Entry removed
+   */
+  200: boolean
+}
+
+export type MemoryRemoveResponse = MemoryRemoveResponses[keyof MemoryRemoveResponses]
+
 export type ProjectListData = {
   body?: never
   path?: never
@@ -9811,6 +10188,199 @@ export type QuestionRejectResponses = {
 }
 
 export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
+
+export type RoutineListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    sessionID?: string
+  }
+  url: "/routine"
+}
+
+export type RoutineListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RoutineListError = RoutineListErrors[keyof RoutineListErrors]
+
+export type RoutineListResponses = {
+  /**
+   * Routines, oldest first
+   */
+  200: Array<Routine>
+}
+
+export type RoutineListResponse = RoutineListResponses[keyof RoutineListResponses]
+
+export type RoutineCreateData = {
+  body?: RoutineCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/routine"
+}
+
+export type RoutineCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+}
+
+export type RoutineCreateError = RoutineCreateErrors[keyof RoutineCreateErrors]
+
+export type RoutineCreateResponses = {
+  /**
+   * The routine, already running
+   */
+  200: Routine
+}
+
+export type RoutineCreateResponse = RoutineCreateResponses[keyof RoutineCreateResponses]
+
+export type RoutineGetData = {
+  body?: never
+  path: {
+    routineID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/routine/{routineID}"
+}
+
+export type RoutineGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * RoutineNotFoundError
+   */
+  404: RoutineNotFoundError
+}
+
+export type RoutineGetError = RoutineGetErrors[keyof RoutineGetErrors]
+
+export type RoutineGetResponses = {
+  /**
+   * The routine
+   */
+  200: Routine
+}
+
+export type RoutineGetResponse = RoutineGetResponses[keyof RoutineGetResponses]
+
+export type RoutineStopData = {
+  body?: never
+  path: {
+    routineID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/routine/{routineID}/stop"
+}
+
+export type RoutineStopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * RoutineNotFoundError
+   */
+  404: RoutineNotFoundError
+}
+
+export type RoutineStopError = RoutineStopErrors[keyof RoutineStopErrors]
+
+export type RoutineStopResponses = {
+  /**
+   * The stopped routine
+   */
+  200: Routine
+}
+
+export type RoutineStopResponse = RoutineStopResponses[keyof RoutineStopResponses]
+
+export type RoutinePauseData = {
+  body?: never
+  path: {
+    routineID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/routine/{routineID}/pause"
+}
+
+export type RoutinePauseErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * RoutineNotFoundError
+   */
+  404: RoutineNotFoundError
+}
+
+export type RoutinePauseError = RoutinePauseErrors[keyof RoutinePauseErrors]
+
+export type RoutinePauseResponses = {
+  /**
+   * The paused routine
+   */
+  200: Routine
+}
+
+export type RoutinePauseResponse = RoutinePauseResponses[keyof RoutinePauseResponses]
+
+export type RoutineResumeData = {
+  body?: never
+  path: {
+    routineID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/routine/{routineID}/resume"
+}
+
+export type RoutineResumeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * RoutineNotFoundError
+   */
+  404: RoutineNotFoundError
+}
+
+export type RoutineResumeError = RoutineResumeErrors[keyof RoutineResumeErrors]
+
+export type RoutineResumeResponses = {
+  /**
+   * The running routine
+   */
+  200: Routine
+}
+
+export type RoutineResumeResponse = RoutineResumeResponses[keyof RoutineResumeResponses]
 
 export type PermissionListData = {
   body?: never
@@ -11965,6 +12535,445 @@ export type V2ClientsDetachResponses = {
 }
 
 export type V2ClientsDetachResponse = V2ClientsDetachResponses[keyof V2ClientsDetachResponses]
+
+export type V2ChannelsStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/channels/status"
+}
+
+export type V2ChannelsStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V2ChannelsStatusError = V2ChannelsStatusErrors[keyof V2ChannelsStatusErrors]
+
+export type V2ChannelsStatusResponses = {
+  /**
+   * ChannelStatusList
+   */
+  200: ChannelStatusList
+}
+
+export type V2ChannelsStatusResponse = V2ChannelsStatusResponses[keyof V2ChannelsStatusResponses]
+
+export type V2ChannelsReloadData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/channels/reload"
+}
+
+export type V2ChannelsReloadErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V2ChannelsReloadError = V2ChannelsReloadErrors[keyof V2ChannelsReloadErrors]
+
+export type V2ChannelsReloadResponses = {
+  /**
+   * ChannelReloadResult
+   */
+  200: ChannelReloadResult
+}
+
+export type V2ChannelsReloadResponse = V2ChannelsReloadResponses[keyof V2ChannelsReloadResponses]
+
+export type V2DeskStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/desk/status"
+}
+
+export type V2DeskStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V2DeskStatusError = V2DeskStatusErrors[keyof V2DeskStatusErrors]
+
+export type V2DeskStatusResponses = {
+  /**
+   * DeskStatus
+   */
+  200: DeskStatus
+}
+
+export type V2DeskStatusResponse = V2DeskStatusResponses[keyof V2DeskStatusResponses]
+
+export type V2DeskEnableData = {
+  body?: {
+    enabled: boolean
+  }
+  path?: never
+  query?: never
+  url: "/desk/enable"
+}
+
+export type V2DeskEnableErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskEnableError = V2DeskEnableErrors[keyof V2DeskEnableErrors]
+
+export type V2DeskEnableResponses = {
+  /**
+   * DeskStatus
+   */
+  200: DeskStatus
+}
+
+export type V2DeskEnableResponse = V2DeskEnableResponses[keyof V2DeskEnableResponses]
+
+export type V2DeskLoginData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/desk/login"
+}
+
+export type V2DeskLoginErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskLoginError = V2DeskLoginErrors[keyof V2DeskLoginErrors]
+
+export type V2DeskLoginResponses = {
+  /**
+   * DeskLogin
+   */
+  200: DeskLogin
+}
+
+export type V2DeskLoginResponse = V2DeskLoginResponses[keyof V2DeskLoginResponses]
+
+export type V2DeskLogoutData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/desk/logout"
+}
+
+export type V2DeskLogoutErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskLogoutError = V2DeskLogoutErrors[keyof V2DeskLogoutErrors]
+
+export type V2DeskLogoutResponses = {
+  /**
+   * DeskStatus
+   */
+  200: DeskStatus
+}
+
+export type V2DeskLogoutResponse = V2DeskLogoutResponses[keyof V2DeskLogoutResponses]
+
+export type V2DeskApproveData = {
+  body?: never
+  path: {
+    code: string
+  }
+  query?: never
+  url: "/desk/pending/{code}/approve"
+}
+
+export type V2DeskApproveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * DeskNotFoundError
+   */
+  404: DeskNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskApproveError = V2DeskApproveErrors[keyof V2DeskApproveErrors]
+
+export type V2DeskApproveResponses = {
+  /**
+   * DeskDevice
+   */
+  200: DeskDevice
+}
+
+export type V2DeskApproveResponse = V2DeskApproveResponses[keyof V2DeskApproveResponses]
+
+export type V2DeskDenyData = {
+  body?: never
+  path: {
+    code: string
+  }
+  query?: never
+  url: "/desk/pending/{code}/deny"
+}
+
+export type V2DeskDenyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * DeskNotFoundError
+   */
+  404: DeskNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskDenyError = V2DeskDenyErrors[keyof V2DeskDenyErrors]
+
+export type V2DeskDenyResponses = {
+  /**
+   * DeskDevice
+   */
+  200: DeskDevice
+}
+
+export type V2DeskDenyResponse = V2DeskDenyResponses[keyof V2DeskDenyResponses]
+
+export type V2DeskRevokeData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/desk/devices/{id}/revoke"
+}
+
+export type V2DeskRevokeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * DeskNotFoundError
+   */
+  404: DeskNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskRevokeError = V2DeskRevokeErrors[keyof V2DeskRevokeErrors]
+
+export type V2DeskRevokeResponses = {
+  /**
+   * DeskDevice
+   */
+  200: DeskDevice
+}
+
+export type V2DeskRevokeResponse = V2DeskRevokeResponses[keyof V2DeskRevokeResponses]
+
+export type V2DeskMachineGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/desk/machine"
+}
+
+export type V2DeskMachineGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskMachineGetError = V2DeskMachineGetErrors[keyof V2DeskMachineGetErrors]
+
+export type V2DeskMachineGetResponses = {
+  /**
+   * DeskMachine
+   */
+  200: DeskMachine
+}
+
+export type V2DeskMachineGetResponse = V2DeskMachineGetResponses[keyof V2DeskMachineGetResponses]
+
+export type V2DeskMachineUpdateData = {
+  body?: DeskMachineUpdate
+  path?: never
+  query?: never
+  url: "/desk/machine"
+}
+
+export type V2DeskMachineUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskMachineUpdateError = V2DeskMachineUpdateErrors[keyof V2DeskMachineUpdateErrors]
+
+export type V2DeskMachineUpdateResponses = {
+  /**
+   * DeskMachine
+   */
+  200: DeskMachine
+}
+
+export type V2DeskMachineUpdateResponse = V2DeskMachineUpdateResponses[keyof V2DeskMachineUpdateResponses]
+
+export type V1AppsListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/v1/apps"
+}
+
+export type V1AppsListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V1AppsListError = V1AppsListErrors[keyof V1AppsListErrors]
+
+export type V1AppsListResponses = {
+  /**
+   * BridgedAppList
+   */
+  200: BridgedAppList
+}
+
+export type V1AppsListResponse = V1AppsListResponses[keyof V1AppsListResponses]
+
+export type V1AppsRegisterData = {
+  body?: BridgedAppRegisterRequest
+  path?: never
+  query?: never
+  url: "/v1/apps/register"
+}
+
+export type V1AppsRegisterErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+}
+
+export type V1AppsRegisterError = V1AppsRegisterErrors[keyof V1AppsRegisterErrors]
+
+export type V1AppsRegisterResponses = {
+  /**
+   * BridgedAppRegistration
+   */
+  200: BridgedAppRegistration
+}
+
+export type V1AppsRegisterResponse = V1AppsRegisterResponses[keyof V1AppsRegisterResponses]
+
+export type V1AppsHeartbeatData = {
+  body?: never
+  path: {
+    appID: string
+  }
+  query?: never
+  url: "/v1/apps/{appID}/heartbeat"
+}
+
+export type V1AppsHeartbeatErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * AppNotFoundError
+   */
+  404: AppNotFoundError
+}
+
+export type V1AppsHeartbeatError = V1AppsHeartbeatErrors[keyof V1AppsHeartbeatErrors]
+
+export type V1AppsHeartbeatResponses = {
+  /**
+   * BridgedApp
+   */
+  200: BridgedApp
+}
+
+export type V1AppsHeartbeatResponse = V1AppsHeartbeatResponses[keyof V1AppsHeartbeatResponses]
+
+export type V1AppsUnregisterData = {
+  body?: never
+  path: {
+    appID: string
+  }
+  query?: never
+  url: "/v1/apps/{appID}"
+}
+
+export type V1AppsUnregisterErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type V1AppsUnregisterError = V1AppsUnregisterErrors[keyof V1AppsUnregisterErrors]
+
+export type V1AppsUnregisterResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V1AppsUnregisterResponse = V1AppsUnregisterResponses[keyof V1AppsUnregisterResponses]
 
 export type V2LocationGetData = {
   body?: never

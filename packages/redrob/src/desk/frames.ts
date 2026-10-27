@@ -6,6 +6,9 @@
  *   control frames: JSON text  {"v":1,"type":"hello"|"welcome"|"leave","senderId":..,"targetId"?:..}
  *   action frames:  binary     [u8 version][u32 BE header length][header JSON][payload]
  *                              header = {"senderId":..,"targetId"?:..,"namespace":..}
+ *
+ * Namespaces the desk uses: `desk.announce`, `desk.machine` (both plain JSON), `desk.hello`,
+ * `desk.accept`, `desk.pending`, `desk.denied`, `desk.msg` (sealed).
  */
 export const RELAY_PROTOCOL_VERSION = 1
 export const MAX_RELAY_FRAME_BYTES = 8 * 1024 * 1024
@@ -80,6 +83,44 @@ export function encodeControl(type: ControlFrame["type"], senderId: string, targ
       ? { v: RELAY_PROTOCOL_VERSION, type, senderId }
       : { v: RELAY_PROTOCOL_VERSION, type, senderId, targetId },
   )
+}
+
+/**
+ * `desk.machine`: an action frame a desk broadcasts in the room after it connects, after every
+ * `hello`, and whenever its state changes. Unlike `desk.msg` the payload is plain JSON, like
+ * `desk.announce`, so the relay server may keep the user's machine list from it. Nothing secret
+ * goes in it.
+ */
+export const MACHINE_NAMESPACE = "desk.machine"
+
+export type MachineFrame = {
+  readonly v: 1
+  readonly machineId: string
+  readonly name: string
+  readonly kind: "desktop" | "server" | "cloud"
+  readonly os: string
+  /** False in the last frame a desk sends before it leaves. */
+  readonly online: boolean
+  /** Sessions with a turn running right now. */
+  readonly sessions: number
+  /** Permission requests waiting for an answer. */
+  readonly approvals: number
+}
+
+export function encodeMachine(frame: MachineFrame): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(frame))
+}
+
+/** A `desk.machine` payload; null when it is not one. */
+export function decodeMachine(payload: Uint8Array): MachineFrame | null {
+  if (payload.byteLength > MAX_HEADER_BYTES) return null
+  const value = parse(new TextDecoder().decode(payload))
+  if (!record(value) || value.v !== 1) return null
+  const { machineId, name, kind, os, online, sessions, approvals } = value
+  if (typeof machineId !== "string" || typeof name !== "string" || typeof os !== "string") return null
+  if (kind !== "desktop" && kind !== "server" && kind !== "cloud") return null
+  if (typeof online !== "boolean" || typeof sessions !== "number" || typeof approvals !== "number") return null
+  return { v: 1, machineId, name, kind, os, online, sessions, approvals }
 }
 
 export function encodeAction(

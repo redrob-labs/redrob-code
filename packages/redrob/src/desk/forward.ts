@@ -20,12 +20,19 @@
  * (`POST /api/session/:id/model`), so that turn runs on it; anything else is ignored and the session
  * keeps the PC's model. The `res` then carries `X-Redrob-Model-Applied`: the model the turn uses, or
  * `default` for the PC's default. `GET /desk/models` lists the catalog (id, name, imageInput).
+ *
+ * Machines: a `req` may carry `machineId`; one that is not this machine's is answered 421 and not
+ * run (no `machineId`: this machine, as before). This machine's access (`~/.redrob/desk/settings.json`
+ * `machine.access`) is checked on every `req`: `read_only` answers every POST 403 with
+ * `X-Redrob-Machine-Access: read_only`; `ask` lowers `all` to `edits`, so commands ask;
+ * `trusted` (the default) lets `all` through while the launcher's switch is on. `GET /desk/capabilities` also
+ * reports `machineId` and `access`.
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
-import { allowAutoAll, appendEvent } from "./settings"
+import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
@@ -129,16 +136,34 @@ export async function readAttachment(
     const offset = Math.min(range.offset, size)
     const buffer = Buffer.alloc(Math.min(range.limit, size - offset))
     const { bytesRead } = await file.read(buffer, 0, buffer.length, offset)
-    return { name: attachment.name, mime: attachment.mime, size, offset, data: buffer.subarray(0, bytesRead).toString("base64") }
+    return {
+      name: attachment.name,
+      mime: attachment.mime,
+      size,
+      offset,
+      data: buffer.subarray(0, bytesRead).toString("base64"),
+    }
   } finally {
     await file.close()
   }
 }
 
 /** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
-export async function capabilities(): Promise<{ v: 1; approvalModes: MobileProfile.ApprovalMode[]; defaultApproval: "edits" }> {
-  const approvalModes: MobileProfile.ApprovalMode[] = (await allowAutoAll()) ? ["ask", "edits", "all"] : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits" }
+export async function capabilities(): Promise<{
+  v: 1
+  approvalModes: MobileProfile.ApprovalMode[]
+  defaultApproval: "edits"
+  machineId: string
+  access: MachineAccess
+}> {
+  const self = await machine()
+  const approvalModes: MobileProfile.ApprovalMode[] =
+    self.access === "read_only"
+      ? []
+      : self.access === "trusted" && (await allowAutoAll())
+        ? ["ask", "edits", "all"]
+        : ["ask", "edits"]
+  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -146,15 +171,23 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
   if (typeof headers !== "object" || headers === null) return undefined
   for (const [name, value] of Object.entries(headers)) {
     if (name.toLowerCase() !== "x-redrob-approval") continue
-    return MobileProfile.APPROVAL_MODES.includes(value as MobileProfile.ApprovalMode) ? (value as MobileProfile.ApprovalMode) : "ask"
+    return MobileProfile.APPROVAL_MODES.includes(value as MobileProfile.ApprovalMode)
+      ? (value as MobileProfile.ApprovalMode)
+      : "ask"
   }
   return undefined
 }
 
-/** The mode a session actually gets: `all` unless the launcher's switch is off, then `edits`. */
-async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<MobileProfile.ApprovalMode> {
+/**
+ * The mode a session actually gets. `all` needs this machine's access `trusted` and the launcher's
+ * switch on; otherwise it is lowered to `edits`, where commands still ask.
+ */
+async function appliedMode(
+  requested: MobileProfile.ApprovalMode,
+  access: MachineAccess,
+): Promise<MobileProfile.ApprovalMode> {
   if (requested !== "all") return requested
-  return (await allowAutoAll()) ? "all" : "edits"
+  return access === "trusted" && (await allowAutoAll()) ? "all" : "edits"
 }
 
 /** A model a device may ask for: `<provider>/<model>`, split at the first `/`. */
@@ -222,6 +255,15 @@ function sessionModel(body: unknown): string {
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
 const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
+/** Events after which the machine's running-session or approval count may differ. */
+const ACTIVITY_EVENTS = new Set([
+  "permission.v2.asked",
+  "permission.v2.replied",
+  "session.next.step.started",
+  "session.next.step.ended",
+  "session.next.step.failed",
+  "session.deleted",
+])
 const COALESCE_MS = 100
 /**
  * A device connecting warms the daemon's default location (`GET /api/model`), at most this often.
@@ -278,13 +320,22 @@ export class Forwarder {
   private readonly toolStep = new Set<string>()
   /** Attachments announced on the bus, by session: the only files `/desk/attachment` serves. */
   private readonly attachments = new Map<string, Map<string, Attachment>>()
+  /** Permission requests asked on the bus and not answered yet, for `desk.machine`. */
+  private readonly asked = new Set<string>()
   private abort?: AbortController
 
   constructor(
     private readonly daemon: DaemonApi,
     private readonly notify: Notify,
     private readonly log: (message: string) => void,
+    /** Called when a turn or a permission request may have started or ended (`desk.machine`). */
+    private readonly onActivity: () => void = () => {},
   ) {}
+
+  /** Permission requests waiting for an answer, as far as the bus has said since the forwarder started. */
+  approvals(): number {
+    return this.asked.size
+  }
 
   link(send: Link["send"], device?: string): Link {
     const link: Link = { send, subscriptions: new Set(), queue: [], ...(device ? { device } : {}) }
@@ -319,25 +370,36 @@ export class Forwarder {
     if (typeof message !== "object" || message === null) return
     const value = message as Record<string, unknown>
     if (value.t === "sub") {
-      const sessions = Array.isArray(value.sessions) ? value.sessions.filter((id): id is string => typeof id === "string") : []
+      const sessions = Array.isArray(value.sessions)
+        ? value.sessions.filter((id): id is string => typeof id === "string")
+        : []
       link.subscriptions = new Set(sessions.slice(0, 200))
       return
     }
     if (value.t !== "req" || typeof value.id !== "number" || !Number.isInteger(value.id)) return
     const id = value.id
+    const self = await machine()
+    // A request addressed to another machine is not run here (421 Misdirected Request).
+    // No `machineId` means this machine, as before.
+    if (value.machineId !== undefined && value.machineId !== self.id) return link.send({ t: "res", id, status: 421 })
     const request = { method: value.method, path: value.path, body: value.body } as Request
     const allowed = match(request)
     if (!allowed) return link.send({ t: "res", id, status: 403 })
+    // A read-only machine answers reads only.
+    if (self.access === "read_only" && request.method !== "GET") {
+      return link.send({ t: "res", id, status: 403, headers: { "X-Redrob-Machine-Access": self.access } })
+    }
 
     const { route, sessionID } = allowed
     if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
-    if (route.local === "attachment") return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
+    if (route.local === "attachment")
+      return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
     }
     const requested = route.mark ? requestedMode(value.headers) : undefined
-    const mode = requested ? await appliedMode(requested) : "ask"
+    const mode = requested ? await appliedMode(requested, self.access) : "ask"
     const wantedModel = route.mark ? requestedModel(value.headers) : undefined
     const model = wantedModel !== undefined ? await this.applyModel(route, sessionID, request, wantedModel) : undefined
     const headers = {
@@ -364,7 +426,13 @@ export class Forwarder {
     if (result.body !== undefined && Buffer.byteLength(JSON.stringify(result.body)) > MAX_BODY_BYTES) {
       return link.send({ t: "res", id, status: 413, ...extra })
     }
-    await link.send({ t: "res", id, status: result.status, ...extra, ...(result.body !== undefined ? { body: result.body } : {}) })
+    await link.send({
+      t: "res",
+      id,
+      status: result.status,
+      ...extra,
+      ...(result.body !== undefined ? { body: result.body } : {}),
+    })
   }
 
   private catalog?: { at: number; models: DeskModel[] }
@@ -397,9 +465,12 @@ export class Forwarder {
     // A model added since the cached read is found on a fresh one.
     const known = ref ? has(await this.models()) || has(await this.models(true)) : false
     if (route.mark === "created") {
-      const body = typeof request.body === "object" && request.body !== null ? (request.body as Record<string, unknown>) : {}
-      if (ref && known) return { applied: modelName(ref), body: { ...body, model: { id: ref.id, providerID: ref.providerID } } }
-      if (wanted !== DEFAULT_MODEL) this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; using its default`)
+      const body =
+        typeof request.body === "object" && request.body !== null ? (request.body as Record<string, unknown>) : {}
+      if (ref && known)
+        return { applied: modelName(ref), body: { ...body, model: { id: ref.id, providerID: ref.providerID } } }
+      if (wanted !== DEFAULT_MODEL)
+        this.log(`model ${JSON.stringify(wanted.slice(0, 80))} is not on this PC; using its default`)
       return { applied: sessionModel({ data: body }) }
     }
     if (!sessionID) return { applied: DEFAULT_MODEL }
@@ -448,8 +519,12 @@ export class Forwarder {
     const first = mode === "all" && !(MobileProfile.isMobile(sessionID) && MobileProfile.mode(sessionID) === "all")
     MobileProfile.mark(sessionID, mode)
     if (!first) return
-    void appendEvent({ type: "auto_all_on", sessionId: sessionID, ...(link.device ? { device: link.device } : {}) }).catch(
-      (error: unknown) => this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
+    void appendEvent({
+      type: "auto_all_on",
+      sessionId: sessionID,
+      ...(link.device ? { device: link.device } : {}),
+    }).catch((error: unknown) =>
+      this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
     )
   }
 
@@ -503,11 +578,21 @@ export class Forwarder {
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
-    if (event.type === "permission.v2.asked" && sessionID && MobileProfile.isMobile(sessionID) && !this.watched(sessionID)) {
+    if (event.type === "permission.v2.asked" && typeof event.data?.id === "string") this.asked.add(event.data.id)
+    if (event.type === "permission.v2.replied" && typeof event.data?.requestID === "string")
+      this.asked.delete(event.data.requestID)
+    if (ACTIVITY_EVENTS.has(event.type)) this.onActivity()
+    if (
+      event.type === "permission.v2.asked" &&
+      sessionID &&
+      MobileProfile.isMobile(sessionID) &&
+      !this.watched(sessionID)
+    ) {
       void this.notify("approval", sessionID).catch(() => undefined)
     }
     for (const link of this.links) {
-      const wanted = permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
+      const wanted =
+        permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
       if (!wanted) continue
       link.queue.push(event)
       if (link.timer) continue
@@ -518,10 +603,12 @@ export class Forwarder {
     if (sessionID && this.waiting.has(sessionID)) {
       const finish = typeof event.data?.finish === "string" ? event.data.finish : undefined
       if (event.type === "session.next.step.started") this.toolStep.delete(sessionID)
-      else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called") this.toolStep.add(sessionID)
+      else if (event.type === "session.next.tool.input.started" || event.type === "session.next.tool.called")
+        this.toolStep.add(sessionID)
       else if (event.type === "session.next.step.failed") this.turnEnded(sessionID, stepError(event.data))
       // Some console models finish a tool step with "stop"/"other"; a step that called a tool is not the end.
-      else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID)) this.turnEnded(sessionID)
+      else if (event.type === "session.next.step.ended" && finish !== "tool-calls" && !this.toolStep.has(sessionID))
+        this.turnEnded(sessionID)
     }
   }
 

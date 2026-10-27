@@ -28,7 +28,11 @@ export type Controller = {
 
 export type DeskKind = "phone" | "web"
 
-export type DeskLogin = { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+export type DeskLogin = {
+  readonly userCode: string
+  readonly verificationUriComplete: string
+  readonly expiresAt: number
+}
 
 export type DeskDevice = { readonly id: string; readonly name: string; readonly kind: DeskKind }
 
@@ -60,6 +64,26 @@ export type DeskController = {
   approve(code: string): Promise<DeskDevice>
   deny(code: string): Promise<DeskDevice>
   revoke(id: string): Promise<DeskDevice>
+  /** This machine; optional so an older controller still type-checks (the route answers 503 without it). */
+  machine?(): Promise<DeskMachine>
+  updateMachine?(update: DeskMachineUpdate): Promise<DeskMachine>
+}
+
+export type DeskMachineKind = "desktop" | "server" | "cloud"
+export type DeskMachineAccess = "read_only" | "ask" | "trusted"
+
+export type DeskMachine = {
+  readonly id: string
+  readonly name: string
+  readonly kind: DeskMachineKind
+  readonly os: string
+  readonly access: DeskMachineAccess
+}
+
+export type DeskMachineUpdate = {
+  readonly name?: string
+  readonly kind?: DeskMachineKind
+  readonly access?: DeskMachineAccess
 }
 
 let controller: Controller | undefined
