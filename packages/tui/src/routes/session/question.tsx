@@ -95,6 +95,17 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     setStore("answers", answers)
   }
 
+  // From a multi-select question: send right away when every other question has an answer,
+  // otherwise open the confirm tab so the unanswered ones are visible.
+  function finish() {
+    const rest = questions().every((_, i) => i === store.tab || (store.answers[i]?.length ?? 0) > 0)
+    if (rest) {
+      submit()
+      return
+    }
+    selectTab(questions().length)
+  }
+
   function moveTo(index: number) {
     setStore("selected", index)
   }
@@ -126,6 +137,32 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     }
     pick(opt.label)
   }
+
+  // Key + what it does, only for the keys that work in the current state.
+  const hints = createMemo(() => {
+    if (store.editing) {
+      return [
+        { key: "enter", label: language.t("question.hint.edit_done") },
+        { key: "esc", label: language.t("question.hint.edit_cancel") },
+      ]
+    }
+    if (confirm()) {
+      return [
+        { key: "enter", label: language.t("question.hint.submit") },
+        { key: "tab", label: language.t("question.hint.tab") },
+        { key: "esc", label: language.t("question.hint.dismiss") },
+      ]
+    }
+    const total = options().length + (custom() ? 1 : 0)
+    return [
+      { key: "↑↓", label: language.t("question.hint.move") },
+      { key: "enter", label: multi() ? language.t("question.hint.toggle") : language.t("question.hint.select") },
+      ...(total > 1 ? [{ key: `1~${Math.min(total, 9)}`, label: language.t("question.hint.number") }] : []),
+      ...(multi() ? [{ key: "ctrl+enter", label: language.t("question.hint.submit") }] : []),
+      ...(!single() ? [{ key: "tab", label: language.t("question.hint.tab") }] : []),
+      { key: "esc", label: language.t("question.hint.dismiss") },
+    ]
+  })
 
   onMount(() => {
     const popMode = modeStack.push(QUESTION_MODE)
@@ -305,6 +342,16 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                 group: "Question",
                 cmd: () => selectOption(),
               },
+              ...(multi()
+                ? [
+                    {
+                      key: "ctrl+return",
+                      desc: language.t("question.binding.submit_all"),
+                      group: "Question",
+                      cmd: () => finish(),
+                    },
+                  ]
+                : []),
               { key: "escape", desc: language.t("question.binding.reject"), group: "Question", cmd: () => reject() },
               ...tuiConfig.keybinds.get("app.exit"),
             ]),
@@ -383,6 +430,11 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
 
         <Show when={!confirm()}>
           <box paddingLeft={1} gap={1}>
+            <Show when={questions().length > 1}>
+              <text fg={theme.textMuted}>
+                {language.t("question.position", { index: store.tab + 1, total: questions().length })}
+              </text>
+            </Show>
             <box>
               <text fg={theme.text}>
                 {question()?.question}
@@ -465,7 +517,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                           })
                         }}
                         initialValue={input()}
-                        placeholder={language.t("question.custom_answer")}
+                        placeholder={language.t("question.custom_placeholder")}
                         placeholderColor={theme.textMuted}
                         minHeight={1}
                         maxHeight={6}
@@ -519,32 +571,13 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         justifyContent="space-between"
       >
         <box flexDirection="row" gap={2}>
-          <Show when={!single()}>
-            <text fg={theme.text}>
-              {"⇆"} <span style={{ fg: theme.textMuted }}>{language.t("question.hint.tab")}</span>
-            </text>
-          </Show>
-          <Show when={!confirm()}>
-            <text fg={theme.text}>
-              {"↑↓"} <span style={{ fg: theme.textMuted }}>{language.t("question.hint.select")}</span>
-            </text>
-          </Show>
-          <text fg={theme.text}>
-            enter{" "}
-            <span style={{ fg: theme.textMuted }}>
-              {confirm()
-                ? language.t("question.hint.submit")
-                : multi()
-                  ? language.t("question.hint.toggle")
-                  : single()
-                    ? language.t("question.hint.submit")
-                    : language.t("question.hint.confirm")}
-            </span>
-          </text>
-
-          <text fg={theme.text}>
-            esc <span style={{ fg: theme.textMuted }}>{language.t("question.hint.dismiss")}</span>
-          </text>
+          <For each={hints()}>
+            {(hint) => (
+              <text fg={theme.text}>
+                {hint.key} <span style={{ fg: theme.textMuted }}>{hint.label}</span>
+              </text>
+            )}
+          </For>
         </box>
       </box>
     </box>
