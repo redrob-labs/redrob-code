@@ -24,8 +24,8 @@
  * Machines: a `req` may carry `machineId`; one that is not this machine's is answered 421 and not
  * run (no `machineId`: this machine, as before). This machine's access (`~/.redrob/desk/settings.json`
  * `machine.access`) is checked on every `req`: `read_only` answers every POST 403 with
- * `X-Redrob-Machine-Access: read_only`; `ask` (the default) lowers `all` to `edits`, so commands ask;
- * `trusted` lets `all` through while the launcher's switch is on. `GET /desk/capabilities` also
+ * `X-Redrob-Machine-Access: read_only`; `ask` lowers `all` to `edits`, so commands ask;
+ * `trusted` (the default) lets `all` through while the launcher's switch is on. `GET /desk/capabilities` also
  * reports `machineId` and `access`.
  */
 import { open } from "node:fs/promises"

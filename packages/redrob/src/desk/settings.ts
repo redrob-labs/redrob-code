@@ -90,13 +90,13 @@ function toMachine(stored: Record<string, unknown>, id: string): Machine {
     name: machineName(stored.name) ?? hostname(),
     kind: MACHINE_KINDS.includes(stored.kind as MachineKind) ? (stored.kind as MachineKind) : "desktop",
     os: process.platform,
-    access: MACHINE_ACCESS.includes(stored.access as MachineAccess) ? (stored.access as MachineAccess) : "ask",
+    access: MACHINE_ACCESS.includes(stored.access as MachineAccess) ? (stored.access as MachineAccess) : "trusted",
   }
 }
 
 const validId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value)
 
-/** This machine. The first call makes and stores its id. Name defaults to the hostname, kind to desktop, access to ask. */
+/** This machine. The first call makes and stores its id. Name defaults to the hostname, kind to desktop, access to trusted. */
 export async function machine(): Promise<Machine> {
   const settings = await readSettings()
   const stored = storedMachine(settings)

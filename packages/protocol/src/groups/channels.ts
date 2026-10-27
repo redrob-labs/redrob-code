@@ -84,7 +84,7 @@ export const DeskMachine = Schema.Struct({
   kind: MachineKind,
   /** `process.platform`. */
   os: Schema.String,
-  /** What phones and the web may do here; `ask` by default. */
+  /** What phones and the web may do here; `trusted` by default. */
   access: MachineAccess,
 }).annotate({ identifier: "DeskMachine" })
 
