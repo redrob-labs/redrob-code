@@ -11,7 +11,7 @@ import { Config, type DaemonConnection } from "@redrob-code/channels-core"
 import { endpoints, finishDeviceLogin, startDeviceLogin, type DeviceAuthorization } from "./auth"
 import { NotFound, Pairing, type DeviceKind } from "./pairing"
 import { DeskRelay, consoleLogger, type Logger } from "./relay"
-import { allowAutoAll } from "./settings"
+import { allowAutoAll, machine, updateMachine, type Machine, type MachineUpdate } from "./settings"
 
 export { NotFound }
 
@@ -193,5 +193,17 @@ export class DeskService {
   async revoke(id: string): Promise<DeskDevice> {
     const device = this.relay ? await this.relay.revoke(id) : await this.pairing.revoke(id)
     return { id: device.id, name: device.name, kind: device.kind }
+  }
+
+  /** This machine (`GET /desk/machine`). */
+  machine(): Promise<Machine> {
+    return machine()
+  }
+
+  /** `POST /desk/machine`: rename, change kind or access; the relay sends a fresh `desk.machine`. */
+  async updateMachine(update: MachineUpdate): Promise<Machine> {
+    const next = await updateMachine(update)
+    this.relay?.machineChanged()
+    return next
   }
 }

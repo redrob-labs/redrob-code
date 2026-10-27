@@ -102,5 +102,23 @@ export const ChannelsHandler = HttpApiBuilder.group(Api, "server.channels", (han
         const controller = yield* desk()
         return yield* lookup(() => controller.revoke(ctx.params.id))
       }),
+    )
+    .handle(
+      "desk.machine.get",
+      Effect.fn(function* () {
+        const controller = yield* desk()
+        const read = controller.machine
+        if (!read) return yield* Effect.fail(noDesk())
+        return yield* Effect.promise(() => read.call(controller))
+      }),
+    )
+    .handle(
+      "desk.machine.update",
+      Effect.fn(function* (ctx) {
+        const controller = yield* desk()
+        const update = controller.updateMachine
+        if (!update) return yield* Effect.fail(noDesk())
+        return yield* Effect.promise(() => update.call(controller, ctx.payload))
+      }),
     ),
 )

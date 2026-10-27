@@ -129,6 +129,8 @@ export const ServeCommand = effectCmd({
           approve: (code) => found(() => desk.approve(code)),
           deny: (code) => found(() => desk.deny(code)),
           revoke: (id) => found(() => desk.revoke(id)),
+          machine: () => desk.machine(),
+          updateMachine: (update) => desk.updateMachine(update),
         },
       })
       const started = yield* Effect.promise(() => channels.startEnabledChannels(channelFactories).catch(() => []))
