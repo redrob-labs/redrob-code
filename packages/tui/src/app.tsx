@@ -72,6 +72,7 @@ import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
 import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
 import { CommandPaletteDialog } from "./component/command-palette"
+import { DialogSettings, type SettingItem } from "./component/dialog-settings"
 import {
   COMMAND_PALETTE_COMMAND,
   REDROB_BASE_MODE,
@@ -569,6 +570,88 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
+  // Every on/off switch lives in one Settings dialog instead of a palette row each.
+  // Keybindings still dispatch the per-switch commands below, which stay hidden.
+  const settingItems = createMemo<SettingItem[]>(() => [
+    {
+      id: "theme.switch_mode",
+      title: language.t("settings.dark_mode"),
+      description: language.t("settings.dark_mode.desc"),
+      on: mode() === "dark",
+      toggle: () => setMode(mode() === "dark" ? "light" : "dark"),
+    },
+    {
+      id: "theme.mode.lock",
+      title: language.t("settings.theme_lock"),
+      description: language.t("settings.theme_lock.desc"),
+      on: locked(),
+      toggle: () => (locked() ? unlock() : lock()),
+    },
+    {
+      id: "app.toggle.animations",
+      title: language.t("settings.animations"),
+      description: language.t("settings.animations.desc"),
+      on: kv.get("animations_enabled", true),
+      toggle: () => kv.set("animations_enabled", !kv.get("animations_enabled", true)),
+    },
+    {
+      id: "app.toggle.file_context",
+      title: language.t("settings.file_context"),
+      description: language.t("settings.file_context.desc"),
+      on: kv.get("file_context_enabled", true),
+      toggle: () => kv.set("file_context_enabled", !kv.get("file_context_enabled", true)),
+    },
+    {
+      id: "app.toggle.diffwrap",
+      title: language.t("settings.diffwrap"),
+      description: language.t("settings.diffwrap.desc"),
+      on: kv.get("diff_wrap_mode", "word") === "word",
+      toggle: () => kv.set("diff_wrap_mode", kv.get("diff_wrap_mode", "word") === "word" ? "none" : "word"),
+    },
+    {
+      id: "app.toggle.paste_summary",
+      title: language.t("settings.paste_summary"),
+      description: language.t("settings.paste_summary.desc"),
+      on: pasteSummaryEnabled(),
+      toggle: () =>
+        setPasteSummaryEnabled((prev) => {
+          const next = !prev
+          kv.set("paste_summary_enabled", next)
+          return next
+        }),
+    },
+    {
+      id: "app.toggle.session_directory_filter",
+      title: language.t("settings.session_directory_filter"),
+      description: language.t("settings.session_directory_filter.desc"),
+      on: kv.get("session_directory_filter_enabled", true),
+      toggle: () => {
+        kv.set("session_directory_filter_enabled", !kv.get("session_directory_filter_enabled", true))
+        void sync.session.refresh()
+      },
+    },
+    {
+      id: "terminal.title.toggle",
+      title: language.t("settings.terminal_title"),
+      description: language.t("settings.terminal_title.desc"),
+      on: terminalTitleEnabled(),
+      toggle: () =>
+        setTerminalTitleEnabled((prev) => {
+          const next = !prev
+          kv.set("terminal_title_enabled", next)
+          if (!next) renderer.setTerminalTitle("")
+          return next
+        }),
+    },
+    {
+      id: "tips.toggle",
+      title: language.t("settings.tips"),
+      description: language.t("settings.tips.desc"),
+      on: !kv.get("tips_hidden", false),
+      toggle: () => kv.set("tips_hidden", !kv.get("tips_hidden", false)),
+    },
+  ])
+
   const appCommands = createMemo(() =>
     [
       {
@@ -716,6 +799,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "variant.cycle",
+        hidden: true,
         title: language.t("command.variant.cycle"),
         category: "Agent",
         run: () => {
@@ -784,6 +868,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "redrob.debug",
+        hidden: true,
         title: language.t("command.debug.view"),
         slashName: "debug",
         run: () => {
@@ -813,6 +898,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "theme.switch_mode",
         title: mode() === "dark" ? language.t("command.theme.mode.light") : language.t("command.theme.mode.dark"),
+        hidden: true,
         run: () => {
           setMode(mode() === "dark" ? "light" : "dark")
           dialog.clear()
@@ -822,10 +908,20 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "theme.mode.lock",
         title: locked() ? language.t("command.theme.mode.unlock") : language.t("command.theme.mode.lock"),
+        hidden: true,
         run: () => {
           if (locked()) unlock()
           else lock()
           dialog.clear()
+        },
+        category: "System",
+      },
+      {
+        name: "settings.show",
+        title: language.t("command.settings.show"),
+        slashName: "settings",
+        run: () => {
+          dialog.replace(() => <DialogSettings items={settingItems} />)
         },
         category: "System",
       },
@@ -841,6 +937,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "docs.open",
         title: language.t("command.docs.open"),
+        hidden: true,
         run: () => {
           open("https://console.redrob.ai/docs").catch(() => {})
           dialog.clear()
@@ -857,6 +954,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.debug",
+        hidden: true,
         title: language.t("command.app.debug"),
         category: "System",
         run: () => {
@@ -866,6 +964,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.console",
+        hidden: true,
         title: language.t("command.app.console"),
         category: "System",
         run: () => {
@@ -875,6 +974,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.heap_snapshot",
+        hidden: true,
         title: language.t("command.app.heap_snapshot"),
         category: "System",
         run: async () => {
@@ -901,6 +1001,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "terminal.title.toggle",
+        hidden: true,
         title: terminalTitleEnabled()
           ? language.t("command.terminal.title.disable")
           : language.t("command.terminal.title.enable"),
@@ -917,6 +1018,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.toggle.animations",
+        hidden: true,
         title: kv.get("animations_enabled", true)
           ? language.t("command.animations.disable")
           : language.t("command.animations.enable"),
@@ -928,6 +1030,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.toggle.file_context",
+        hidden: true,
         title: kv.get("file_context_enabled", true)
           ? language.t("command.file_context.disable")
           : language.t("command.file_context.enable"),
@@ -939,6 +1042,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.toggle.diffwrap",
+        hidden: true,
         title:
           kv.get("diff_wrap_mode", "word") === "word"
             ? language.t("command.diffwrap.disable")
@@ -952,6 +1056,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.toggle.paste_summary",
+        hidden: true,
         title: pasteSummaryEnabled()
           ? language.t("command.paste_summary.disable")
           : language.t("command.paste_summary.enable"),
@@ -967,6 +1072,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.toggle.session_directory_filter",
+        hidden: true,
         title: kv.get("session_directory_filter_enabled", true)
           ? language.t("command.session_directory_filter.disable")
           : language.t("command.session_directory_filter.enable"),

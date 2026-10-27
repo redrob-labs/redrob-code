@@ -269,6 +269,7 @@ const tui: TuiPlugin = async (api) => {
         },
         category: "System",
         namespace: "palette",
+        hidden: true,
         run() {
           showInstall(api)
         },
