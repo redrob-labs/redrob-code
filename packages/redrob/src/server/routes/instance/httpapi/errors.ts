@@ -131,6 +131,15 @@ export class QuestionNotFoundError extends Schema.TaggedErrorClass<QuestionNotFo
   { httpApiStatus: 404 },
 ) {}
 
+export class RoutineNotFoundError extends Schema.TaggedErrorClass<RoutineNotFoundError>()(
+  "RoutineNotFoundError",
+  {
+    routineID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
 export class PermissionNotFoundError extends Schema.TaggedErrorClass<PermissionNotFoundError>()(
   "PermissionNotFoundError",
   {

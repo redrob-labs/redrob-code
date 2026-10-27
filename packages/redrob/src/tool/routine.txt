@@ -1,0 +1,19 @@
+Schedule work to run later in this session, or watch a GitHub pull request and act when it changes.
+
+Each wake sends one ordinary prompt to this session carrying the goal and the approaches already ruled out, so a later run does not repeat a dead end.
+
+## Actions
+- `create` with `trigger: "schedule"`: run on a cron expression (`cron`, optional IANA `timezone`) or every `every` seconds (at least 60).
+- `create` with `trigger: "watch"`: poll the pull request at `url` every `interval` seconds (default 300) and wake only when its state, head commit, review decision, checks or reviews change. Ends by itself once the pull request is merged or closed.
+- `list`: the routines of this session.
+- `stop`: end the routine with `id` for good.
+
+## When to use
+- The user asks to do something at a time or on a cadence ("every morning", "at 6pm").
+- The user asks to keep an eye on a pull request (CI result, review, merge) and react.
+
+## When NOT to use
+- Do not poll in a loop with sleeps or shell commands; create a watch instead.
+- Do not create one the user did not ask for, and do not create a second routine for the same thing; `list` first.
+
+`goal` is the full instruction for every future run, written so a run with no memory of this conversation can act on it.

@@ -28,6 +28,8 @@ import { Vcs } from "@/project/vcs"
 import { ProviderAuth } from "@/provider/auth"
 import { Provider } from "@/provider/provider"
 import { Question } from "@/question"
+import { Routine } from "@/routine/store"
+import { RoutineEngine } from "@/routine/engine"
 import { SessionCompaction } from "@/session/compaction"
 import { Instruction } from "@/session/instruction"
 import { LLM } from "@/session/llm"
@@ -95,6 +97,7 @@ import { projectCopyHandlers } from "./handlers/project-copy"
 import { providerHandlers } from "./handlers/provider"
 import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
+import { routineHandlers } from "./handlers/routine"
 import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
@@ -160,6 +163,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     projectCopyHandlers,
     ptyHandlers,
     questionHandlers,
+    routineHandlers,
     permissionHandlers,
     providerHandlers,
     sessionHandlers,
@@ -216,6 +220,10 @@ const app = LayerNode.group([
   Skill.node,
   Discovery.node,
   Question.node,
+  Routine.node,
+  // Runs routines in the background. Only the server builds it, so a one-shot CLI command never
+  // adopts a schedule it will exit before firing.
+  RoutineEngine.node,
   Permission.node,
   PermissionSaved.node,
   Todo.node,
