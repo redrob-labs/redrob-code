@@ -14641,3 +14641,112 @@ export type PtyConnectResponses = {
 }
 
 export type PtyConnectResponse = PtyConnectResponses[keyof PtyConnectResponses]
+
+export type MemoryEntry = {
+  id: string
+  kind: "lesson" | "fact"
+  text: string
+  negative?: string
+  key?: string
+  project?: string
+  repo?: string
+  time: number
+}
+
+export type MemoryListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type MemoryListError = MemoryListErrors[keyof MemoryListErrors]
+
+export type MemoryListResponses = {
+  /**
+   * Saved lessons and facts, newest first
+   */
+  200: Array<MemoryEntry>
+}
+
+export type MemoryListResponse = MemoryListResponses[keyof MemoryListResponses]
+
+export type MemoryAddData = {
+  body?: {
+    kind: "lesson" | "fact"
+    text?: string
+    negative?: string
+    key?: string
+    value?: string
+    scope?: "global" | "project"
+    repo?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryAddErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type MemoryAddError = MemoryAddErrors[keyof MemoryAddErrors]
+
+export type MemoryAddResponses = {
+  /**
+   * The saved entry
+   */
+  200: MemoryEntry
+}
+
+export type MemoryAddResponse = MemoryAddResponses[keyof MemoryAddResponses]
+
+export type MemoryRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/memory/{id}"
+}
+
+export type MemoryRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type MemoryRemoveError = MemoryRemoveErrors[keyof MemoryRemoveErrors]
+
+export type MemoryRemoveResponses = {
+  /**
+   * Entry removed
+   */
+  200: boolean
+}
+
+export type MemoryRemoveResponse = MemoryRemoveResponses[keyof MemoryRemoveResponses]

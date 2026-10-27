@@ -10,6 +10,7 @@ import SidebarTodo from "./sidebar/todo"
 import DiffViewer from "./system/diff-viewer"
 import Notifications from "./system/notifications"
 import PluginManager from "./system/plugins"
+import Memory from "./system/memory"
 import WhichKey from "./system/which-key"
 import SessionLoop from "./session/loop"
 import SessionVariants from "./session/variants"
@@ -32,6 +33,7 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     SidebarFooter,
     Notifications,
     PluginManager,
+    Memory,
     WhichKey,
     DiffViewer,
     SessionLoop,

@@ -838,6 +838,13 @@ export const dict: Record<TuiI18nKey, string> = {
   "plugins.state.inactive": "비활성",
   "plugins.source.builtin": "내장 플러그인",
   "plugins.source.builtin.short": "내장",
+  "memory.dialog.title": "기억",
+  "memory.loading": "불러오는 중...",
+  "memory.category.lessons": "교훈",
+  "memory.category.facts": "사실",
+  "memory.scope.global": "전역",
+  "memory.removed": "기억에서 삭제했습니다",
+  "memory.remove_failed": "항목을 삭제하지 못했습니다",
 
   "tip.command_or": "{{command}} 또는 {{shortcut}}",
   "tip.no_models": "{highlight}/connect{/highlight}를 실행해 AI 공급자를 추가하고 바로 코딩을 시작하세요",

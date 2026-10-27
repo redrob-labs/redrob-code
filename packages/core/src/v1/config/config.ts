@@ -180,6 +180,14 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  memory: Schema.optional(
+    Schema.Struct({
+      budget: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Most characters of remembered lessons and facts to put in the system prompt (default 8000). Newest entries are kept first.",
+      }),
+    }),
+  ),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),
