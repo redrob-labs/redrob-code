@@ -222,6 +222,15 @@ function sessionModel(body: unknown): string {
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
 const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
+/** Events after which the machine's running-session or approval count may differ. */
+const ACTIVITY_EVENTS = new Set([
+  "permission.v2.asked",
+  "permission.v2.replied",
+  "session.next.step.started",
+  "session.next.step.ended",
+  "session.next.step.failed",
+  "session.deleted",
+])
 const COALESCE_MS = 100
 /**
  * A device connecting warms the daemon's default location (`GET /api/model`), at most this often.
@@ -278,13 +287,22 @@ export class Forwarder {
   private readonly toolStep = new Set<string>()
   /** Attachments announced on the bus, by session: the only files `/desk/attachment` serves. */
   private readonly attachments = new Map<string, Map<string, Attachment>>()
+  /** Permission requests asked on the bus and not answered yet, for `desk.machine`. */
+  private readonly asked = new Set<string>()
   private abort?: AbortController
 
   constructor(
     private readonly daemon: DaemonApi,
     private readonly notify: Notify,
     private readonly log: (message: string) => void,
+    /** Called when a turn or a permission request may have started or ended (`desk.machine`). */
+    private readonly onActivity: () => void = () => {},
   ) {}
+
+  /** Permission requests waiting for an answer, as far as the bus has said since the forwarder started. */
+  approvals(): number {
+    return this.asked.size
+  }
 
   link(send: Link["send"], device?: string): Link {
     const link: Link = { send, subscriptions: new Set(), queue: [], ...(device ? { device } : {}) }
@@ -503,6 +521,9 @@ export class Forwarder {
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
+    if (event.type === "permission.v2.asked" && typeof event.data?.id === "string") this.asked.add(event.data.id)
+    if (event.type === "permission.v2.replied" && typeof event.data?.requestID === "string") this.asked.delete(event.data.requestID)
+    if (ACTIVITY_EVENTS.has(event.type)) this.onActivity()
     if (event.type === "permission.v2.asked" && sessionID && MobileProfile.isMobile(sessionID) && !this.watched(sessionID)) {
       void this.notify("approval", sessionID).catch(() => undefined)
     }
