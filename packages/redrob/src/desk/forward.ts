@@ -20,12 +20,19 @@
  * (`POST /api/session/:id/model`), so that turn runs on it; anything else is ignored and the session
  * keeps the PC's model. The `res` then carries `X-Redrob-Model-Applied`: the model the turn uses, or
  * `default` for the PC's default. `GET /desk/models` lists the catalog (id, name, imageInput).
+ *
+ * Machines: a `req` may carry `machineId`; one that is not this machine's is answered 421 and not
+ * run (no `machineId`: this machine, as before). This machine's access (`~/.redrob/desk/settings.json`
+ * `machine.access`) is checked on every `req`: `read_only` answers every POST 403 with
+ * `X-Redrob-Machine-Access: read_only`; `ask` (the default) lowers `all` to `edits`, so commands ask;
+ * `trusted` lets `all` through while the launcher's switch is on. `GET /desk/capabilities` also
+ * reports `machineId` and `access`.
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
-import { allowAutoAll, appendEvent } from "./settings"
+import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
@@ -136,9 +143,21 @@ export async function readAttachment(
 }
 
 /** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
-export async function capabilities(): Promise<{ v: 1; approvalModes: MobileProfile.ApprovalMode[]; defaultApproval: "edits" }> {
-  const approvalModes: MobileProfile.ApprovalMode[] = (await allowAutoAll()) ? ["ask", "edits", "all"] : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits" }
+export async function capabilities(): Promise<{
+  v: 1
+  approvalModes: MobileProfile.ApprovalMode[]
+  defaultApproval: "edits"
+  machineId: string
+  access: MachineAccess
+}> {
+  const self = await machine()
+  const approvalModes: MobileProfile.ApprovalMode[] =
+    self.access === "read_only"
+      ? []
+      : self.access === "trusted" && (await allowAutoAll())
+        ? ["ask", "edits", "all"]
+        : ["ask", "edits"]
+  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -151,10 +170,13 @@ function requestedMode(headers: unknown): MobileProfile.ApprovalMode | undefined
   return undefined
 }
 
-/** The mode a session actually gets: `all` unless the launcher's switch is off, then `edits`. */
-async function appliedMode(requested: MobileProfile.ApprovalMode): Promise<MobileProfile.ApprovalMode> {
+/**
+ * The mode a session actually gets. `all` needs this machine's access `trusted` and the launcher's
+ * switch on; otherwise it is lowered to `edits`, where commands still ask.
+ */
+async function appliedMode(requested: MobileProfile.ApprovalMode, access: MachineAccess): Promise<MobileProfile.ApprovalMode> {
   if (requested !== "all") return requested
-  return (await allowAutoAll()) ? "all" : "edits"
+  return access === "trusted" && (await allowAutoAll()) ? "all" : "edits"
 }
 
 /** A model a device may ask for: `<provider>/<model>`, split at the first `/`. */
@@ -343,9 +365,17 @@ export class Forwarder {
     }
     if (value.t !== "req" || typeof value.id !== "number" || !Number.isInteger(value.id)) return
     const id = value.id
+    const self = await machine()
+    // A request addressed to another machine is not run here (421 Misdirected Request).
+    // No `machineId` means this machine, as before.
+    if (value.machineId !== undefined && value.machineId !== self.id) return link.send({ t: "res", id, status: 421 })
     const request = { method: value.method, path: value.path, body: value.body } as Request
     const allowed = match(request)
     if (!allowed) return link.send({ t: "res", id, status: 403 })
+    // A read-only machine answers reads only.
+    if (self.access === "read_only" && request.method !== "GET") {
+      return link.send({ t: "res", id, status: 403, headers: { "X-Redrob-Machine-Access": self.access } })
+    }
 
     const { route, sessionID } = allowed
     if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
@@ -355,7 +385,7 @@ export class Forwarder {
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
     }
     const requested = route.mark ? requestedMode(value.headers) : undefined
-    const mode = requested ? await appliedMode(requested) : "ask"
+    const mode = requested ? await appliedMode(requested, self.access) : "ask"
     const wantedModel = route.mark ? requestedModel(value.headers) : undefined
     const model = wantedModel !== undefined ? await this.applyModel(route, sessionID, request, wantedModel) : undefined
     const headers = {

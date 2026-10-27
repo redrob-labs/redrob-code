@@ -279,13 +279,15 @@ export class DeskRelay {
   }
 
   private async onHello(peerId: string, payload: Uint8Array): Promise<void> {
-    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown; kind?: unknown }
+    let hello: { v?: unknown; phone?: unknown; eph?: unknown; name?: unknown; kind?: unknown; machineId?: unknown }
     try {
       hello = JSON.parse(decoder.decode(payload))
     } catch {
       return
     }
     if (hello.v !== 1 || typeof hello.phone !== "string" || typeof hello.eph !== "string") return
+    // A hello for another machine in the room is that machine's to answer. No `machineId`: every desk answers, as before.
+    if (hello.machineId !== undefined && hello.machineId !== (await machine()).id) return
     const devicePub = DeskCrypto.fromB64url(hello.phone)
     const deviceEph = DeskCrypto.fromB64url(hello.eph)
     try {
