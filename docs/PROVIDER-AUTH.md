@@ -100,8 +100,8 @@ the provider layer.
 
 Nothing new is invented, because the point is that products stop having stores of
 their own. Today Office keeps keys in `userData/ai-settings.json`, Design in the
-macOS keychain, the extension in `chrome.storage.local`, Query and Recall in
-separate keyring services — five stores that never read each other, which is why
+macOS keychain, the extension in `chrome.storage.local`, Recall in
+a separate keyring service — four stores that never read each other, which is why
 a user logs in again in every app.
 
 A product reads the engine's store instead. It keeps its own as a cache if it
@@ -144,7 +144,7 @@ What exists, and what it replaces from that proposal:
 So the engine-side work for BYOK is **done**, and the real work is product-side:
 making an app use these routes instead of its own store. Office keeps keys in
 `userData/ai-settings.json`, Design in the macOS keychain, the extension in
-`chrome.storage.local`, Query and Recall in separate keyring services — five stores
+`chrome.storage.local`, Recall in a separate keyring service — four stores
 that never read each other, which is the whole reason a user logs in again in every
 app. Cowork already does it the right way: it stores no provider key and posts the
 key once to the engine (`apps/server/src/redrob-auth.ts`), treating the engine's

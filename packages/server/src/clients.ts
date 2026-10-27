@@ -69,7 +69,7 @@ export function list(): Client[] {
 }
 
 /**
- * Requests count as activity too. The Rust apps (Shape, Canvas, Query, Recall) call the API
+ * Requests count as activity too. The Rust apps (Shape, Canvas, Recall) call the API
  * without attaching, so with attachments alone the daemon would leave ten minutes after it was
  * started -- possibly under a request still being answered. Status polls (health, the client
  * list) are not activity: the launcher's engine card asks every few seconds.

@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/redrob-labs/redrob-code"
 description = "Expose a Rust Redrob app's tools to the shared Redrob Code daemon in one call: a loopback MCP server on a plain thread, registered and kept alive through redrob-engine-client"
 # The Rust side of the app bridge (docs/APP-BRIDGE.md). Sits beside the engine client it builds on
-# so that every Rust Redrob app (Shape, Canvas, Query, Recall, the launcher) bridges the same way.
+# so that every Rust Redrob app (Shape, Canvas, Recall, the launcher) bridges the same way.
 # No async runtime: the MCP server is a blocking HTTP loop on its own std thread, so an egui app
 # calls `AppBridge::start` from wherever it already is. Apps depend on it as a git dependency pinned
 # to the engine tag they target:
