@@ -252,6 +252,9 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "plugins.list",
+        get desc() {
+          return kvTranslator(api.kv).t("command.desc.plugins.list")
+        },
         // Registered at plugin bootstrap, so the title resolves the persisted locale on read.
         get title() {
           return kvTranslator(api.kv).t("plugins.dialog.title")

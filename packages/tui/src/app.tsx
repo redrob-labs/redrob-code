@@ -665,6 +665,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "session.list",
+        desc: language.t("command.desc.session.list"),
         title: language.t("command.session.list"),
         category: "Session",
         suggested: sync.data.session.length > 0,
@@ -676,6 +677,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "session.new",
+        desc: language.t("command.desc.session.new"),
         title: language.t("command.session.new"),
         suggested: route.data.type === "session",
         category: "Session",
@@ -690,6 +692,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "workspace.copy_path",
+        desc: language.t("command.desc.workspace.copy_path"),
         title: language.t("command.workspace.copy_path"),
         category: "Workspace",
         enabled: () => currentWorktreeWorkspace() !== undefined,
@@ -705,6 +708,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "workspace.list",
+        desc: language.t("command.desc.workspace.list"),
         title: language.t("command.workspace.list"),
         category: "Workspace",
         hidden: !Flag.REDROB_EXPERIMENTAL_WORKSPACES,
@@ -724,6 +728,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       })),
       {
         name: "model.list",
+        desc: language.t("command.desc.model.list"),
         title: language.t("command.model.list"),
         suggested: true,
         category: "Agent",
@@ -772,6 +777,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "agent.list",
+        desc: language.t("command.desc.agent.list"),
         title: language.t("command.agent.list"),
         category: "Agent",
         slashName: "agents",
@@ -781,6 +787,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "mcp.list",
+        desc: language.t("command.desc.mcp.list"),
         title: language.t("command.mcp.list"),
         category: "Agent",
         slashName: "mcps",
@@ -808,6 +815,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "variant.list",
+        desc: language.t("command.desc.variant.list"),
         title: language.t("command.variant.list"),
         category: "Agent",
         hidden: local.model.variant.list().length === 0,
@@ -834,6 +842,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "provider.connect",
+        desc: language.t("command.desc.provider.connect"),
         title: language.t("command.provider.connect"),
         suggested: !connected(),
         slashName: "connect",
@@ -846,6 +855,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         ? [
             {
               name: "console.org.switch",
+              desc: language.t("command.desc.console.org.switch"),
               title: language.t("command.console.org_switch"),
               suggested: Boolean(sync.data.console_state.activeOrgName),
               slashName: "org",
@@ -859,6 +869,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         : []),
       {
         name: "redrob.status",
+        desc: language.t("command.desc.redrob.status"),
         title: language.t("command.status.view"),
         slashName: "status",
         run: () => {
@@ -878,6 +889,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "language.switch",
+        desc: language.t("command.desc.language.switch"),
         title: language.t("command.language.switch"),
         slashName: "language",
         slashAliases: ["lang"],
@@ -888,6 +900,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "theme.switch",
+        desc: language.t("command.desc.theme.switch"),
         title: language.t("command.theme.switch"),
         slashName: "themes",
         run: () => {
@@ -918,6 +931,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "settings.show",
+        desc: language.t("command.desc.settings.show"),
         title: language.t("command.settings.show"),
         slashName: "settings",
         run: () => {
@@ -927,6 +941,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "help.show",
+        desc: language.t("command.desc.help.show"),
         title: language.t("command.help.show"),
         slashName: "help",
         run: () => {
@@ -946,6 +961,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "app.exit",
+        desc: language.t("command.desc.app.exit"),
         title: language.t("command.app.exit"),
         slashName: "exit",
         slashAliases: ["quit", "q"],
@@ -1085,6 +1101,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "permission.mode",
+        desc: language.t("command.desc.permission.mode"),
         title:
           local.permission.mode === "auto"
             ? language.t("command.permission.mode.disable")
