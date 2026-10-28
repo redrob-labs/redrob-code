@@ -7,6 +7,7 @@ import type {
   WorkspaceAdapter as PluginWorkspaceAdapter,
 } from "@redrob-code/plugin"
 import { Config } from "@/config/config"
+import { pluginShell } from "./shell"
 import { createRedrobClient } from "@redrob-labs/sdk"
 import { ServerAuth } from "@/server/auth"
 import { Session } from "@/session/session"
@@ -156,8 +157,8 @@ const layer = Layer.effect(
           get serverUrl(): URL {
             return Server.url ?? new URL("http://localhost:4096")
           },
-          // @ts-expect-error
-          $: typeof Bun === "undefined" ? undefined : Bun.$,
+          // @ts-expect-error: undefined outside Bun, as before
+          $: pluginShell(),
         }
 
         for (const plugin of flags.disableDefaultPlugins ? [] : internalPlugins()) {

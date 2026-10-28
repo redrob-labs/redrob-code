@@ -10580,6 +10580,46 @@ export type PermissionReplyResponses = {
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
 
+export type PermissionAskData = {
+  body?: {
+    permission: string
+    patterns: Array<string>
+    metadata?: {
+      [key: string]: unknown
+    }
+    always?: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/permission"
+}
+
+export type PermissionAskErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type PermissionAskError = PermissionAskErrors[keyof PermissionAskErrors]
+
+export type PermissionAskResponses = {
+  /**
+   * The person's answer
+   */
+  200: {
+    reply: "once" | "always" | "reject"
+    message?: string
+  }
+}
+
+export type PermissionAskResponse = PermissionAskResponses[keyof PermissionAskResponses]
+
 export type ProviderListData = {
   body?: never
   path?: never

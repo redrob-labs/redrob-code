@@ -2,6 +2,7 @@ import { PermissionV1 } from "@redrob-code/core/v1/permission"
 import { Permission } from "@/permission"
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { SessionID } from "@/session/schema"
 import { PermissionNotFoundError } from "../errors"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
@@ -10,6 +11,21 @@ import { described } from "./metadata"
 
 const root = "/permission"
 const ReplyPayload = Schema.Struct({
+  reply: PermissionV1.Reply,
+  message: Schema.optional(Schema.String),
+})
+
+/**
+ * A permission raised from outside a local tool call, by an agent runner (Claude Code, Codex) that
+ * runs its own tools. See docs/RUNNER-PROTOCOL.md.
+ */
+export const RunnerAskPayload = Schema.Struct({
+  permission: Schema.String,
+  patterns: Schema.Array(Schema.String),
+  metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  always: Schema.optional(Schema.Array(Schema.String)),
+})
+export const RunnerAskResult = Schema.Struct({
   reply: PermissionV1.Reply,
   message: Schema.optional(Schema.String),
 })
@@ -39,6 +55,20 @@ export const PermissionApi = HttpApi.make("permission")
             identifier: "permission.reply",
             summary: "Respond to permission request",
             description: "Approve or deny a permission request from the AI assistant.",
+          }),
+        ),
+        HttpApiEndpoint.post("ask", "/session/:sessionID/permission", {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: RunnerAskPayload,
+          success: described(RunnerAskResult, "The person's answer"),
+          error: [HttpApiError.BadRequest],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "permission.ask",
+            summary: "Ask the person for a permission",
+            description:
+              "Raise a permission request for a session from outside a tool call and wait for the answer. Used by agent runners that run their own tools.",
           }),
         ),
       )

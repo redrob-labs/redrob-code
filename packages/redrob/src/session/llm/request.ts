@@ -184,6 +184,9 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   const redrobProjectID = input.model.providerID.startsWith("redrob")
     ? (yield* InstanceState.context).project.id
     : undefined
+  // An agent runner (Claude Code, Codex behind the desktop's local shim) runs its own tools, so it
+  // needs the folder the session works in. Only runners get it: other providers never see local paths.
+  const runnerDirectory = isAgentRunner(input.provider) ? (yield* InstanceState.context).directory : undefined
 
   return {
     system,
@@ -204,6 +207,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
             "x-session-affinity": input.sessionID,
             "X-Session-Id": input.sessionID,
             "User-Agent": USER_AGENT,
+            ...(runnerDirectory ? { "x-redrob-directory": encodeURIComponent(runnerDirectory) } : {}),
           }),
       ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
       ...input.model.headers,
@@ -218,6 +222,14 @@ function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission"
     Permission.merge(input.agent.permission, input.permission ?? []),
   )
   return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
+}
+
+/**
+ * A provider whose model is an agent CLI that runs its own tools (config `options.agentRunner` or
+ * `options.providerExecutedTools`). See docs/RUNNER-PROTOCOL.md.
+ */
+export function isAgentRunner(provider: Pick<Provider.Info, "options">): boolean {
+  return provider.options?.agentRunner === true || provider.options?.providerExecutedTools === true
 }
 
 export function hasToolCalls(messages: ModelMessage[]): boolean {
