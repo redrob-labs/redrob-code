@@ -68,7 +68,7 @@ const GatewayResponse = Schema.Struct({
   redrob: Schema.optional(Schema.Struct({ costUsd: Schema.optional(Schema.Number) })),
 })
 
-const decodeResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GatewayResponse))
+export const decodeResponse = Schema.decodeUnknownEffect(Schema.fromJsonString(GatewayResponse))
 
 /** The Redrob key: the engine's stored credential first, then the environment, as the provider resolves it. */
 export function redrobKey(stored: Auth.Info | undefined): string | undefined {
