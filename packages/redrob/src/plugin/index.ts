@@ -157,6 +157,7 @@ const layer = Layer.effect(
           get serverUrl(): URL {
             return Server.url ?? new URL("http://localhost:4096")
           },
+          // @ts-expect-error: undefined outside Bun, as before
           $: pluginShell(),
         }
 
