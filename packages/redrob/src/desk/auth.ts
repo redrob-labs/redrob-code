@@ -239,7 +239,12 @@ export class ChatApi {
     return (await (await this.post("/mobile/relay-ticket", { as: "desk" })).json()) as RelayTicket
   }
 
-  async notify(kind: "done" | "approval", sessionId: string, title?: string): Promise<void> {
-    await this.post("/mobile/notify", { kind, sessionId, ...(title ? { title: title.slice(0, 120) } : {}) })
+  async notify(kind: "done" | "approval", sessionId: string, title?: string, machineId?: string): Promise<void> {
+    await this.post("/mobile/notify", {
+      kind,
+      sessionId,
+      ...(title ? { title: title.slice(0, 120) } : {}),
+      ...(machineId ? { machineId } : {}),
+    })
   }
 }
