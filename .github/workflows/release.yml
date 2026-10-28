@@ -224,7 +224,9 @@ jobs:
             chmod 755 "$binary"
             # --options runtime is the hardened runtime, without which notarization is
             # rejected. --timestamp is required for the signature to outlive the cert.
+            # The entitlements let Bun's JIT run and the binary load the dylibs it unpacks.
             codesign --force --options runtime --timestamp \
+              --entitlements installer/macos-entitlements.plist \
               --keychain "$APPLE_SIGNING_KEYCHAIN" --sign "$APPLE_SIGNING_IDENTITY" "$binary"
             codesign --verify --strict --verbose=2 "$binary"
             archive="$RUNNER_TEMP/$(basename "$(dirname "$(dirname "$binary")")").zip"
