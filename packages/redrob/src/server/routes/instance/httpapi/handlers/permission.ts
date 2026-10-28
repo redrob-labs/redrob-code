@@ -68,7 +68,7 @@ export const permissionHandlers = HttpApiBuilder.group(InstanceHttpApi, "permiss
           sessionID: ctx.params.sessionID,
           permission: ctx.payload.permission,
           patterns: [...ctx.payload.patterns],
-          metadata: { ...ctx.payload.metadata, runner: true },
+          metadata: { runner: true, ...ctx.payload.metadata },
           always: [...(ctx.payload.always ?? ctx.payload.patterns)],
           ruleset: info?.permission ?? [],
         })
