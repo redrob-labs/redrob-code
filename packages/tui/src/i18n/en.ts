@@ -472,6 +472,7 @@ export const dict = {
   "session.thought": "Thought",
   "session.thought.detail": "Thought: {{detail}}",
   "session.compaction": " Compaction ",
+  "session.compaction.summary": "Conversation summary (click to show)",
   "session.todos": "# Todos",
   "session.questions": "# Questions",
   "session.click_to_expand": "Click to expand",
