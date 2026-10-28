@@ -1,4 +1,6 @@
-import os from "node:os"
+import fs from "node:fs"
+import path from "node:path"
+import { Global } from "@redrob-code/core/global"
 import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
@@ -45,9 +47,14 @@ export const ServeCommand = effectCmd({
     // The shared daemon outlives whoever started it. A caller that spawned it from an app's
     // install folder (older SDKs did) would otherwise have that folder held open for the daemon's
     // whole life, blocking the app's Windows update. Requests carry their own directory.
+    // A request without one falls back to the cwd, so the cwd is an empty folder of our own, not
+    // the home folder: on macOS, indexing and watching ~ asks for Desktop, Documents, Downloads,
+    // Photos and every other protected folder the moment an app starts the daemon.
     if (register) {
       try {
-        process.chdir(os.homedir())
+        const idle = path.join(Global.Path.data, "daemon")
+        fs.mkdirSync(idle, { recursive: true })
+        process.chdir(idle)
       } catch {
         /* keep the inherited cwd */
       }
