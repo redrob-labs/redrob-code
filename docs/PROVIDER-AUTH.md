@@ -33,8 +33,8 @@ Sources, and the sentences that decide it:
   their own applications, or to route requests through Free, Pro, or Max plan
   credentials on behalf of their users." And developers "should use API key
   authentication through Claude Console or a supported cloud provider." Enforced:
-  accounts were banned for spoofing the Claude Code harness, and our own upstream
-  (OpenCode) removed Claude subscription AND Claude API key support on 2026-02-19
+  accounts were banned for spoofing the Claude Code harness, and other open-source
+  coding agents removed Claude subscription AND Claude API key support in February 2026
   citing Anthropic legal requests ([The Register,
   2026-02-20](https://www.theregister.com/software/2026/02/20/anthropic-clarifies-ban-on-third-party-tool-access-to-claude/5014546)).
   The only sanctioned subscription route is shipping Claude Code itself,
@@ -191,7 +191,7 @@ missing.
 
 - Reusing Claude Code's or the Codex CLI's OAuth client id to spend a consumer
   subscription from our own harness. Anthropic and Google both ban accounts for
-  it; our upstream removed the code under legal pressure.
+  it, and other open-source agents removed such code under legal pressure.
 - Collecting, storing or proxying Claude.ai session tokens. Named explicitly in
   Anthropic's compliance page.
 - Paying for or intermediating another vendor's usage on a user's behalf. Also
