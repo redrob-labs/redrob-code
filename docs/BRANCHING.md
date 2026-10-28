@@ -1,19 +1,16 @@
 # Branching
 
-Redrob Code is a **fork** of [opencode](https://github.com/anomalyco/opencode), and that
-single fact decides the branching model. A fork's most consequential operation is not a
-feature — it is absorbing upstream, which arrives as a large, conflict-prone merge that
-can leave the tree broken for a while. Everything below exists so that merge never lands
+Redrob Code uses gitflow. Work lands in `develop` first; `main` is released state and
+moves only through a reviewed release pull request, so nothing half-integrated lands
 somewhere people are cloning from.
 
 ## Branches
 
 | Branch | What it is |
 |---|---|
-| `develop` | **Default.** Integration. Every feature, fix and upstream sync lands here first. |
+| `develop` | **Default.** Integration. Every feature and fix lands here first. |
 | `main` | The released state. Only ever advanced by a release pull request from `develop`. |
 | `feat/<slug>` | One change, opened as a pull request into `develop`. Also `fix/`, `docs/`, `chore/` and the rest of the organization type list, when they describe the change better. |
-| `sync/upstream-<tag>` | An upstream absorption, opened as a pull request into `develop`. |
 | `hotfix/<slug>` | A fix for something already released, into `main` **and** `develop`. |
 | `release/<version>` | Only when a release needs stabilising before it ships. Usually skipped. |
 
@@ -21,9 +18,7 @@ somewhere people are cloning from.
 having to retarget them, and the people reading the repository's default branch are
 contributors. End users install a release artifact; they do not clone.
 
-We do not use `master`, and our branches are deliberately **not** named after upstream's
-(`dev`, `main`). When you add an `upstream` remote, `upstream/dev` and `origin/develop`
-should not read as the same thing, because they are not.
+We do not use `master`.
 
 `release/*` is in the table for completeness and is usually a waste of a branch. Reach
 for it only when a release genuinely needs to stabilise while `develop` keeps moving.
@@ -33,25 +28,15 @@ every pull request: `feat fix chore docs test refactor perf ci build sync hotfix
 caller in `.github/workflows/gitflow.yml` is a verbatim copy of the organization template and
 carries no list of its own.
 
-## Upstream
-
-Redrob Code no longer merges upstream (opencode) releases; that stopped on 2026-10-26.
-Upstream files are ours to change like any other. `UPSTREAM_VERSION` still records the
-upstream release this tree was last merged from, because attribution needs it and the
-release notes state it.
-
-Some `opencode` strings are still load-bearing and stay as they are. The legacy
-`.opencode` config directory is read on purpose so existing checkouts keep working, and
-`@gitlab/opencode-gitlab-auth`, `opencode-gitlab-auth` and `opencode-poe-auth` are real
-published packages that are not ours to rename. See [NOTICE.md](../NOTICE.md).
+Third-party package names such as `@gitlab/opencode-gitlab-auth`, `opencode-gitlab-auth`
+and `opencode-poe-auth` are real published packages that are not ours to rename. See
+[NOTICE.md](../NOTICE.md) for license attributions.
 
 ## Releasing
 
-Versions are ours and start at `0.1.0`. They are not derived from the upstream version the
-tree is built on: that is recorded in `UPSTREAM_VERSION` at the repository root, and the
-release notes read it so every release still states what it is based on. The old
-`-redrob.N` suffix was retired because it made every release a semver prerelease, which
-sorts below the release it precedes. See `docs/VERSIONING.md`.
+Versions start at `0.1.0` and follow semver. The old `-redrob.N` suffix was retired
+because it made every release a semver prerelease, which sorts below the release it
+precedes. See `docs/VERSIONING.md`.
 
 Run the `release` workflow from the Actions tab against `develop` with a `bump` of `patch`,
 `minor` or `major`. It computes the next version from the newest `v*` tag, builds every
@@ -74,8 +59,7 @@ shared reusable workflow `redrob-labs/.github/.github/workflows/release-publish.
 collects every `release-*` artifact, writes `SHA256SUMS.txt` and `redrob-launcher.json`,
 and publishes `v<version>` as latest (as a prerelease when the version carries a `-`). This
 workflow passes it the tag and the commit explicitly, because the tag is created by the
-`tag` job here rather than by a push. The release notes are GitHub's generated notes; the
-upstream version the build is based on is in the tag message and in `UPSTREAM_VERSION`.
+`tag` job here rather than by a push. The release notes are GitHub's generated notes.
 What stays this repository's: version resolution, the Bun build, macOS notarization, the
 Linux archives, the Redrob Launcher asset copies (`launcher-assets.ts`), the `VERSION`
 marker `install.sh` reads, and build provenance.

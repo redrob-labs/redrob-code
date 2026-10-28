@@ -59,7 +59,7 @@ jobs:
               # Docs.
               *.md|docs/*|LICENSE*|CHANGELOG*) continue ;;
               # Whole-file version markers.
-              VERSION|REDROB_VERSION|UPSTREAM_VERSION|*-version.txt|*/VERSION) continue ;;
+              VERSION|REDROB_VERSION|*-version.txt|*/VERSION) continue ;;
               # Manifests and lockfiles: allowed only if every changed line is a version string.
               package.json|*/package.json|bun.lock|Cargo.toml|*/Cargo.toml|Cargo.lock|*/Cargo.lock)
                 if git diff -U0 HEAD^1 HEAD -- "$f" \

@@ -21,8 +21,7 @@ software came from.
 What the fork changes: a different provider model (a single Redrob workspace endpoint
 rather than per-vendor keys), Korean as a first-class locale, and a reduced package set
 aimed at the terminal client rather than the hosted console. Releases have their own
-version line starting at `0.1.0`; the upstream version a build is based on is recorded in
-`UPSTREAM_VERSION` and stated in the release notes. See `docs/VERSIONING.md`.
+version line starting at `0.1.0`. See `docs/VERSIONING.md`.
 
 ### Installation
 
@@ -155,6 +154,5 @@ cd packages/core && bun test # tests run per package, never from the repo root
 
 `bun@1.3.14` is required; the pre-push hook enforces it.
 
-See [docs/BRANCHING.md](./docs/BRANCHING.md) for the branch model, how to open a pull
-request, and how upstream releases are absorbed, the last of which is the operation
-that matters most in a fork and the one most easily got wrong.
+See [docs/BRANCHING.md](./docs/BRANCHING.md) for the branch model and how to open a pull
+request.

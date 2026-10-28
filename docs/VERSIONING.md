@@ -1,32 +1,18 @@
 # Versioning
 
-Redrob Code has its own version line starting at `0.1.0`. It is not derived from the
-upstream version it is built on.
+Redrob Code has its own version line starting at `0.1.0`, following semver.
 
-## Why the version is ours
+## Why there is no suffix
 
-Until `0.1.0` the version was the upstream version with a suffix: `1.18.31-redrob.10`
-tracked opencode `v1.18.31`, tenth build. That shape encoded useful provenance in the tag
-and cost three things to get it.
+Before `0.1.0` versions carried a `-redrob.N` suffix, for example `1.18.31-redrob.10`.
+That shape cost three things.
 
 1. `1.18.31-redrob.10` is a semver PRERELEASE. Prereleases sort below the release they
    precede, so every comparison against a plain version was wrong in a way that looked
    right, and `getReleaseType()` classified every single release as a patch because it
    only reads major and minor.
-2. It made our release numbers look like upstream's. Someone reading `1.18.31` had no
-   reason to know whose 1.18.31 it was.
-3. It tied our release cadence to upstream's. Shipping a fix meant deciding what upstream
-   version to claim it was against.
-
-## Where the provenance went
-
-`UPSTREAM_VERSION` at the repository root. One line, the upstream version this tree is
-merged up to, without the `v`. Upstream is no longer merged (see BRANCHING.md), so it is
-fixed at the last release taken, and the release notes read it so every release still
-states what it is built on.
-
-That file is the only place the upstream version lives now. Deleting it does not break a
-build; it silently removes the answer to "what is this built on", which is worse.
+2. The numbers did not say anything about our own release history.
+3. Shipping a fix meant deciding what base number to claim it was against.
 
 ## Bumping
 
