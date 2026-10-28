@@ -2360,7 +2360,7 @@ noLLMServer.instance(
       const other = yield* prompt.prompt({
         sessionID: session.id,
         agent: "build",
-        model: { providerID: ProviderV2.ID.make("opencode"), modelID: ModelV2.ID.make("kimi-k2.5-free") },
+        model: { providerID: ProviderV2.ID.make("redrob"), modelID: ModelV2.ID.make("kimi-k2.5-free") },
         noReply: true,
         parts: [{ type: "text", text: "hello" }],
       })

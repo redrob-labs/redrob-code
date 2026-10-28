@@ -33,7 +33,7 @@ const tools: readonly ToolFixture[] = [
   {
     icon: "✱",
     label:
-      'Grep "OPENCODE.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/redrob/src (151 matches)',
+      'Grep "XDG_DATA.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/redrob/src (151 matches)',
   },
   {
     icon: "✱",

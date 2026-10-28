@@ -27,7 +27,7 @@ inputs:
     default: ${{ github.token }}
 
   mentions:
-    description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/redrob,/rr,/opencode,/oc' -- the upstream phrases are kept for compatibility"
+    description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/redrob,/rr'"
     required: false
 
   variant:

@@ -3,7 +3,7 @@ import { Schema } from "effect"
 import { logo as glyphs } from "./logo"
 
 // Uppercase letterforms, so no row carries an ascender. The blank first row keeps the banner's
-// height; opencode used it for the ascender of its lowercase `d`.
+// height consistent with the glyph rows.
 const wordmark = [
   `                             `,
   `█▀▀█ █▀▀▀ █▀▀▄ █▀▀█ █▀▀█ █▀▀▄`,

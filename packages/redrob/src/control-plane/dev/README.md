@@ -1,4 +1,4 @@
-This is a plugin to simulate a remote environment locally. Add this to `.opencode/redrob.jsonc`:
+This is a plugin to simulate a remote environment locally. Add this to `.redrob/redrob.jsonc`:
 
 ```json
   "plugin": ["../packages/redrob/src/control-plane/dev/debug-workspace-plugin.ts"],

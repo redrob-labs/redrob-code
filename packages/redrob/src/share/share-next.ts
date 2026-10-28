@@ -19,7 +19,7 @@ import { EventV2 } from "@redrob-code/core/event"
 import { Flag } from "@redrob-code/core/flag/flag"
 
 /*
-  Sharing goes to Redrob Chat, not to opencode's share service.
+  Sharing goes to Redrob Chat.
 
   A share is an immutable snapshot (`POST /share` on the Redrob Chat API, kind "transcript", source "code"):
   the transcript is sent once, when the user shares, and nothing is streamed afterwards. Unshare is

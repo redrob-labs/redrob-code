@@ -56,7 +56,7 @@ is the same way a local model is already selected, and needs no new request fiel
 document recommends one. That is not an inconsistency, it is the surface being
 different, and the difference is the whole argument.
 
-A Cowork shim would have to emulate the **OpenCode session API** — sessions, the SSE
+A Cowork shim would have to emulate the **Redrob Code session API** — sessions, the SSE
 event shape, permissions — which is large, ours, and still changing. A shim that
 falls subtly behind produces bugs that look like model bugs. A shim here emulates
 **chat-completions**, which is small, published, frozen, and not ours to change. The

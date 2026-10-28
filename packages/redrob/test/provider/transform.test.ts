@@ -1658,7 +1658,7 @@ describe("ProviderTransform.schema - openai supported schema subset", () => {
   })
 
   test.each([
-    ["opencode", "@ai-sdk/openai"],
+    ["redrob", "@ai-sdk/openai"],
     ["custom-openai-compatible", "@ai-sdk/openai"],
     ["azure", "@ai-sdk/azure"],
   ])("sanitizes %s models using %s", (providerID, npm) => {
@@ -2783,7 +2783,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
   test("preserves metadata using providerID key when store is false", () => {
     const redrobModel = {
       ...openaiModel,
-      providerID: "opencode",
+      providerID: "redrob",
       api: {
         id: "redrob-test",
         url: "https://console.redrob.ai/api/backend/v1",
@@ -2817,7 +2817,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
   test("preserves itemId across all providerOptions keys", () => {
     const redrobModel = {
       ...openaiModel,
-      providerID: "opencode",
+      providerID: "redrob",
       api: {
         id: "redrob-test",
         url: "https://console.redrob.ai/api/backend/v1",

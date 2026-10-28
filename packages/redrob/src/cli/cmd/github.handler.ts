@@ -1220,8 +1220,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
       }
     }
 
-    // The share card image was rendered by opencode's social-cards service from the session title. Shares
-    // now live on Redrob Chat, so the footer carries the plain link and nothing is sent to that service.
+    // Shares live on Redrob Chat, so the footer carries the plain share link and no image.
     function footer(_opts?: { image?: boolean }) {
       const shareLink = shareUrl ? `[redrob session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
       return `\n\n${shareLink}[github run](${runUrl})`

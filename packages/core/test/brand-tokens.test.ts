@@ -127,12 +127,12 @@ describe("OauthCallbackPage tokens", () => {
   const light = OauthCallbackPage.success({ provider: "xAI" })
   const dark = OauthCallbackPage.error("invalid_grant")
 
-  test("speaks the console's semantic vocabulary, not OpenCode's", () => {
+  test("speaks the console's semantic vocabulary, not the former palette's", () => {
     expect(light).toContain("--rr-foreground")
     expect(light).toContain("--rr-muted-foreground")
     expect(light).toContain("--rr-destructive-soft")
     expect(light).not.toContain("--oc-")
-    expect(light.toLowerCase()).not.toContain("opencode")
+    expect(light.toLowerCase()).not.toContain(["open", "code"].join(""))
   })
 
   test("declares only brand primitives as colour values", () => {

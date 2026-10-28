@@ -168,8 +168,8 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
       acc.plugin_origins = plugins
     })
 
-  // Every config dir we may read from: global config dir, any `.redrob` (or legacy
-  // `.opencode`) folders between cwd and home, and REDROB_CONFIG_DIR.
+  // Every config dir we may read from: global config dir, any `.redrob` folders between
+  // cwd and home, and REDROB_CONFIG_DIR.
   const directories = yield* ConfigPaths.directories(ctx.directory)
   yield* Effect.promise(() => migrateTuiConfig({ directories, cwd: ctx.directory }))
 
@@ -197,7 +197,7 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
     yield* mergeFile(acc, file)
   }
 
-  // 4. `.redrob` (and legacy `.opencode`) directories, plus REDROB_CONFIG_DIR, discovered
+  // 4. `.redrob` directories, plus REDROB_CONFIG_DIR, discovered
   // while walking up the tree. Also returned below so callers can install plugin
   // dependencies from each location.
   const dirs = unique(directories).filter(ConfigPaths.isProjectDirectory)

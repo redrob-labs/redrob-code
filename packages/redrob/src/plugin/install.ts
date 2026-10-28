@@ -334,7 +334,7 @@ function patchDir(input: PatchInput) {
   if (input.global) return input.config ?? Global.Path.config
   const git = input.vcs === "git" && input.worktree !== "/"
   const root = git ? input.worktree : input.directory
-  // New files go to `.redrob`; `.opencode` stays readable but is never written to.
+  // Project config files go to `.redrob`.
   return path.join(root, ".redrob")
 }
 

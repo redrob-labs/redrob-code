@@ -16,7 +16,7 @@ src/session/
   llm/
     AGENTS.md               boundary notes for the adapter layer
     ai-sdk.ts               AI SDK fullStream -> @redrob-code/llm LLMEvent adapter
-    native-request.ts       opencode/AI SDK-shaped input -> @redrob-code/llm LLMRequest
+    native-request.ts       AI SDK-shaped input -> @redrob-code/llm LLMRequest
     native-runtime.ts       native runtime gate, tool bridge, and LLMClient handoff
 ```
 

@@ -10,17 +10,12 @@ import { createRedrobClient } from "@redrob-labs/sdk"
 import { spawn } from "node:child_process"
 import { setTimeout as sleep } from "node:timers/promises"
 
-// Phrases that summon the agent from a comment.
-//
-// `/redrob` and `/rr` are ours. `/opencode` and `/oc` are upstream's and are kept
-// deliberately: the phrase lives in people's comments rather than in a config file, so
-// dropping them would silently stop answering every repository that already uses this
-// action, with no error anyone could act on. They cost nothing to keep.
+// Phrases that summon the agent from a comment: `/redrob` and `/rr`.
 //
 // Defined once because the same list was previously written out three times in this
 // file, and a fourth copy in action.yml's description -- which is exactly how a list
 // like this drifts out of agreement with itself.
-const TRIGGER_PHRASES = ["/redrob", "/rr", "/opencode", "/oc"] as const
+const TRIGGER_PHRASES = ["/redrob", "/rr"] as const
 
 const TRIGGER_PATTERN = new RegExp(`(?:^|\\s)(?:${TRIGGER_PHRASES.join("|")})(?=$|\\s)`)
 
@@ -723,7 +718,7 @@ function generateBranchName(type: "issue" | "pr") {
     .replace(/\.\d{3}Z/, "")
     .split("T")
     .join("")
-  return `opencode/${type}${useIssueId()}-${timestamp}`
+  return `redrob/${type}${useIssueId()}-${timestamp}`
 }
 
 async function pushToNewBranch(summary: string, branch: string) {
@@ -853,7 +848,7 @@ async function createPR(base: string, branch: string, title: string, body: strin
   })
   return pr.data.number
 }
-// Shares live on Redrob Chat; the opencode social-cards image is no longer requested.
+// Shares live on Redrob Chat; the footer carries the plain share link.
 function footer(_opts?: { image?: boolean }) {
   const shareLink = shareUrl ? `[Redrob Code session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
   return `\n\n${shareLink}[github run](${useEnvRunUrl()})`

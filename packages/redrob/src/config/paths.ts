@@ -21,9 +21,8 @@ export const files = Effect.fn("ConfigPaths.projectFiles")(function* (
   })).toReversed()
 })
 
-// Config folder names searched while walking up from the cwd. `.opencode` is the legacy
-// name and is listed first so a co-located `.redrob` folder wins the merge.
-const DIRECTORY_NAMES = [".opencode", ".redrob"]
+// Config folder name searched while walking up from the cwd.
+const DIRECTORY_NAMES = [".redrob"]
 
 export const directories = Effect.fn("ConfigPaths.directories")(function* (directory: string, worktree?: string) {
   const afs = yield* FSUtil.Service

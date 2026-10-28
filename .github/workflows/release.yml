@@ -2,10 +2,7 @@ name: release
 
 # Build, sign, and publish a Redrob Code release.
 #
-# Versions are ours and start at 0.1.0. They are NOT derived from the upstream version
-# this tree is built on: that provenance lives in `UPSTREAM_VERSION` at the repository
-# root, which the release notes read. See docs/VERSIONING.md for why the old
-# `1.18.31-redrob.N` shape was retired.
+# Versions start at 0.1.0 and follow semver. See docs/VERSIONING.md.
 #
 # `workflow_dispatch` ONLY. This job reaches real signing credentials, so it must never be
 # reachable from a pull request, a comment, or a schedule. Dispatch requires write access
@@ -56,7 +53,6 @@ jobs:
     outputs:
       version: ${{ steps.compute.outputs.version }}
       tag: ${{ steps.compute.outputs.tag }}
-      upstream: ${{ steps.compute.outputs.upstream }}
       # The one commit this release is. Every later job checks THIS out, not `develop`:
       # a merge that lands while the build runs must not make the tag point at code the
       # binaries were not built from (it did, once, with a merge two minutes after dispatch).
@@ -76,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           # Only plain `vMAJOR.MINOR.PATCH` counts. Anything carrying a `-` is a prerelease
-          # or a legacy upstream-derived tag, and letting one of those win here would make
+          # or a legacy `-redrob.N` tag, and letting one of those win here would make
           # the next version a continuation of a line we deliberately left behind.
           latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
             | grep -v -- '-' | head -n1 || true)"
@@ -103,19 +99,10 @@ jobs:
             echo "::error::v$version already exists; a release cannot be recomputed onto an existing tag"
             exit 1
           fi
-          # The upstream version the tag no longer carries. Absent is a defect rather than
-          # a blank field: the release notes state what this is built on, and a release
-          # that cannot say so should not be published.
-          if [ ! -s UPSTREAM_VERSION ]; then
-            echo "::error::UPSTREAM_VERSION is missing or empty; see docs/VERSIONING.md"
-            exit 1
-          fi
-          upstream="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
-          echo "::notice::releasing v$version (built on opencode v$upstream)"
+          echo "::notice::releasing v$version"
 
   build:
     needs: version
@@ -548,18 +535,16 @@ jobs:
       - name: Create and push the tag
         env:
           TAG: ${{ needs.version.outputs.tag }}
-          UPSTREAM: ${{ needs.version.outputs.upstream }}
         run: |
           set -euo pipefail
           # An annotated tag records a tagger, and a bare runner has no git identity, so
           # `git tag -a` fails with "empty ident name" AFTER the build, the signing and the
           # notarization have all succeeded -- the most expensive possible place to
           # discover it. The tag stays annotated rather than lightweight because it is what
-          # a release points at and it should say who made it and when, and its message
-          # carries the upstream version the release notes no longer state.
+          # a release points at and it should say who made it and when.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Redrob Code $TAG (built on opencode v$UPSTREAM)" 2>/dev/null || \
+          git tag -a "$TAG" -m "Redrob Code $TAG" 2>/dev/null || \
             echo "tag $TAG already exists locally"
           # A release that fails after tagging must be retryable. Without this a single
           # transient failure in the publish job leaves the version permanently unusable:
