@@ -70,6 +70,7 @@ import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
 import { formatTranscript } from "../../util/transcript"
+import * as AnswerOptions from "../../util/answeroptions"
 import { sessionEpilogue } from "../../util/presentation"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
 import { useTuiConfig } from "../../config"
@@ -151,6 +152,11 @@ const sessionGlobalBindingCommands = [
   "session.line.down",
   "session.half.page.up",
   "session.half.page.down",
+  "session.answer.1",
+  "session.answer.2",
+  "session.answer.3",
+  "session.answer.4",
+  "session.answer.5",
 ] as const
 
 const sessionGlobalUnfocusedBindingCommands = ["session.first", "session.last"] as const
@@ -254,6 +260,23 @@ export function Session() {
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
   })
+
+  // Suggested answers belong to the newest finished reply only, and vanish once the user sends anything.
+  const answerOptions = createMemo(() => {
+    const message = messages().at(-1)
+    if (!message || message.role !== "assistant" || !isFinal(message)) return
+    const text = (sync.data.part[message.id] ?? []).findLast((part) => part.type === "text")
+    if (!text || text.type !== "text") return
+    const options = AnswerOptions.parse(text.text.trim()).options
+    return options.length ? { messageID: message.id, options } : undefined
+  })
+
+  function sendAnswer(option: string) {
+    if (!prompt || disabled()) return
+    prompt.set({ input: option, parts: [] })
+    prompt.submit()
+    toBottom()
+  }
 
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
@@ -1112,6 +1135,18 @@ export function Session() {
         moveChild(-1)
       }),
     },
+    ...Array.from({ length: 5 }, (_, i) => ({
+      title: language.t("command.session.answer_option", { number: i + 1 }),
+      value: `session.answer.${i + 1}`,
+      category: "Session",
+      hidden: true,
+      enabled: (answerOptions()?.options.length ?? 0) > i,
+      run: () => {
+        if (prompt?.current.input.trim()) return
+        const option = answerOptions()?.options[i]
+        if (option) sendAnswer(option)
+      },
+    })),
   ])
 
   const sessionCommands = createMemo(() =>
@@ -1319,6 +1354,8 @@ export function Session() {
                       <Match when={message.role === "assistant"}>
                         <AssistantMessage
                           last={lastAssistant()?.id === message.id}
+                          options={answerOptions()?.messageID === message.id ? answerOptions()!.options : []}
+                          onOption={sendAnswer}
                           message={message as AssistantMessage}
                           parts={sync.data.part[message.id] ?? []}
                         />
@@ -1501,7 +1538,46 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function isFinal(message: AssistantMessage) {
+  return !!message.time.completed && !!message.finish && !["tool-calls", "unknown"].includes(message.finish)
+}
+
+function AnswerOptionList(props: { options: string[]; onOption: (option: string) => void }) {
+  const { theme } = useTheme()
+  const [hover, setHover] = createSignal<number>()
+  return (
+    <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
+      <For each={props.options}>
+        {(option, index) => {
+          const shortcut = useCommandShortcut(`session.answer.${index() + 1}`)
+          return (
+            <box
+              onMouseOver={() => setHover(index())}
+              onMouseOut={() => setHover(undefined)}
+              onMouseUp={() => props.onOption(option)}
+            >
+              <text fg={hover() === index() ? theme.accent : theme.text}>
+                <span style={{ fg: theme.accent }}>{index() + 1}. </span>
+                {option}
+                <Show when={shortcut()}>
+                  <span style={{ fg: theme.textMuted }}> {shortcut()}</span>
+                </Show>
+              </text>
+            </box>
+          )
+        }}
+      </For>
+    </box>
+  )
+}
+
+function AssistantMessage(props: {
+  message: AssistantMessage
+  parts: Part[]
+  last: boolean
+  options: string[]
+  onOption: (option: string) => void
+}) {
   const language = useLanguage()
   const ctx = use()
   const local = useLocal()
@@ -1553,6 +1629,9 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           )
         }}
       </For>
+      <Show when={!isSummary() && props.options.length > 0}>
+        <AnswerOptionList options={props.options} onOption={props.onOption} />
+      </Show>
       <Show when={props.parts.some((x) => x.type === "tool" && x.tool === "task")}>
         <box paddingTop={1} paddingLeft={3}>
           <text fg={theme.text}>
@@ -1742,14 +1821,22 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  // A finished reply's options line is drawn as choices (or dropped), never as raw text.
+  const content = createMemo(() => {
+    const text = props.part.text.trim()
+    if (!props.message.time.completed) return text
+    const parts = ctx.sync.data.part[props.message.id] ?? []
+    if (parts.findLast((part) => part.type === "text")?.id !== props.part.id) return text
+    return AnswerOptions.parse(text).body
+  })
   return (
-    <Show when={props.part.text.trim()}>
+    <Show when={content()}>
       <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
         <markdown
           syntaxStyle={syntax()}
           streaming={true}
           internalBlockMode="top-level"
-          content={props.part.text.trim()}
+          content={content()}
           tableOptions={{ style: "grid" }}
           conceal={ctx.conceal()}
           fg={theme.markdownText}
