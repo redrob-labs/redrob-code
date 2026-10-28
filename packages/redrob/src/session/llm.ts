@@ -29,6 +29,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { LLMRunnerTools } from "./llm/runner-tools"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -223,7 +224,7 @@ const live: Layer.Layer<
 
       // Runtime seam: native is an opt-in adapter over @redrob-code/llm. It
       // either returns a ready LLMEvent stream or a concrete fallback reason.
-      if (flags.experimentalNativeLlm) {
+      if (flags.experimentalNativeLlm && item.options?.providerExecutedTools !== true) {
         const native = LLMNativeRuntime.stream({
           model: input.model,
           provider: item,
@@ -275,6 +276,8 @@ const live: Layer.Layer<
       })
       // Default runtime path: AI SDK owns provider execution and tool dispatch;
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
+      const copilotRaw = input.model.providerID.includes("github-copilot")
+      const runnerTools = item.options?.providerExecutedTools === true
       return {
         type: "ai-sdk" as const,
         result: streamText({
@@ -292,7 +295,8 @@ const live: Layer.Layer<
             )
           },
           // Copilot returns the authoritative billed amount only in provider-specific response fields.
-          includeRawChunks: input.model.providerID.includes("github-copilot"),
+          // Agent runners report the tools they ran in fields only the raw chunk keeps.
+          includeRawChunks: copilotRaw || runnerTools,
           async experimental_repairToolCall(failed) {
             const lower = failed.toolCall.toolName.toLowerCase()
             if (lower !== failed.toolCall.toolName && prepared.tools[lower]) {
@@ -339,6 +343,7 @@ const live: Layer.Layer<
                   return args.params
                 },
               },
+              ...(runnerTools ? [LLMRunnerTools.providerExecutedTools(copilotRaw)] : []),
             ],
           }),
           experimental_telemetry: {

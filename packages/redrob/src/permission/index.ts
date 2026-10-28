@@ -100,8 +100,12 @@ const layer = Layer.effect(
       yield* events.publish(Event.Asked, info)
       return yield* Effect.ensuring(
         Deferred.await(deferred),
-        Effect.sync(() => {
+        // Still pending here means nobody answered: the asker went away (a cancelled turn, or a runner
+        // that dropped its HTTP call). Tell the clients, so an open card does not linger.
+        Effect.suspend(() => {
+          if (!pending.has(id)) return Effect.void
           pending.delete(id)
+          return events.publish(Event.Replied, { sessionID: info.sessionID, requestID: id, reply: "reject" }).pipe(Effect.ignore)
         }),
       )
     })

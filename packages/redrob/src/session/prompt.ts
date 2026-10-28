@@ -252,6 +252,25 @@ const layer = Layer.effect(
         ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
         : ((yield* provider.getSmallModel(input.providerID)) ??
           (yield* provider.getModel(input.providerID, input.modelID)))
+      // An agent runner (Claude Code, Codex) would spend a full CLI run of the person's plan on a
+      // title. Name the chat after its first line instead.
+      const runner = yield* provider.getProvider(mdl.providerID).pipe(
+        Effect.map((info) => info.options?.agentRunner === true),
+        Effect.orElseSucceed(() => false),
+      )
+      if (runner) {
+        const line = firstUser.parts
+          .flatMap((p) => (p.type === "text" && !p.synthetic ? [p.text] : p.type === "subtask" ? [p.prompt] : []))
+          .join("\n")
+          .split("\n")
+          .map((l) => l.trim())
+          .find((l) => l.length > 0)
+        if (!line) return
+        yield* sessions
+          .setTitle({ sessionID: input.session.id, title: line.length > 100 ? line.substring(0, 97) + "..." : line })
+          .pipe(Effect.catchCause((cause) => Effect.logError("failed to set title", { error: Cause.squash(cause) })))
+        return
+      }
       const msgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
         : yield* MessageV2.toModelMessagesEffect(context, mdl)

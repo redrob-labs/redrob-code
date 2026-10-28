@@ -138,6 +138,8 @@ import type {
   PartUpdateResponses,
   PathGetErrors,
   PathGetResponses,
+  PermissionAskErrors,
+  PermissionAskResponses,
   PermissionListErrors,
   PermissionListResponses,
   PermissionReplyErrors,
@@ -3770,6 +3772,53 @@ export class Permission extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PermissionReplyResponses, PermissionReplyErrors, ThrowOnError>({
       url: "/permission/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Ask the person for a permission
+   *
+   * Raise a permission request for a session from outside a tool call and wait for the answer. Used by agent runners that run their own tools.
+   */
+  public ask<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      permission?: string
+      patterns?: Array<string>
+      metadata?: {
+        [key: string]: unknown
+      }
+      always?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "permission" },
+            { in: "body", key: "patterns" },
+            { in: "body", key: "metadata" },
+            { in: "body", key: "always" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PermissionAskResponses, PermissionAskErrors, ThrowOnError>({
+      url: "/session/{sessionID}/permission",
       ...options,
       ...params,
       headers: {

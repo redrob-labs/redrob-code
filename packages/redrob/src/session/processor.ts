@@ -349,6 +349,8 @@ const layer = Layer.effect(
                 ? { ...value.providerMetadata, providerExecuted: true }
                 : value.providerMetadata,
             }))
+            // A provider that already ran the call (an agent runner) is not looping on our tools.
+            if (value.providerExecuted) return
 
             const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
               Effect.provideService(Database.Service, database),
