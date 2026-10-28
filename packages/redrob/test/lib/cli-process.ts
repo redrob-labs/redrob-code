@@ -16,7 +16,7 @@
 // Today only `redrob.run` is fully wired. The shape supports adding more
 // builders (`redrob.serve(opts)`, `redrob.acp(opts)`, `redrob.auth(...)`)
 // without changing the fixture. Long-lived commands like `serve` will need a
-// different return shape — see the TODO at the bottom of OpencodeCli.
+// different return shape — see the TODO at the bottom of RedrobCli.
 import { test, type TestOptions } from "bun:test"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { AppNodeBuilder } from "@redrob-code/core/effect/app-node-builder"
@@ -192,7 +192,7 @@ export type AcpHandle = {
   readonly exited: Promise<number>
 }
 
-export type OpencodeCli = {
+export type RedrobCli = {
   // High-level: run a single prompt against the test model. Short-lived.
   readonly run: (message: string, opts?: RunOpts) => Effect.Effect<RunResult>
   readonly startRun: (message: string, opts?: RunOpts) => Effect.Effect<RunHandle, never, Scope.Scope>
@@ -219,7 +219,7 @@ export type OpencodeCli = {
 export type CliFixture = {
   readonly llm: TestLLMServer["Service"]
   readonly home: string
-  readonly redrob: OpencodeCli
+  readonly redrob: RedrobCli
 }
 
 // Provisions a TestLLMServer + tmpdir + spawn helper and invokes fn. Cleans
@@ -516,7 +516,7 @@ export function withCliFixture<A, E>(
       } satisfies AcpHandle
     })
 
-    const redrob: OpencodeCli = { run, startRun, serve, acp, spawn, expectExit, parseJsonEvents }
+    const redrob: RedrobCli = { run, startRun, serve, acp, spawn, expectExit, parseJsonEvents }
 
     return yield* fn({ llm, home, redrob })
     // FetchHttpClient is provided so test bodies can `yield* HttpClient.HttpClient`

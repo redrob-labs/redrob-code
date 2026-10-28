@@ -4,9 +4,7 @@ import { unique } from "remeda"
 import { Option, Schema } from "effect"
 import { TuiConfig } from "@redrob-code/tui/config"
 import { Flag } from "@redrob-code/core/flag/flag"
-import { Global } from "@redrob-code/core/global"
 import { Filesystem } from "@/util/filesystem"
-import * as ConfigPaths from "@/config/paths"
 import { TUI_SCHEMA_URL } from "@redrob-code/core/links"
 
 const decodeTheme = Schema.decodeUnknownOption(Schema.String)
@@ -26,7 +24,7 @@ interface MigrateInput {
  * skips only locations where a tui.json already exists.
  */
 export async function migrateTuiConfig(input: MigrateInput) {
-  const legacyFiles = await legacyOpencodeFiles(input)
+  const legacyFiles = await legacyConfigFiles(input)
   for (const file of legacyFiles) {
     const source = await Filesystem.readText(file).catch(() => undefined)
     if (!source) continue
@@ -111,14 +109,10 @@ async function backupAndStripLegacy(file: string, source: string) {
     .catch(() => false)
 }
 
-async function legacyOpencodeFiles(input: { directories: string[]; cwd: string }) {
+async function legacyConfigFiles(input: { cwd: string }) {
   const files = [
-    ...ConfigPaths.fileInDirectory(Global.Path.config, "opencode"),
     ...(await Filesystem.findUp(["redrob.json", "redrob.jsonc"], input.cwd, undefined, { rootFirst: true })),
   ]
-  for (const dir of unique(input.directories)) {
-    files.push(...ConfigPaths.fileInDirectory(dir, "opencode"))
-  }
   if (Flag.REDROB_CONFIG) files.push(Flag.REDROB_CONFIG)
 
   const existing = await Promise.all(

@@ -526,7 +526,7 @@ const scenarios: Scenario[] = [
   http.protected
     .get("/experimental/tool", "tool.list")
     .at((ctx) => ({
-      path: `/experimental/tool?${new URLSearchParams({ provider: "opencode", model: "test" })}`,
+      path: `/experimental/tool?${new URLSearchParams({ provider: "redrob", model: "test" })}`,
       headers: ctx.headers(),
     }))
     .json(200, array, "status"),
@@ -1194,7 +1194,7 @@ const scenarios: Scenario[] = [
     .at((ctx) => ({
       path: route("/api/session/{sessionID}/model", { sessionID: ctx.state.id }),
       headers: { ...ctx.headers(), "content-type": "application/json" },
-      body: { model: { providerID: "opencode", id: "big-pickle" } },
+      body: { model: { providerID: "redrob", id: "big-pickle" } },
     }))
     .status(204, undefined, "none"),
   http.protected

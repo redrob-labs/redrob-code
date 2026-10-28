@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Redrob Code: the engine behind Redrob Cowork, a fork of OpenCode. It is consumed as a pinned
+Redrob Code: the engine behind Redrob Cowork. It is consumed as a pinned
 version rather than a branch — `constants.json` in `redrob-cowork` names the release the desktop app
 ships, so **a change here reaches users only through a release and a pin bump**, never by merging.
 
@@ -16,7 +16,7 @@ Gitflow. **`develop` is the default branch and the base of every pull request.**
 
 Branch names are `<type>/<slug>` with the type from the redrob-labs organization list:
 `feat fix chore docs test refactor perf ci build sync hotfix release` (`docs/BRANCHING.md` has the
-ones this repository actually uses: `feat/<slug>`, `sync/upstream-<tag>`, `hotfix/<slug>`,
+ones this repository actually uses: `feat/<slug>`, `hotfix/<slug>`,
 `release/<version>`). Do not invent a prefix, and in particular do not name a branch after the tool
 or agent that made it: a branch name says what the change is, not who typed it.
 
@@ -62,8 +62,7 @@ Full detail in `docs/BRANCHING.md`.
   instead.
 - Judge by the exit code, not by a pass count. A suite can print `0 fail` and still exit non-zero
   when a file fails to load: its tests are never counted and a `(fail)` grep finds nothing.
-- The version line is ours and starts at `0.1.0`. It does not encode the upstream version, which
-  lives in `UPSTREAM_VERSION` at the repository root and is what the release notes read. Do not
+- The version line starts at `0.1.0`. Do not
   reintroduce a `-redrob.N` suffix: it made every release a semver prerelease, which sorts below
   the release it precedes and made `getReleaseType()` call everything a patch. See
   `docs/VERSIONING.md`.

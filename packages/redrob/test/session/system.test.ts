@@ -136,8 +136,7 @@ describe("session.system", () => {
     }
   })
 
-  // The prompts inherited from opencode introduced the agent to the user as OpenCode, so a
-  // reintroduced mention would come straight back out of the model.
+  // A former product name in a prompt would come straight back out of the model.
   test("never introduces the agent by the former product name", () => {
     const ids = [
       "claude-sonnet-4-5",

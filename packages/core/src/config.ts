@@ -145,22 +145,13 @@ const layer = Layer.effect(
     const policy = yield* Policy.Service
     const names = ["redrob.json", "redrob.jsonc"]
 
-    // Config FOLDER names searched while walking up from the opened directory.
+    // Config FOLDER name searched while walking up from the opened directory. Only `.redrob`
+    // is read; `redrob mcp add` writes `.redrob/redrob.json` (cli/cmd/mcp.ts) and the config
+    // skill tells the agent that redrob's own settings live "under .redrob/".
     //
-    // The config FILE names above were renamed to redrob.json and this list was not, so discovery
-    // looked only in `.opencode` while `redrob mcp add` writes `.redrob/redrob.json`
-    // (cli/cmd/mcp.ts) and the config skill tells the agent that redrob's own settings live "under
-    // .redrob/". A user who followed either had their config silently ignored -- no error, no
-    // warning, just no effect.
-    //
-    // `.opencode` is the LEGACY name and stays supported so existing checkouts keep working.
-    //
-    // ORDER MATTERS AND IT IS INVERTED HERE. `fs.up` walks upward and, within each directory,
-    // appends in the order of this list; the discovered set is then `toReversed()` below so a
-    // nearer config wins over a farther one. That reversal also flips co-located entries, so
-    // `.redrob` must be listed FIRST to end up applied LAST and win the merge. ConfigPaths in
-    // packages/redrob lists the opposite order because it does not reverse.
-    const CONFIG_DIRECTORY_NAMES = [".redrob", ".opencode"]
+    // `fs.up` walks upward and the discovered set is then `toReversed()` below so a nearer
+    // config wins over a farther one.
+    const CONFIG_DIRECTORY_NAMES = [".redrob"]
     const isConfigDirectory = (item: string) => CONFIG_DIRECTORY_NAMES.includes(path.basename(item))
     const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
     const decodeInfo = Schema.decodeUnknownOption(Info, decodeOptions)
@@ -221,7 +212,7 @@ const layer = Layer.effect(
     )
     const supplementary = yield* Effect.forEach(directories, loadDirectory).pipe(Effect.orDie)
     // Apply general settings first and more specific settings last:
-    // global config, project files, then `.opencode` files.
+    // global config, project files, then `.redrob` files.
     const configs = [...(supplementary[0] ?? []), ...direct, ...supplementary.slice(1).flat()]
     // Rules use the opposite order so a user-global rule can override a
     // repository rule. Statement order inside each file stays unchanged.

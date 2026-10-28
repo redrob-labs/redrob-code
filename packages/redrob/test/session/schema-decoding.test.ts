@@ -236,7 +236,7 @@ describe("SessionStatus.Info", () => {
       message: "transient",
       action: {
         reason: "free_tier_limit",
-        provider: "opencode",
+        provider: "redrob",
         title: "Free limit reached",
         message: "Subscribe to RedrobCode Go.",
         label: "subscribe",

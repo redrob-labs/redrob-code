@@ -37,10 +37,8 @@ export async function install(ide: (typeof SUPPORTED_IDES)[number]["name"]) {
   const cmd = SUPPORTED_IDES.find((i) => i.name === ide)?.cmd
   if (!cmd) throw new Error(`Unknown IDE: ${ide}`)
 
-  // Must match sdks/vscode/package.json's "publisher"."name". The rebrand renamed the
-  // extension but not the publisher, leaving `sst-dev.redrob` -- an id that resolves to
-  // nothing: upstream publishes `sst-dev.opencode` and ours is published by
-  // `redrob-labs`. The install silently found no extension either way.
+  // Must match sdks/vscode/package.json's "publisher"."name": the extension is published
+  // by `redrob-labs`, so any other publisher id installs nothing.
   const p = await Process.run([cmd, "--install-extension", "redrob-labs.redrob-code"], {
     nothrow: true,
   })

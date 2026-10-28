@@ -49,8 +49,7 @@ already-loaded config until then.
 | Global skills                 | `~/.config/redrob/skill(s)/<name>/SKILL.md`                                                                             |
 | External skills (auto-loaded) | `~/.claude/skills/<name>/SKILL.md`, `~/.agents/skills/<name>/SKILL.md`                                                    |
 
-`.opencode/` is still searched alongside `.redrob/` so projects carried over
-from older installs keep working. Always write new files to `.redrob/`.
+Always write project files to `.redrob/`.
 
 Configs from each scope are deep-merged. Project overrides global. Unknown
 top-level keys in `redrob.json` are rejected with `ConfigInvalidError`.
