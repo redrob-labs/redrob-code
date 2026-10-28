@@ -37,8 +37,10 @@ describe("compaction threshold", () => {
 
   it("keeps room for the reply, whatever the threshold", () => {
     // A threshold of 100 must not mean "compact once the window is full", which is the failure the
-    // reserve existed to avoid.
-    expect(source).toContain("budget - Math.min(COMPACTION_BUFFER, output)")
+    // reserve existed to avoid. The reserve is capped at a quarter of the window so a 32k model is not
+    // left with less room than its own system prompt.
+    expect(source).toContain("Math.min(COMPACTION_BUFFER, output, Math.floor(budget / 4))")
+    expect(source).toContain("budget - reserve")
   })
 
   it("treats a published input cap of 0 as absent, not as a cap of zero", () => {
