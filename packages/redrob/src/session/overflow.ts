@@ -95,7 +95,13 @@ export function usable(input: {
    * either way and the threshold applies to what is left.
    */
   const output = ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax)
-  const headroom = Math.max(0, budget - Math.min(COMPACTION_BUFFER, output))
+  /*
+   * At most a quarter of the window. A 32,768-token model with the full 20,000 reserve was left
+   * 8,937 tokens, less than the system prompt and tool list alone, so every turn overflowed: a
+   * one-line question was summarised and auto-continued five times in one `run`.
+   */
+  const reserve = Math.min(COMPACTION_BUFFER, output, Math.floor(budget / 4))
+  const headroom = Math.max(0, budget - reserve)
   const windowLimit = Math.floor((headroom * clamped) / 100)
   /*
    * The cheaper of the two limits wins. `reserved` above returns before this on purpose: a caller who set
