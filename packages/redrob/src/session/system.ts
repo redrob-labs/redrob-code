@@ -13,6 +13,7 @@ import PROMPT_META from "./prompt/meta.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import PROMPT_REDROB_FREE from "./prompt/redrob-free.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -27,6 +28,9 @@ import { MCP } from "@/mcp"
 import { PermissionV1 } from "@redrob-code/core/v1/permission"
 
 export function provider(model: Provider.Model) {
+  // The Console's free model (Bonsai 2, a Qwen3.8 build). default.txt tells it to answer in under four
+  // lines and to "just stop", and it did: it wrote a one-line plan with no tool call and ended the task.
+  if (model.api.id === "redrob/free" || model.id === "redrob/free") return [PROMPT_REDROB_FREE]
   if (model.api.id.includes("muse")) {
     const name = model.api.id.includes("muse-glimmer") ? "Muse Glimmer" : "Muse Spark"
     return [PROMPT_META.replaceAll("{{MODEL_NAME}}", name)]
