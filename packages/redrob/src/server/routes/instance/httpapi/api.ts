@@ -12,6 +12,7 @@ import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
 import { EventApi } from "./groups/event"
 import { ExperimentalApi } from "./groups/experimental"
+import { ExtensionsApi } from "./groups/extensions"
 import { FileApi } from "./groups/file"
 import { InstanceApi } from "./groups/instance"
 import { McpApi } from "./groups/mcp"
@@ -64,6 +65,7 @@ export const RootHttpApi = HttpApi.make("redrob-root")
 export const InstanceHttpApi = HttpApi.make("redrob-instance")
   .addHttpApi(ConfigApi)
   .addHttpApi(ExperimentalApi)
+  .addHttpApi(ExtensionsApi)
   .addHttpApi(FileApi)
   .addHttpApi(InstanceApi)
   .addHttpApi(McpApi)

@@ -2432,6 +2432,24 @@ export type McpResource = {
   client: string
 }
 
+export type ExtensionCallResponse = {
+  ok: boolean
+  result?: {
+    b64?: string
+    mime?: string
+    path?: string
+    model?: string
+    costUsd?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  error?: string
+}
+
+export type McpAppResource = {
+  html: string
+  mimeType?: string
+  server: string
+}
+
 export type Symbol = {
   name: string
   kind: number
@@ -8727,6 +8745,121 @@ export type ExperimentalResourceListResponses = {
 
 export type ExperimentalResourceListResponse =
   ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
+
+export type ExperimentalExtensionsCallData = {
+  body?: {
+    extensionId: string
+    action: string
+    args?: {
+      [key: string]: unknown
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/extensions/call"
+}
+
+export type ExperimentalExtensionsCallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalExtensionsCallError = ExperimentalExtensionsCallErrors[keyof ExperimentalExtensionsCallErrors]
+
+export type ExperimentalExtensionsCallResponses = {
+  /**
+   * The extension's answer
+   */
+  200: ExtensionCallResponse
+}
+
+export type ExperimentalExtensionsCallResponse =
+  ExperimentalExtensionsCallResponses[keyof ExperimentalExtensionsCallResponses]
+
+export type McpAppResolveData = {
+  body?: {
+    /**
+     * MCP server name, or the prefix of its projected tool names
+     */
+    server: string
+    /**
+     * The ui:// resource the tool result pointed at
+     */
+    uri: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp-apps/resolve"
+}
+
+export type McpAppResolveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+}
+
+export type McpAppResolveError = McpAppResolveErrors[keyof McpAppResolveErrors]
+
+export type McpAppResolveResponses = {
+  /**
+   * The app view's HTML
+   */
+  200: McpAppResource
+}
+
+export type McpAppResolveResponse = McpAppResolveResponses[keyof McpAppResolveResponses]
+
+export type McpAppCallData = {
+  body?: {
+    server: string
+    /**
+     * Tool name as the MCP server knows it
+     */
+    name: string
+    arguments?: {
+      [key: string]: unknown
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp-apps/call"
+}
+
+export type McpAppCallErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UpstreamError
+   */
+  502: UpstreamError
+}
+
+export type McpAppCallError = McpAppCallErrors[keyof McpAppCallErrors]
+
+export type McpAppCallResponses = {
+  /**
+   * The MCP tool result
+   */
+  200: unknown
+}
 
 export type FindTextData = {
   body?: never

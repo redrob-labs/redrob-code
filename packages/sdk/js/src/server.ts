@@ -33,6 +33,7 @@ export async function createRedrobServer(options?: ServerOptions) {
   if (options.config?.logLevel) args.push(`--log-level=${options.config.logLevel}`)
 
   const proc = launch(`redrob`, args, {
+    windowsHide: true,
     env: {
       ...process.env,
       REDROB_CONFIG_CONTENT: JSON.stringify(options.config ?? {}),
