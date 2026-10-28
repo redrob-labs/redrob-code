@@ -1,0 +1,4 @@
+# Hand-written files the generator must not overwrite.
+README.md
+script/**
+src/commonMain/kotlin/ai/redrob/code/sdk/relay/**
