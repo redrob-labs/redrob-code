@@ -1525,9 +1525,20 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
 
+  // A compaction summary is bookkeeping, not an answer: folded to one line, click to open.
+  const isSummary = createMemo(() => props.message.summary === true)
+  const [summaryOpen, setSummaryOpen] = createSignal(false)
+
   return (
     <>
-      <For each={props.parts}>
+      <Show when={isSummary()}>
+        <box paddingLeft={3} marginTop={1} flexShrink={0} onMouseUp={() => setSummaryOpen((prev) => !prev)}>
+          <text fg={theme.textMuted}>
+            {(summaryOpen() ? "▾ " : "▸ ") + language.t("session.compaction.summary")}
+          </text>
+        </box>
+      </Show>
+      <For each={!isSummary() || summaryOpen() ? props.parts : []}>
         {(part, index) => {
           const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
           return (
