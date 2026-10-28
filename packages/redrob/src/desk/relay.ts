@@ -377,8 +377,11 @@ export class DeskRelay {
   // -- push ------------------------------------------------------------------------------------
 
   private async notify(kind: "done" | "approval", sessionId: string): Promise<void> {
-    const title = await this.api.sessionTitle(sessionId).catch(() => undefined)
-    await this.chat.notify(kind, sessionId, title).catch((error: unknown) => {
+    const [title, self] = await Promise.all([
+      this.api.sessionTitle(sessionId).catch(() => undefined),
+      machine().catch(() => undefined),
+    ])
+    await this.chat.notify(kind, sessionId, title, self?.id).catch((error: unknown) => {
       this.log.warn(`push failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
