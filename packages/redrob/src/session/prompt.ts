@@ -15,6 +15,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
+import { Memory } from "@/memory/memory"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@redrob-code/core/session/runner/max-steps"
 import { ToolRegistry } from "@/tool/registry"
@@ -167,6 +168,7 @@ const layer = Layer.effect(
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
     const sys = yield* SystemPrompt.Service
+    const memory = yield* Memory.Service
     const llm = yield* LLM.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
@@ -1286,7 +1288,7 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
+            const [skills, env, instructions, mcpInstructions, modelMsgs, remembered] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction
@@ -1301,6 +1303,7 @@ const layer = Layer.effect(
                 .pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(msgs, model),
+              Effect.flatMap(InstanceState.context, (ctx) => memory.system(ctx.worktree)),
             ])
             /*
              * K-2's arming, finally called.
@@ -1326,6 +1329,7 @@ const layer = Layer.effect(
             const system = [
               ...env,
               ...instructions,
+              ...(remembered ? [remembered] : []),
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
               ...(armedSkills ? [armedSkills] : []),
@@ -1689,6 +1693,7 @@ export const node = LayerNode.make({
     SessionRevert.node,
     SessionSummary.node,
     SystemPrompt.node,
+    Memory.node,
     LLM.node,
     EventV2Bridge.node,
     RuntimeFlags.node,

@@ -72,6 +72,28 @@ export const DeskDevice = Schema.Struct({ id: Schema.String, name: Schema.String
   identifier: "DeskDevice",
 })
 
+const MachineKind = Schema.Literals(["desktop", "server", "cloud"])
+const MachineAccess = Schema.Literals(["read_only", "ask", "trusted"])
+
+/** This machine as the relay and paired devices see it (`~/.redrob/desk/settings.json` `machine`). */
+export const DeskMachine = Schema.Struct({
+  /** Made once, never changes. */
+  id: Schema.String,
+  /** Hostname unless renamed. */
+  name: Schema.String,
+  kind: MachineKind,
+  /** `process.platform`. */
+  os: Schema.String,
+  /** What phones and the web may do here; `trusted` by default. */
+  access: MachineAccess,
+}).annotate({ identifier: "DeskMachine" })
+
+export const DeskMachineUpdate = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  kind: Schema.optional(MachineKind),
+  access: Schema.optional(MachineAccess),
+}).annotate({ identifier: "DeskMachineUpdate" })
+
 export const ChannelsGroup = HttpApiGroup.make("server.channels")
   .add(
     HttpApiEndpoint.get("channels.status", "/channels/status", { success: ChannelStatusList }).annotateMerge(
@@ -97,7 +119,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.status",
         summary: "Desk relay status",
-        description: "The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.",
+        description:
+          "The switch, the sign-in, the relay connection, devices waiting for approval (with their codes), and approved devices.",
       }),
     ),
   )
@@ -129,7 +152,10 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
     ),
   )
   .add(
-    HttpApiEndpoint.post("desk.logout", "/desk/logout", { success: DeskStatus, error: ServiceUnavailableError }).annotateMerge(
+    HttpApiEndpoint.post("desk.logout", "/desk/logout", {
+      success: DeskStatus,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
       OpenApi.annotations({
         identifier: "v2.desk.logout",
         summary: "Sign out of the desk relay",
@@ -159,7 +185,8 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.deny",
         summary: "Refuse a device",
-        description: "Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.",
+        description:
+          "Deny the pending device showing this six-digit code; it is sent desk.denied. 404 when none matches.",
       }),
     ),
   )
@@ -172,7 +199,35 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
       OpenApi.annotations({
         identifier: "v2.desk.revoke",
         summary: "Remove an approved device",
-        description: "Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.",
+        description:
+          "Forget an approved device; a connected one is sent desk.denied and dropped. 404 when no device has that id.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("desk.machine.get", "/desk/machine", {
+      success: DeskMachine,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.machine.get",
+        summary: "This machine",
+        description:
+          "Machine id, name, kind, OS and the access phones and the web have here. 503 on a server that is not the registered daemon.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.machine.update", "/desk/machine", {
+      payload: DeskMachineUpdate,
+      success: DeskMachine,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.machine.update",
+        summary: "Rename this machine or change its access",
+        description:
+          "Fields left out keep their value; an empty name keeps the old one. The relay is told at once. 503 on a server that is not the registered daemon.",
       }),
     ),
   )

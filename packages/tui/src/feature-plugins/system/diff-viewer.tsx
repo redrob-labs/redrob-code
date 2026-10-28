@@ -1008,6 +1008,9 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "diff.open",
+        get desc() {
+          return kvTranslator(api.kv).t("command.desc.diff.open")
+        },
         // Registered at plugin bootstrap, so the title resolves the persisted locale on read.
         get title() {
           return kvTranslator(api.kv).t("keybind.diff_open")
