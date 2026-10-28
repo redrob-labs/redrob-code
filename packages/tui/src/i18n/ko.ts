@@ -451,6 +451,7 @@ export const dict: Record<TuiI18nKey, string> = {
   "session.thought": "생각 끝",
   "session.thought.detail": "생각 끝: {{detail}}",
   "session.compaction": " 요약 ",
+  "session.compaction.summary": "대화 요약 (눌러서 보기)",
   "session.todos": "# 할 일",
   "session.questions": "# 질문",
   "session.click_to_expand": "눌러서 펼치기",
