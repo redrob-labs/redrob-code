@@ -10,11 +10,11 @@ import { TestTuiContexts } from "../../fixture/tui-environment"
 import { discoverEditorConnection } from "@redrob-code/tui/editor"
 
 const originalClaudePort = process.env.CLAUDE_CODE_SSE_PORT
-const originalOpencodePort = process.env.REDROB_EDITOR_SSE_PORT
+const originalEditorPort = process.env.REDROB_EDITOR_SSE_PORT
 
 afterEach(() => {
   process.env.CLAUDE_CODE_SSE_PORT = originalClaudePort
-  process.env.REDROB_EDITOR_SSE_PORT = originalOpencodePort
+  process.env.REDROB_EDITOR_SSE_PORT = originalEditorPort
 })
 
 function nextTick() {

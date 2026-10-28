@@ -13,16 +13,14 @@ import { dict as en } from "../../src/i18n/en"
 import { dict as ko } from "../../src/i18n/ko"
 import sidebarFooterPlugin from "../../src/feature-plugins/sidebar/footer"
 
-// This fork inherited its copy from opencode, so any spelling of the old name is a
-// shipping bug wherever a user can read it. Infrastructure identifiers keep the old
-// name on purpose — `.opencode` config discovery, the `opencode-*` npm plugins, the
-// `/opencode` GitHub trigger — so the guard asserts on the two dictionaries and on a
-// rendered frame instead of scanning source text.
+// Any spelling of the former product name is a shipping bug wherever a user can read it.
+// Third-party npm plugin names still contain it, so the guard asserts on the two
+// dictionaries and on a rendered frame instead of scanning source text.
 const FORMER_NAME = /open[\s-]*code/i
 
 // The sidebar footer used to compose the name from two adjacent literals, so only the
 // composed frame catches it. `local` is what InstallationVersion reports for a build
-// made from source, which is how the footer came to read "OpenCode local".
+// made from source, which is how the footer once read the former name plus "local".
 describe("product name", () => {
   test("no dictionary value names the former product", () => {
     const offenders = Object.entries({ en, ko }).flatMap(([locale, dict]) =>

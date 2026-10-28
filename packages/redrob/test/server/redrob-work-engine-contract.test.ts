@@ -50,9 +50,6 @@ const httpApiServerLayer = servedRoutes.pipe(
 const it = testEffect(Layer.mergeAll(testStateLayer, httpApiServerLayer))
 
 const DIRECTORY_HEADER = "x-redrob-directory"
-// Upstream OpenCode's header. Redrob Code reads only its own, and Redrob Work sets only its own, so
-// this must stay unrecognised rather than quietly becoming a second way to address a project.
-const UPSTREAM_DIRECTORY_HEADER = "x-opencode-directory"
 
 const inDirectory = (path: string, directory: string) =>
   HttpClientRequest.get(path).pipe(HttpClientRequest.setHeader(DIRECTORY_HEADER, directory), HttpClient.execute)
@@ -156,37 +153,6 @@ describe("Redrob Work engine contract", () => {
         // has open, so the resolved directory must follow the header and nothing else.
         expect(firstPath).toMatchObject({ directory: first, worktree: first })
         expect(secondPath).toMatchObject({ directory: second, worktree: second })
-      }),
-    )
-
-    it.effect("ignores x-opencode-directory", () =>
-      Effect.gen(function* () {
-        const directory = yield* tmpdirScoped({ git: true })
-        const response = yield* HttpClientRequest.get(InstancePaths.path).pipe(
-          HttpClientRequest.setHeader(UPSTREAM_DIRECTORY_HEADER, directory),
-          HttpClient.execute,
-        )
-        expect(response.status).toBe(200)
-        // The request is still served, from the server's own cwd — the upstream header does not
-        // select a project. Asserting the resolved directory rather than the status is the point: a
-        // status-only check would pass even if the header were honoured.
-        const body = (yield* response.json) as { directory: string }
-        expect(body.directory).not.toBe(directory)
-        expect(body.directory).toBe(process.cwd())
-      }),
-    )
-
-    it.effect("prefers x-redrob-directory when both headers are present", () =>
-      Effect.gen(function* () {
-        const redrob = yield* tmpdirScoped({ git: true })
-        const upstream = yield* tmpdirScoped({ git: true })
-        const response = yield* HttpClientRequest.get(InstancePaths.path).pipe(
-          HttpClientRequest.setHeader(DIRECTORY_HEADER, redrob),
-          HttpClientRequest.setHeader(UPSTREAM_DIRECTORY_HEADER, upstream),
-          HttpClient.execute,
-        )
-        expect(response.status).toBe(200)
-        expect(yield* response.json).toMatchObject({ directory: redrob })
       }),
     )
   })

@@ -127,7 +127,7 @@ test("the default theme paints only through named steps", () => {
 })
 
 test("the default theme carries no leftover palette", () => {
-  // The theme this replaces was an inherited OpenCode palette: an orange primary on dark, a 12-step
+  // The theme this replaces was an older palette: an orange primary on dark, a 12-step
   // neutral ramp of pure grays, and diff colours pasted in from tokyonight. None of it is the brand's.
   const abandoned = ["#fab283", "#0a0a0a", "#eeeeee", "#3b7dd8", "#4fd6be", "#c53b53", "#828bb8", "#9d7cd8"]
   expect(abandoned.filter((hex) => JSON.stringify(redrob).includes(hex))).toEqual([])
