@@ -87,6 +87,8 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
   const child = spawn(self.command, [...self.args, "serve", "--register", "--idle-exit", String(idle)], {
     detached: true,
     stdio: "ignore",
+    // A detached child on Windows gets its own console window unless it is hidden.
+    windowsHide: true,
     env,
     // The daemon outlives its caller. Inheriting the caller's cwd (an app's install folder) would
     // hold that folder open for the daemon's whole life and block the app's Windows update.
