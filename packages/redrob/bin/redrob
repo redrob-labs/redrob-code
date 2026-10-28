@@ -7,6 +7,22 @@ const os = require("os")
 
 const forwardedSignals = ["SIGINT", "SIGTERM", "SIGHUP"]
 
+// Mouse reporting, bracketed paste, kitty keys, alternate screen, hidden cursor.
+const TERMINAL_RESET = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[<u\x1b[?1049l\x1b[?25h"
+
+// When the TUI ends without cleaning up (killed or crashed), undo its terminal
+// modes so the shell does not print mouse moves. Only on a Windows terminal.
+function restoreTerminal(code, signal) {
+  if (process.platform !== "win32") return
+  if (!signal && code === 0) return
+  if (!process.stdout.isTTY && !process.env.MSYSTEM) return
+  try {
+    fs.writeSync(1, TERMINAL_RESET)
+  } catch {
+    // stdout is gone.
+  }
+}
+
 function run(target) {
   const child = childProcess.spawn(target, process.argv.slice(2), {
     stdio: "inherit",
@@ -30,6 +46,7 @@ function run(target) {
   }
 
   child.on("exit", (code, signal) => {
+    restoreTerminal(code, signal)
     for (const forwardedSignal of forwardedSignals) {
       process.removeListener(forwardedSignal, forwarders[forwardedSignal])
     }

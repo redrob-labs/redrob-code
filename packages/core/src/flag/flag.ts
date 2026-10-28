@@ -43,6 +43,8 @@ export const Flag = {
   /** Never read or write the saved console /models listing (tests, which mock the fetch). */
   REDROB_DISABLE_MODELS_CACHE: truthy("REDROB_DISABLE_MODELS_CACHE"),
   REDROB_DISABLE_MOUSE: truthy("REDROB_DISABLE_MOUSE"),
+  /** Keep mouse reporting on in Git Bash (mintty), where it is off by default. */
+  REDROB_FORCE_MOUSE: truthy("REDROB_FORCE_MOUSE"),
   REDROB_FAKE_VCS: process.env["REDROB_FAKE_VCS"],
   REDROB_SERVER_PASSWORD: process.env["REDROB_SERVER_PASSWORD"],
   REDROB_SERVER_USERNAME: process.env["REDROB_SERVER_USERNAME"],

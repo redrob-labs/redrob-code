@@ -128,3 +128,13 @@ export function win32InstallCtrlCGuard() {
 
   return unhook
 }
+
+/**
+ * Git Bash (mintty) without a pseudo console. Ctrl+C there ends a native program
+ * at once, so no exit handler runs and mouse reporting stays on in the shell.
+ */
+export function win32GitBash() {
+  if (process.platform !== "win32") return false
+  if (!process.env["MSYSTEM"]) return false
+  return process.env["TERM_PROGRAM"] === "mintty" || !process.stdin.isTTY
+}
