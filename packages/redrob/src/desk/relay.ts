@@ -12,7 +12,7 @@
  */
 import type { DaemonConnection } from "@redrob-code/channels-core"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
-import { AccessTokens, ChatApi, endpoints, type RelayTicket } from "./auth"
+import { AccessTokens, ChatApi, endpoints, type AppToken, type RelayTicket } from "./auth"
 import * as DeskCrypto from "./crypto"
 import { DaemonApi } from "./daemon"
 import { Forwarder, type Link } from "./forward"
@@ -73,6 +73,8 @@ export class DeskRelay {
   private stopped = true
   private delay = 1_000
   private reconnect?: ReturnType<typeof setTimeout>
+  /** A ticket request is in flight. */
+  private connecting = false
   private timers: ReturnType<typeof setInterval>[] = []
   /** Inbound frames are handled one at a time, so receive counters see them in order. */
   private inbound: Promise<void> = Promise.resolve()
@@ -86,10 +88,12 @@ export class DeskRelay {
     private readonly log: Logger = consoleLogger,
     /** Overrides the machine name from the desk settings (hostname by default). */
     private readonly name?: string,
+    /** The token Redrob Desktop pushed (`PUT /desk/token`), used before the stored refresh token. */
+    app?: AppToken,
   ) {
     const { issuer, chatApi } = endpoints()
     this.api = new DaemonApi(daemon)
-    this.chat = new ChatApi(chatApi, new AccessTokens(issuer, pairing.tokens()))
+    this.chat = new ChatApi(chatApi, new AccessTokens(issuer, pairing.tokens(), app))
     this.forwarder = new Forwarder(
       this.api,
       (kind, sessionId) => this.notify(kind, sessionId),
@@ -144,16 +148,30 @@ export class DeskRelay {
     this.reconnect = setTimeout(() => void this.connect(), delay)
   }
 
+  /** A new token arrived: when not connected, try again now instead of waiting out the backoff. */
+  kick(): void {
+    if (this.stopped || this.socket) return
+    this.delay = 1_000
+    // A ticket request in flight may have used the old token; if it fails, the retry comes in a second.
+    if (this.connecting) return
+    if (this.reconnect) clearTimeout(this.reconnect)
+    this.reconnect = undefined
+    void this.connect()
+  }
+
   private async connect(): Promise<void> {
-    if (this.stopped) return
+    if (this.stopped || this.connecting) return
     let ticket: RelayTicket
+    this.connecting = true
     try {
       ticket = await this.chat.relayTicket()
     } catch (error) {
       this.log.warn(`no relay ticket: ${error instanceof Error ? error.message : String(error)}`)
       return this.schedule()
+    } finally {
+      this.connecting = false
     }
-    if (this.stopped) return
+    if (this.stopped || this.socket) return
     const url = new URL(ticket.url)
     url.searchParams.set("ticket", ticket.ticket)
     const socket = new WebSocket(url.toString())

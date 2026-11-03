@@ -88,6 +88,27 @@ export const ChannelsHandler = HttpApiBuilder.group(Api, "server.channels", (han
       }),
     )
     .handle(
+      "desk.token.set",
+      Effect.fn(function* (ctx) {
+        const controller = yield* desk()
+        const set = controller.setToken
+        if (!set) return yield* Effect.fail(noDesk())
+        const { accessToken, expiresAt, email } = ctx.payload
+        return yield* Effect.promise(() =>
+          set.call(controller, { accessToken, expiresAt, ...(email !== undefined ? { email } : {}) }),
+        )
+      }),
+    )
+    .handle(
+      "desk.token.clear",
+      Effect.fn(function* () {
+        const controller = yield* desk()
+        const clear = controller.clearToken
+        if (!clear) return yield* Effect.fail(noDesk())
+        return yield* Effect.promise(() => clear.call(controller))
+      }),
+    )
+    .handle(
       "desk.approve",
       Effect.fn(function* (ctx) {
         const controller = yield* desk()

@@ -8,7 +8,7 @@
  * routes and `redrob desk ...` call into this.
  */
 import { Config, type DaemonConnection } from "@redrob-code/channels-core"
-import { endpoints, finishDeviceLogin, startDeviceLogin, type DeviceAuthorization } from "./auth"
+import { AppToken, endpoints, finishDeviceLogin, startDeviceLogin, type DeviceAuthorization } from "./auth"
 import { NotFound, Pairing, type DeviceKind } from "./pairing"
 import { DeskRelay, consoleLogger, type Logger } from "./relay"
 import { allowAutoAll, machine, updateMachine, type Machine, type MachineUpdate } from "./settings"
@@ -43,6 +43,8 @@ export class DeskService {
   private relay?: DeskRelay
   private login?: { readonly device: DeviceAuthorization; readonly abort: AbortController }
   private reconciling: Promise<void> = Promise.resolve()
+  /** Redrob Desktop's access token (`PUT /desk/token`). Memory only, never logged. */
+  private readonly app = new AppToken()
 
   constructor(
     private readonly daemon: DaemonConnection,
@@ -62,8 +64,15 @@ export class DeskService {
     return this.pairing.tokens()
   }
 
+  /** Signed in: a valid token from Redrob Desktop, or a stored device-grant refresh token. */
   async signedIn(): Promise<boolean> {
+    if (this.app.usable()) return true
     return Boolean(await this.tokens().get("refreshToken"))
+  }
+
+  /** The relay runs while signed in, and also while the app's token has run out and a fresh one is due. */
+  private async wanted(): Promise<boolean> {
+    return this.app.present || (await this.signedIn())
   }
 
   async enabled(): Promise<boolean> {
@@ -74,9 +83,9 @@ export class DeskService {
   reconcile(): Promise<void> {
     this.reconciling = this.reconciling
       .then(async () => {
-        const wanted = (await this.enabled().catch(() => true)) && (await this.signedIn().catch(() => false))
+        const wanted = (await this.enabled().catch(() => true)) && (await this.wanted().catch(() => false))
         if (wanted && !this.relay) {
-          this.relay = new DeskRelay(this.daemon, this.pairing, this.log)
+          this.relay = new DeskRelay(this.daemon, this.pairing, this.log, undefined, this.app)
           this.relay.start()
           this.log.info("relay on")
           this.onChange()
@@ -101,7 +110,7 @@ export class DeskService {
   }
 
   async status(): Promise<DeskStatus> {
-    const [enabled, signedIn, email, autoAll] = await Promise.all([
+    const [enabled, signedIn, stored, autoAll] = await Promise.all([
       this.enabled().catch(() => true),
       this.signedIn().catch(() => false),
       this.tokens()
@@ -109,6 +118,7 @@ export class DeskService {
         .catch(() => undefined),
       allowAutoAll(),
     ])
+    const email = (this.app.usable() ? this.app.email : undefined) ?? stored
     const relay = this.relay?.status()
     const online = relay?.online ?? new Set<string>()
     const login = this.currentLogin()
@@ -183,10 +193,30 @@ export class DeskService {
     }
   }
 
-  /** Drop the refresh token and disconnect. Approved devices are kept. */
+  /**
+   * `PUT /desk/token`: Redrob Desktop hands over its own access token, so the person signs in once.
+   * Held in memory only; the relay (re)connects with it when the desk is on.
+   */
+  async setToken(token: { accessToken: string; expiresAt: number; email?: string }): Promise<DeskStatus> {
+    const email = token.email?.trim()
+    this.app.set(token.accessToken, token.expiresAt, email || undefined)
+    await this.reconcile()
+    this.relay?.kick()
+    return this.status()
+  }
+
+  /** `DELETE /desk/token`: forget the app's token; without a stored refresh token the relay stops. */
+  async clearToken(): Promise<DeskStatus> {
+    this.app.clear()
+    await this.reconcile()
+    return this.status()
+  }
+
+  /** Drop the refresh token and the app's token, and disconnect. Approved devices are kept. */
   async logout(): Promise<DeskStatus> {
     this.login?.abort.abort()
     this.login = undefined
+    this.app.clear()
     await this.tokens().delete("refreshToken")
     await this.tokens().delete("email")
     await this.reconcile()
