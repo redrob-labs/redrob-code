@@ -87,20 +87,22 @@ redrob models
 
 현재 제공되는 모델은 다음과 같습니다.
 
-| 모델                     | 용도                                          |
-| ------------------------ | --------------------------------------------- |
-| `redrob/auto`            | 콘솔이 요청마다 모델을 고르는 기본값          |
-| `redrob/gpt-5.6-sol`     | GPT-5.6 Sol. OpenAI 계열 상위 모델            |
-| `redrob/gpt-5.6-terra`   | GPT-5.6 Terra. 더 저렴한 GPT-5.6 등급         |
-| `redrob/claude-opus-5`   | Claude Opus 5. 코딩·에이전트 작업에 가장 강력 |
-| `redrob/claude-sonnet-5` | Claude Sonnet 5. 균형 잡힌 코딩               |
-| `redrob/claude-fable-5`  | Claude Fable 5. 긴 글쓰기                     |
+| 모델                     | 용도                                        |
+| ------------------------ | ------------------------------------------- |
+| `redrob/claude-opus-5-5` | Claude Opus 5.5. 기본값, 생각 강도 `medium` |
+| `redrob/gpt-5.6-sol`     | GPT-5.6 Sol. OpenAI 계열 상위 모델          |
+| `redrob/gpt-5.6-terra`   | GPT-5.6 Terra. 더 저렴한 GPT-5.6 등급       |
+| `redrob/claude-opus-5`   | Claude Opus 5. 코딩·에이전트 작업에 강해요  |
+| `redrob/claude-sonnet-5` | Claude Sonnet 5. 균형 잡힌 코딩             |
+| `redrob/claude-fable-5`  | Claude Fable 5. 긴 글쓰기                   |
 
-기본값은 `redrob/auto`입니다. 세션에서 다른 모델을 쓰려면
-`redrob --model redrob/claude-opus-5`를 사용하세요.
+기본값은 생각 강도 `medium`의 `redrob/claude-opus-5-5`예요. 세션에서 다른 모델을 쓰려면
+`redrob --model redrob/claude-sonnet-5`, 다른 생각 강도를 쓰려면
+`redrob run --variant high`(TUI에서는 `ctrl+t`)를 쓰세요.
 
-`redrob-ai`와 `redrob-translate`는 폐기되었으며 더 이상 유효한 모델 id가 아닙니다. 아직 이
-id를 쓰는 설정·에이전트·명령은 `redrob/auto`로 바꾸세요.
+`redrob/auto`는 없어졌어요. 저장해 둔 선택이나 설정·에이전트·명령에 남아 있으면
+`redrob/claude-opus-5-5`로 돌아요. `redrob-ai`와 `redrob-translate`도 없어져서 더는 쓸 수 없는
+모델 id예요. `redrob/claude-opus-5-5`로 바꾸세요.
 
 ### 에이전트
 

@@ -56,7 +56,7 @@ An OpenAI chat-completions subset:
 
 | field              | required | notes                                                                               |
 | ------------------ | -------- | ----------------------------------------------------------------------------------- |
-| `model`            | yes      | `redrob/auto` routes through the Console; a local provider id targets a local model |
+| `model`            | yes      | `redrob/<id>` goes through the Console; a local provider id targets a local model   |
 | `messages`         | yes      | `system` / `user` / `assistant` / `tool` roles                                      |
 | `tools`            | no       | **presence changes who executes them — see below**                                  |
 | `tool_choice`      | no       | `auto` \| `none` \| a named function                                                |

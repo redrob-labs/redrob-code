@@ -81,7 +81,7 @@ const ToolChoice = Schema.Union([
 ])
 
 export const ChatCompletionRequest = Schema.Struct({
-  /** `redrob/auto` routes through the Console; a local provider id stays local. */
+  /** `redrob/<id>` routes through the Console; a local provider id stays local. */
   model: Schema.String,
   messages: Schema.Array(Message),
   tools: Schema.optional(Schema.Array(FunctionTool)),
