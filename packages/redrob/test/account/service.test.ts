@@ -35,7 +35,7 @@ const json = (req: Parameters<typeof HttpClientResponse.fromWeb>[0], body: unkno
   )
 
 // The real console.redrob.ai API validates the key via the OpenAI-compatible models endpoint.
-const modelsBody = { object: "list", data: [{ id: "auto", object: "model" }] }
+const modelsBody = { object: "list", data: [{ id: "claude-opus-5-5", object: "model" }] }
 
 it.live("login validates the api key against the models endpoint and persists the account", () =>
   Effect.gen(function* () {

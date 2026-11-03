@@ -52,7 +52,7 @@ const modelList = {
   object: "list",
   data: [
     {
-      id: "auto",
+      id: "claude-opus-5-5",
       object: "model",
       created: 1767225600,
       owned_by: "redrob",
@@ -63,7 +63,7 @@ const modelList = {
         thinkingLevels: [],
         fastMode: false,
         requiresProviderDataShare: false,
-        // The live console publishes these per model; `auto` advertises the widest set.
+        // The live console publishes these per model; the default model advertises the widest set.
         imageInput: true,
         audioInput: true,
         fileInput: true,
@@ -172,11 +172,18 @@ const modelList = {
 
 // Every served console model, which the static/no-key fallback catalog must also surface, sorted so
 // it can be compared against Object.keys(...).sort().
-const CONSOLE_MODEL_IDS = ["auto", "claude-fable-5", "claude-opus-5", "claude-sonnet-5", "gpt-5.6-sol", "gpt-5.6-terra"]
+const CONSOLE_MODEL_IDS = [
+  "claude-fable-5",
+  "claude-opus-5",
+  "claude-opus-5-5",
+  "claude-sonnet-5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+]
 
 // The display names the static fallback must publish, in CONSOLE_MODELS order.
 const FALLBACK_MODEL_NAMES = [
-  ["auto", "Redrob Auto"],
+  ["claude-opus-5-5", "Claude Opus 5.5"],
   ["gpt-5.6-sol", "GPT-5.6 Sol"],
   ["gpt-5.6-terra", "GPT-5.6 Terra"],
   ["claude-opus-5", "Claude Opus 5"],
@@ -270,7 +277,7 @@ describe("ModelsDev Service", () => {
       // tolerated and ignored.
       expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
       // release_date derives from the OpenAI `created` seconds field when present.
-      expect(result["redrob"].models["auto"].release_date).toBe("2026-01-01")
+      expect(result["redrob"].models["claude-opus-5-5"].release_date).toBe("2026-01-01")
       expect(result["redrob"].models["claude-opus-5"].release_date).toBe("2026-01-01")
 
       const final = yield* Ref.get(state)
@@ -289,7 +296,7 @@ describe("ModelsDev Service", () => {
       )
       expect(Object.keys(result)).toEqual(["redrob"])
       expect(Object.keys(result["redrob"].models).sort()).toEqual(CONSOLE_MODEL_IDS)
-      expect(result["redrob"].models["auto"].name).toBe("Redrob Auto")
+      expect(result["redrob"].models["claude-opus-5-5"].name).toBe("Claude Opus 5.5")
       expect(result["redrob"].models["claude-opus-5"].name).toBe("Claude Opus 5")
       // The request was still attempted (proves wiring), then degraded non-fatally.
       const final = yield* Ref.get(state)
@@ -462,7 +469,7 @@ describe("ModelsDev console model metadata", () => {
       expect(models["claude-opus-5"].cost).toEqual({ input: 5, output: 25, tiers: undefined })
       expect(models["claude-sonnet-5"].cost).toEqual({ input: 3, output: 15, tiers: undefined })
       expect(models["claude-fable-5"].cost).toEqual({ input: 10, output: 50, tiers: undefined })
-      expect(models["auto"].cost).toEqual({ input: 0.6, output: 1.8, tiers: undefined })
+      expect(models["claude-opus-5-5"].cost).toEqual({ input: 0.6, output: 1.8, tiers: undefined })
     }),
   )
 
@@ -493,7 +500,7 @@ describe("ModelsDev console model metadata", () => {
       for (const id of CONSOLE_MODEL_IDS) {
         expect(models[id].limit.context).toBe(1_000_000)
         // This CLI's own ceiling, except where the console publishes a cap of its own (auto does).
-        expect(models[id].limit.output).toBe(id === "auto" ? 64_000 : 32_000)
+        expect(models[id].limit.output).toBe(id === "claude-opus-5-5" ? 64_000 : 32_000)
         // shortContextTokens is a pricing threshold, not an input cap. Setting limit.input from it
         // would make `usable()` stop reserving room for the reply.
         expect(models[id].limit.input).toBeUndefined()
@@ -509,7 +516,7 @@ describe("ModelsDev console model metadata", () => {
       expect(models["claude-opus-5"].reasoning).toBe(true)
       expect(models["claude-sonnet-5"].reasoning).toBe(true)
       expect(models["claude-fable-5"].reasoning).toBe(true)
-      expect(models["auto"].reasoning).toBe(false)
+      expect(models["claude-opus-5-5"].reasoning).toBe(false)
       expect(models["gpt-5.6-sol"].reasoning).toBe(false)
       expect(models["gpt-5.6-terra"].reasoning).toBe(false)
       // Levels are published VERBATIM, not mapped onto OpenAI's three-value effort scale: the
@@ -520,7 +527,7 @@ describe("ModelsDev console model metadata", () => {
       ])
       // A model that publishes no levels still publishes an EMPTY list rather than undefined, which
       // is what tells reasoningVariants to synthesise nothing at all.
-      for (const id of ["auto", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+      for (const id of ["claude-opus-5-5", "gpt-5.6-sol", "gpt-5.6-terra"]) {
         expect(models[id].reasoning_options).toEqual([])
       }
     }),
@@ -534,11 +541,11 @@ describe("ModelsDev console model metadata", () => {
       // ProviderTransform consults capabilities.input[modality] and replaces an image with the text
       // "ERROR: Cannot read image (this model does not support image input)" when it is false, so a
       // model whose modalities are understated can never receive an attachment at all.
-      expect(models["auto"].modalities).toEqual({
+      expect(models["claude-opus-5-5"].modalities).toEqual({
         input: ["text", "image", "audio"],
         output: ["text", "image"],
       })
-      expect(models["auto"].attachment).toBe(true)
+      expect(models["claude-opus-5-5"].attachment).toBe(true)
       // fileInput has no modality of its own here -- a PDF arrives as a file part and is gated by
       // the mime mapping -- but it does mean there is an attachment to offer.
       expect(models["claude-opus-5"].modalities).toEqual({ input: ["text", "image"], output: ["text"] })
@@ -559,7 +566,7 @@ describe("ModelsDev console model metadata", () => {
   it.live("takes the published reply cap when there is one, and this CLI's ceiling otherwise", () =>
     Effect.gen(function* () {
       const models = yield* fetched()
-      expect(models["auto"].limit.output).toBe(64000)
+      expect(models["claude-opus-5-5"].limit.output).toBe(64000)
       // No published cap on this one, so it keeps this CLI's ceiling.
       expect(models["claude-opus-5"].limit.output).toBe(32_000)
     }),
@@ -603,11 +610,7 @@ describe("ModelsDev console model metadata", () => {
       // eventually publish something this build has no schema for, and that must cost one model.
       const body = JSON.stringify({
         object: "list",
-        data: [
-          consoleEntry("good-one", {}),
-          { id: 42, capabilities: "not an object" },
-          consoleEntry("good-two", {}),
-        ],
+        data: [consoleEntry("good-one", {}), { id: 42, capabilities: "not an object" }, consoleEntry("good-two", {})],
       })
       const state = yield* Ref.make<MockState>({ body, status: 200, calls: [] })
       const catalog = yield* provided(
@@ -658,16 +661,19 @@ describe("ModelsDev console model metadata", () => {
       // catalog to the static fallback.
       const state = yield* Ref.make({
         ...okState(),
-        body: JSON.stringify({ object: "list", data: [{ id: "auto", object: "model", created: 1767225600 }] }),
+        body: JSON.stringify({
+          object: "list",
+          data: [{ id: "claude-opus-5-5", object: "model", created: 1767225600 }],
+        }),
       })
       const result = yield* provided(
         state,
         ModelsDev.Service.use((s) => s.get()),
       )
-      expect(Object.keys(result["redrob"].models)).toEqual(["auto"])
-      expect(result["redrob"].models["auto"].cost).toEqual({ input: 0, output: 0, tiers: undefined })
+      expect(Object.keys(result["redrob"].models)).toEqual(["claude-opus-5-5"])
+      expect(result["redrob"].models["claude-opus-5-5"].cost).toEqual({ input: 0, output: 0, tiers: undefined })
       // Still a usable window, so compaction keeps working against a listing that says nothing.
-      expect(result["redrob"].models["auto"].limit).toEqual({ context: 1_000_000, output: 32_000 })
+      expect(result["redrob"].models["claude-opus-5-5"].limit).toEqual({ context: 1_000_000, output: 32_000 })
     }),
   )
 
@@ -693,10 +699,10 @@ describe("ModelsDev console model metadata", () => {
       // live one on which ids think. `auto` is one of them: the router publishes the full
       // low..max range, and claiming otherwise offline would hide its thinking control.
       expect(result["redrob"].models["claude-opus-5"].reasoning).toBe(true)
-      expect(result["redrob"].models["auto"].reasoning).toBe(true)
+      expect(result["redrob"].models["claude-opus-5-5"].reasoning).toBe(true)
       // Offline there is no listing, so no LEVELS are known and no variant may be synthesised --
       // an effort the console might reject is worse than none offered.
-      expect(result["redrob"].models["auto"].reasoning_options).toEqual([])
+      expect(result["redrob"].models["claude-opus-5-5"].reasoning_options).toEqual([])
       expect(result["redrob"].models["claude-opus-5"].reasoning_options).toEqual([])
       expect(yield* Ref.get(state).pipe(Effect.map((s) => s.calls))).toEqual([])
     }),

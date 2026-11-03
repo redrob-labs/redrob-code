@@ -15,11 +15,11 @@ const it = testEffect(PluginTestLayer)
 
 const CONSOLE_URL = "https://console.redrob.ai/api/backend/v1"
 const CONSOLE_PACKAGE = "@ai-sdk/openai-compatible"
-const MODEL_ID = ModelV2.ID.make("auto")
+const MODEL_ID = ModelV2.ID.make("claude-opus-5-5")
 // The console /models listing (verified live) serves six ids; `redrob-ai` and `redrob-translate` are
 // retired and no longer valid model ids. The static V2 registration must register every served id.
 const SERVED_MODELS = [
-  ["auto", "Redrob Auto"],
+  ["claude-opus-5-5", "Claude Opus 5.5"],
   ["gpt-5.6-sol", "GPT-5.6 Sol"],
   ["gpt-5.6-terra", "GPT-5.6 Terra"],
   ["claude-opus-5", "Claude Opus 5"],
@@ -92,7 +92,7 @@ describe("RedrobPlugin", () => {
         })
 
         const model = required(yield* catalog.model.get(ProviderV2.ID.redrob, MODEL_ID))
-        expect(model.name).toBe("Redrob Auto")
+        expect(model.name).toBe("Claude Opus 5.5")
         expect(model.api).toMatchObject({
           id: MODEL_ID,
           type: "aisdk",

@@ -37,6 +37,7 @@
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
+import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
@@ -265,7 +266,10 @@ export function requestedModel(headers: unknown): string | undefined {
   return undefined
 }
 
-/** `<provider>/<model>` as a ref; undefined for anything malformed. The model part may hold `/`. */
+/**
+ * `<provider>/<model>` as a ref; undefined for anything malformed. The model part may hold `/`.
+ * The retired `redrob/auto` an older app still sends becomes the default redrob model.
+ */
 export function parseModel(value: string): ModelRef | undefined {
   if (value.length > 256) return undefined
   const slash = value.indexOf("/")
@@ -274,7 +278,7 @@ export function parseModel(value: string): ModelRef | undefined {
   const id = value.slice(slash + 1)
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(providerID)) return undefined
   if (!/^[A-Za-z0-9._:/@+-]{1,191}$/.test(id)) return undefined
-  return { providerID, id }
+  return { providerID, id: providerID === "redrob" ? consoleModelID(id) : id }
 }
 
 const modelName = (ref: { providerID: string; id: string }) => `${ref.providerID}/${ref.id}`

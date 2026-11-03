@@ -38,7 +38,12 @@ import {
   CONSOLE_PACKAGE,
   CONSOLE_URL,
 } from "@redrob-code/core/plugin/provider/redrob"
-import type { ConsoleModelInfo } from "@redrob-code/core/plugin/provider/redrob-constants"
+import {
+  CONSOLE_MODEL_ID,
+  CONSOLE_SMALL_MODEL_ID,
+  consoleModelID,
+  type ConsoleModelInfo,
+} from "@redrob-code/core/plugin/provider/redrob-constants"
 import { sendConsoleBudgeted } from "@redrob-code/core/plugin/provider/redrob-body-budget"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -1160,7 +1165,11 @@ export function toPublicInfo(provider: Info): Info {
 }
 
 export function defaultModelIDs<T extends { models: Record<string, { id: string }> }>(providers: Record<string, T>) {
-  return mapValues(providers, (item) => sort(Object.values(item.models))[0].id)
+  return mapValues(providers, (item, id) =>
+    id === ProviderV2.ID.redrob && item.models[REDROB_DEFAULT_MODEL]
+      ? REDROB_DEFAULT_MODEL
+      : sort(Object.values(item.models))[0].id,
+  )
 }
 
 export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundError>()("ProviderModelNotFoundError", {
@@ -1474,7 +1483,7 @@ const layer = Layer.effect(
         const database = mapValues(catalog, toPublicInfo)
 
         // Seed the authoritative console.redrob.ai provider so `redrob models` lists every served
-        // console model (`redrob/auto` and the rest of CONSOLE_MODELS) even when the dynamic
+        // console model (CONSOLE_MODELS) even when the dynamic
         // catalog from the console /models endpoint is empty or unreachable (no key set or the
         // request failed). Additive: never overwrite an existing redrob catalog (e.g. the dynamic
         // models); only fill in the missing pieces.
@@ -2043,7 +2052,9 @@ const layer = Layer.effect(
       InstanceState.use(state, (s) => s.providers[providerID]),
     )
 
-    const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
+    const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, requested: ModelV2.ID) {
+      // A saved or sent `redrob/auto` (the retired router) resolves to the default model.
+      const modelID = providerID === ProviderV2.ID.redrob ? ModelV2.ID.make(consoleModelID(requested)) : requested
       const s = yield* InstanceState.get(state)
       const provider = s.providers[providerID]
       if (!provider) {
@@ -2142,6 +2153,10 @@ const layer = Layer.effect(
         return undefined
       }
 
+      // Helper calls (titles, generated names) on the console go to its cheap model, never the default.
+      if (providerID === ProviderV2.ID.redrob && provider.models[CONSOLE_SMALL_MODEL_ID])
+        return provider.models[CONSOLE_SMALL_MODEL_ID]
+
       const priority = providerID.startsWith("redrob")
         ? ["gpt-nano"]
         : providerID.startsWith("github-copilot")
@@ -2191,7 +2206,8 @@ const layer = Layer.effect(
             if (!isRecord(item)) return []
             if (typeof item.providerID !== "string") return []
             if (typeof item.modelID !== "string") return []
-            return [{ providerID: ProviderV2.ID.make(item.providerID), modelID: ModelV2.ID.make(item.modelID) }]
+            const modelID = item.providerID === ProviderV2.ID.redrob ? consoleModelID(item.modelID) : item.modelID
+            return [{ providerID: ProviderV2.ID.make(item.providerID), modelID: ModelV2.ID.make(modelID) }]
           })
         }),
         Effect.catch(() => Effect.succeed([] as { providerID: ProviderV2.ID; modelID: ModelV2.ID }[])),
@@ -2237,8 +2253,8 @@ export function isChatModel(model: {
   return !IMAGE_MODEL_ID.test(model.id)
 }
 
-// Redrob's own router. When the redrob provider lists it, it is the default.
-export const REDROB_DEFAULT_MODEL = "auto"
+// The redrob provider's default model (run at `medium` thinking by ProviderTransform.options).
+export const REDROB_DEFAULT_MODEL = CONSOLE_MODEL_ID
 
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(
@@ -2252,9 +2268,10 @@ export function sort<T extends { id: string }>(models: T[]) {
 
 export function parseModel(model: string) {
   const [providerID, ...rest] = model.split("/")
+  const modelID = rest.join("/")
   return {
     providerID: ProviderV2.ID.make(providerID),
-    modelID: ModelV2.ID.make(rest.join("/")),
+    modelID: ModelV2.ID.make(providerID === ProviderV2.ID.redrob ? consoleModelID(modelID) : modelID),
   }
 }
 

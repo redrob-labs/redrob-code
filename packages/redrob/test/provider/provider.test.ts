@@ -379,11 +379,11 @@ it.instance(
 )
 
 it.instance(
-  "defaultModel picks redrob/auto when the redrob provider is the one in use",
+  "defaultModel picks redrob/claude-opus-5-5 when the redrob provider is the one in use",
   Effect.gen(function* () {
     const model = yield* Provider.use.defaultModel()
     expect(String(model.providerID)).toBe("redrob")
-    expect(String(model.modelID)).toBe("auto")
+    expect(String(model.modelID)).toBe("claude-opus-5-5")
   }),
   { config: { enabled_providers: ["redrob"] } },
 )
@@ -2102,9 +2102,9 @@ it.instance("redrob console provider seeds the primary console model", () =>
     const providers = yield* list
     expect(providers[ProviderV2.ID.redrob]).toBeDefined()
     // The catalog fixture already carries a redrob provider, standing in for the console listing,
-    // and that listing is authoritative — so the seed only backfills the primary model, `auto`.
+    // and that listing is authoritative — so the seed only backfills the primary model, `claude-opus-5-5`.
     // `redrob-ai` and `redrob-translate` are retired ids, so the seed must never name them.
-    const model = providers[ProviderV2.ID.redrob].models["auto"]
+    const model = providers[ProviderV2.ID.redrob].models["claude-opus-5-5"]
     expect(model).toBeDefined()
     expect(model.api.url).toBe("https://console.redrob.ai/api/backend/v1")
     expect(model.api.npm).toBe("@ai-sdk/openai-compatible")
