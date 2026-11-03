@@ -14,6 +14,7 @@ import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
 import { useLanguage } from "./language"
+import { CONSOLE_DEFAULT_THINKING, consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -25,12 +26,37 @@ export type LocalTheme = {
   info: RGBA
 }
 
+/** A saved model ref with the retired `redrob/auto` mapped to the default redrob model. */
+export function migrateModel(model: { providerID: string; modelID: string }) {
+  if (model.providerID !== "redrob") return model
+  return { providerID: model.providerID, modelID: consoleModelID(model.modelID) }
+}
+
 export function parseModel(model: string) {
   const [providerID, ...rest] = model.split("/")
-  return {
+  return migrateModel({
     providerID: providerID,
     modelID: rest.join("/"),
-  }
+  })
+}
+
+function dedupeModels(models: { providerID: string; modelID: string }[]) {
+  const seen = new Set<string>()
+  return models.filter((item) => {
+    const key = `${item.providerID}/${item.modelID}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function migrateModels(value: unknown[]) {
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const { providerID, modelID } = item as Record<string, unknown>
+    if (typeof providerID !== "string" || typeof modelID !== "string") return []
+    return [migrateModel({ providerID, modelID })]
+  })
 }
 
 export function recentModels(
@@ -185,10 +211,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         .then((x) => {
           if (!x || typeof x !== "object") return
           const value = x as Record<string, unknown>
-          if (Array.isArray(value.recent)) setModelStore("recent", value.recent)
-          if (Array.isArray(value.favorite)) setModelStore("favorite", value.favorite)
-          if (typeof value.variant === "object" && value.variant !== null)
-            setModelStore("variant", value.variant as Record<string, string | undefined>)
+          // `redrob/auto` is retired: saved choices of it move to the default model, and its saved
+          // variant is dropped so the default model starts at medium.
+          if (Array.isArray(value.recent))
+            setModelStore("recent", dedupeModels(migrateModels(value.recent)).slice(0, 10))
+          if (Array.isArray(value.favorite)) setModelStore("favorite", dedupeModels(migrateModels(value.favorite)))
+          if (typeof value.variant === "object" && value.variant !== null) {
+            const variant = { ...(value.variant as Record<string, string | undefined>) }
+            delete variant["redrob/auto"]
+            delete variant["redrob/redrob-auto"]
+            setModelStore("variant", variant)
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -370,7 +403,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           },
           current() {
             const v = this.selected()
-            if (!v) return undefined
+            // Never chosen on a redrob model: show the level the engine sends by default.
+            if (!v)
+              return currentModel()?.providerID === "redrob" && this.list().includes(CONSOLE_DEFAULT_THINKING)
+                ? CONSOLE_DEFAULT_THINKING
+                : undefined
             if (!this.list().includes(v)) return undefined
             return v
           },

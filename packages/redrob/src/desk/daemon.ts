@@ -41,7 +41,7 @@ export class DaemonApi {
   }
 
   /** One call, whatever the status: the forwarder hands the status and body to the phone as is. */
-  async raw(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 30_000): Promise<{ status: number; body?: unknown }> {
+  async raw(method: "GET" | "POST" | "PUT", path: string, body?: unknown, timeoutMs = 30_000): Promise<{ status: number; body?: unknown }> {
     const response = await fetch(this.url(path), {
       method,
       headers: {

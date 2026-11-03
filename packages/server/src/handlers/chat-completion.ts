@@ -14,6 +14,7 @@ import { Catalog } from "@redrob-code/core/catalog"
 import { Integration } from "@redrob-code/core/integration"
 import { ModelV2 } from "@redrob-code/core/model"
 import { ProviderV2 } from "@redrob-code/core/provider"
+import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { Mask } from "@redrob-code/core/privacy/mask"
 import { Privacy } from "@redrob-code/core/privacy/service"
 import { SkillV2 } from "@redrob-code/core/skill"
@@ -136,7 +137,8 @@ function errorResponse(error: unknown): Effect.Effect<HttpServerResponse.HttpSer
 
 /**
  * Resolves the requested model the way the agent does: catalog entry plus the
- * active integration credential. `redrob/auto` is the Console route; any other
+ * active integration credential. `redrob/<id>` is the Console route (the retired
+ * `redrob/auto` resolves to the default console model); any other
  * `provider/model` string resolves against the same registry, which is how a
  * locally served model becomes reachable without a second code path.
  *
@@ -145,10 +147,11 @@ function errorResponse(error: unknown): Effect.Effect<HttpServerResponse.HttpSer
  * honouring an arbitrary URL here would bypass that check and forward the
  * engine's own credential to whatever host the caller named.
  */
-const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
+export const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   const [providerPart, ...rest] = model.split("/")
   const providerID = ProviderV2.ID.make(rest.length > 0 ? providerPart! : "redrob")
-  const modelID = ModelV2.ID.make(rest.length > 0 ? rest.join("/") : model)
+  const requested = rest.length > 0 ? rest.join("/") : model
+  const modelID = ModelV2.ID.make(providerID === ProviderV2.ID.redrob ? consoleModelID(requested) : requested)
 
   const catalog = yield* Catalog.Service
   const info = yield* catalog.model.get(providerID, modelID)

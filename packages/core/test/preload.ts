@@ -34,8 +34,7 @@ process.env.REDROB_SHARED_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "redrob-
 
 process.env.REDROB_DB = ":memory:"
 // Gate the console /models fetch off so core tests stay offline/deterministic; the
-// ModelsDev.Service then serves the static console fallback catalog (redrob/auto and the rest of
-// CONSOLE_MODELS).
+// ModelsDev.Service then serves the static console fallback catalog (CONSOLE_MODELS).
 process.env.REDROB_DISABLE_MODELS_FETCH = "true"
 // The saved /models listing lives in the user's real cache directory and would carry one test's
 // mocked catalogue into the next, so tests never touch it.

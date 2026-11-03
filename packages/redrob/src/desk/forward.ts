@@ -1,5 +1,5 @@
 /**
- * The desk forwarder (redrob-mobile `docs/desk-relay.md`, section 4): what a paired device (the
+ * The desk forwarder (redrob-mobile `docs/desk-relay.md`, section 5): what a paired device (the
  * phone app or a web browser) may ask of this daemon, and the live events it gets back.
  *
  * `ROUTES` is the only security boundary. A `req` outside it is answered 403 without touching the
@@ -27,9 +27,17 @@
  * `X-Redrob-Machine-Access: read_only`; `ask` lowers `all` to `edits`, so commands ask;
  * `trusted` (the default) lets `all` through while the launcher's switch is on. `GET /desk/capabilities` also
  * reports `machineId` and `access`.
+ *
+ * Privacy (the web's AI 방화벽 "strong"): `GET` / `PUT /api/privacy` read and set the PC's masking
+ * (`{ mode, model }`), and `POST /api/privacy/mask` masks a message on the PC before it leaves the
+ * browser. A body these reject is answered 400, as the daemon would. Masking changes nothing on the
+ * PC, so a `read_only` machine answers it too. `GET /desk/capabilities` reports
+ * `privacy: { model, localModels }`: the configured masking model and the models a local provider
+ * (Ollama, LM Studio, or a base URL on localhost / 127.0.0.1) serves.
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
+import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
@@ -37,15 +45,19 @@ import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settin
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
 
-type Method = "GET" | "POST"
+export type Method = "GET" | "POST" | "PUT"
 
 type Route = {
   readonly method: Method
   readonly path: RegExp
+  /** A POST that changes nothing on the PC, so a `read_only` machine answers it too. */
+  readonly readOnly?: true
   /** Whether a query string is passed through. */
   readonly query?: boolean
-  /** Extra body rule; false answers 403. */
+  /** Extra body rule; false answers 403, or `invalidBody` when set. */
   readonly body?: (body: unknown) => boolean
+  /** The status a body failing `body` gets, for routes whose daemon contract says 400. */
+  readonly invalidBody?: 400
   /** Mark the session the call names (capture 1) or creates (`created`). */
   readonly mark?: "named" | "created"
   /** A phone prompt: watch the turn so its end can be pushed. */
@@ -58,7 +70,7 @@ type Route = {
 const ID = "([A-Za-z0-9_-]{1,128})"
 
 /**
- * The allowlist. Keep in step with docs/desk-relay.md, section 4. `history` also passes its query
+ * The allowlist. Keep in step with redrob-mobile docs/desk-relay.md, section 5. `history` also passes its query
  * (`after`, `limit`) through: it is a read and pages are how the phone loads a long session.
  */
 export const ROUTES: readonly Route[] = [
@@ -79,11 +91,44 @@ export const ROUTES: readonly Route[] = [
     },
   },
   { method: "GET", path: /^\/v1\/apps$/ },
+  // AI 방화벽 "strong": the web reads and sets the PC's masking, and masks a message on the PC first.
+  { method: "GET", path: /^\/api\/privacy$/ },
+  { method: "PUT", path: /^\/api\/privacy$/, body: (body) => isPrivacySettings(body), invalidBody: 400 },
+  {
+    method: "POST",
+    path: /^\/api\/privacy\/mask$/,
+    body: (body) => isMaskBody(body),
+    invalidBody: 400,
+    readOnly: true,
+  },
   { method: "GET", path: /^\/desk\/capabilities$/, local: "capabilities" },
   { method: "GET", path: /^\/desk\/models$/, local: "models" },
   // A file the session showed or handed to the user (`session.next.attachment`), in pieces.
   { method: "GET", path: new RegExp(`^/desk/attachment/${ID}/${ID}$`), query: true, local: "attachment" },
 ]
+
+/** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
+function isPrivacySettings(body: unknown): boolean {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false
+  const { mode, model, ...rest } = body as { mode?: unknown; model?: unknown }
+  if (Object.keys(rest).length > 0) return false
+  if (mode !== "off" && mode !== "regex" && mode !== "model") return false
+  return model === undefined || (typeof model === "string" && parseModel(model) !== undefined)
+}
+
+/** `POST /api/privacy/mask` body: `{ texts }`, 1 to 50 strings of at most 100000 characters. */
+function isMaskBody(body: unknown): boolean {
+  const texts = (body as { texts?: unknown } | undefined)?.texts
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    Object.keys(body).length === 1 &&
+    Array.isArray(texts) &&
+    texts.length >= 1 &&
+    texts.length <= 50 &&
+    texts.every((text) => typeof text === "string" && text.length <= 100_000)
+  )
+}
 
 /** One attachment piece: at most this many bytes, which is also the default. */
 export const ATTACHMENT_CHUNK_BYTES = 512 * 1024
@@ -148,13 +193,22 @@ export async function readAttachment(
   }
 }
 
+/**
+ * `GET /desk/capabilities` `privacy`: the local model masking uses (`privacy.model`), and the
+ * `<provider>/<model>` ids this PC serves from a LOCAL provider, the ones it may pick from.
+ */
+export type DeskPrivacy = { readonly model: string | null; readonly localModels: string[] }
+
+const NO_PRIVACY: DeskPrivacy = { model: null, localModels: [] }
+
 /** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
-export async function capabilities(): Promise<{
+export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
   v: 1
   approvalModes: MobileProfile.ApprovalMode[]
   defaultApproval: "edits"
   machineId: string
   access: MachineAccess
+  privacy: DeskPrivacy
 }> {
   const self = await machine()
   const approvalModes: MobileProfile.ApprovalMode[] =
@@ -163,7 +217,7 @@ export async function capabilities(): Promise<{
       : self.access === "trusted" && (await allowAutoAll())
         ? ["ask", "edits", "all"]
         : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access }
+  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access, privacy }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -212,7 +266,10 @@ export function requestedModel(headers: unknown): string | undefined {
   return undefined
 }
 
-/** `<provider>/<model>` as a ref; undefined for anything malformed. The model part may hold `/`. */
+/**
+ * `<provider>/<model>` as a ref; undefined for anything malformed. The model part may hold `/`.
+ * The retired `redrob/auto` an older app still sends becomes the default redrob model.
+ */
 export function parseModel(value: string): ModelRef | undefined {
   if (value.length > 256) return undefined
   const slash = value.indexOf("/")
@@ -221,7 +278,7 @@ export function parseModel(value: string): ModelRef | undefined {
   const id = value.slice(slash + 1)
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(providerID)) return undefined
   if (!/^[A-Za-z0-9._:/@+-]{1,191}$/.test(id)) return undefined
-  return { providerID, id }
+  return { providerID, id: providerID === "redrob" ? consoleModelID(id) : id }
 }
 
 const modelName = (ref: { providerID: string; id: string }) => `${ref.providerID}/${ref.id}`
@@ -243,6 +300,38 @@ export function deskModels(body: unknown): DeskModel[] | undefined {
     })
   }
   return models
+}
+
+/** Providers that only ever run on this machine, whatever their configured URL. */
+const LOCAL_PROVIDERS = new Set(["ollama", "lmstudio"])
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
+
+/** Whether a base URL points at this machine. */
+function isLocalUrl(url: unknown): boolean {
+  if (typeof url !== "string") return false
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The ids (`<provider>/<model>`) in a `GET /api/model` body that a local provider serves: Ollama,
+ * LM Studio, or any provider whose base URL is localhost / 127.0.0.1. Masking may only use these,
+ * so the text it reads never leaves the PC.
+ */
+export function localModels(body: unknown): string[] {
+  const data = (body as { data?: unknown } | undefined)?.data
+  if (!Array.isArray(data)) return []
+  return data.flatMap((item) => {
+    if (typeof item !== "object" || item === null) return []
+    const model = item as { id?: unknown; providerID?: unknown; api?: { url?: unknown } }
+    if (typeof model.id !== "string" || typeof model.providerID !== "string") return []
+    return LOCAL_PROVIDERS.has(model.providerID) || isLocalUrl(model.api?.url)
+      ? [modelName({ providerID: model.providerID, id: model.id })]
+      : []
+  })
 }
 
 /** A session's current model (`GET /api/session/:id` body), as `<provider>/<model>`, else `default`. */
@@ -281,8 +370,17 @@ function stepError(data: Record<string, unknown> | undefined): string | undefine
 export type Request = { readonly method: Method; readonly path: string; readonly body?: unknown }
 
 /** The route a request matches, and the session id it names; undefined when not allowed. */
+/** The status for a request `match` refused: 400 when only its body broke a route's `invalidBody` rule. */
+export function refusal(request: Request): 400 | 403 {
+  if (typeof request.path !== "string") return 403
+  const bad = ROUTES.some(
+    (route) => route.invalidBody && route.method === request.method && route.path.test(request.path),
+  )
+  return bad ? 400 : 403
+}
+
 export function match(request: Request): { route: Route; sessionID?: string; params: string[] } | undefined {
-  if (request.method !== "GET" && request.method !== "POST") return undefined
+  if (request.method !== "GET" && request.method !== "POST" && request.method !== "PUT") return undefined
   if (typeof request.path !== "string" || request.path.length > 2048 || !request.path.startsWith("/")) return undefined
   const mark = request.path.indexOf("?")
   const pathname = mark >= 0 ? request.path.slice(0, mark) : request.path
@@ -384,14 +482,15 @@ export class Forwarder {
     if (value.machineId !== undefined && value.machineId !== self.id) return link.send({ t: "res", id, status: 421 })
     const request = { method: value.method, path: value.path, body: value.body } as Request
     const allowed = match(request)
-    if (!allowed) return link.send({ t: "res", id, status: 403 })
-    // A read-only machine answers reads only.
-    if (self.access === "read_only" && request.method !== "GET") {
+    if (!allowed) return link.send({ t: "res", id, status: refusal(request) })
+    // A read-only machine answers reads only (and POSTs that change nothing, like masking a text).
+    if (self.access === "read_only" && request.method !== "GET" && !allowed.route.readOnly) {
       return link.send({ t: "res", id, status: 403, headers: { "X-Redrob-Machine-Access": self.access } })
     }
 
     const { route, sessionID } = allowed
-    if (route.local === "capabilities") return link.send({ t: "res", id, status: 200, body: await capabilities() })
+    if (route.local === "capabilities")
+      return link.send({ t: "res", id, status: 200, body: await capabilities(await this.privacy()) })
     if (route.local === "attachment")
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "models") {
@@ -435,17 +534,37 @@ export class Forwarder {
     })
   }
 
-  private catalog?: { at: number; models: DeskModel[] }
+  private catalog?: { at: number; models: DeskModel[]; local: string[] }
+
+  /** The daemon's model catalog and its local model ids, reused for MODELS_TTL_MS; undefined when it cannot be read. */
+  private async read(fresh = false): Promise<{ models: DeskModel[]; local: string[] } | undefined> {
+    if (!fresh && this.catalog && Date.now() - this.catalog.at < MODELS_TTL_MS) return this.catalog
+    const result = await this.daemon.raw("GET", "/api/model").catch(() => undefined)
+    const ok = result !== undefined && result.status >= 200 && result.status < 300
+    const models = ok ? deskModels(result.body) : undefined
+    if (!models) return undefined
+    const read = { models, local: localModels(result!.body) }
+    // An empty list is a location still booting; read again next time.
+    if (models.length > 0) this.catalog = { at: Date.now(), ...read }
+    return read
+  }
 
   /** The daemon's model catalog, reused for MODELS_TTL_MS; undefined when it cannot be read. */
   async models(fresh = false): Promise<DeskModel[] | undefined> {
-    if (!fresh && this.catalog && Date.now() - this.catalog.at < MODELS_TTL_MS) return this.catalog.models
-    const result = await this.daemon.raw("GET", "/api/model").catch(() => undefined)
-    const models = result && result.status >= 200 && result.status < 300 ? deskModels(result.body) : undefined
-    if (!models) return undefined
-    // An empty list is a location still booting; read again next time.
-    if (models.length > 0) this.catalog = { at: Date.now(), models }
-    return models
+    return (await this.read(fresh))?.models
+  }
+
+  /** `/desk/capabilities` `privacy`: the configured masking model and the local models to pick from. */
+  async privacy(): Promise<DeskPrivacy> {
+    const [settings, catalog] = await Promise.all([
+      this.daemon.raw("GET", "/api/privacy").catch(() => undefined),
+      this.read(),
+    ])
+    const model = (settings?.body as { model?: unknown } | undefined)?.model
+    return {
+      model: settings && settings.status >= 200 && settings.status < 300 && typeof model === "string" ? model : null,
+      localModels: catalog?.local ?? [],
+    }
   }
 
   /**

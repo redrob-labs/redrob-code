@@ -90,20 +90,22 @@ redrob models
 
 Currently available:
 
-| Model                    | Use                                               |
-| ------------------------ | ------------------------------------------------- |
-| `redrob/auto`            | Console-routed default; picks a model per request |
-| `redrob/gpt-5.6-sol`     | GPT-5.6 Sol, the larger OpenAI-family model       |
-| `redrob/gpt-5.6-terra`   | GPT-5.6 Terra, cheaper GPT-5.6 tier               |
-| `redrob/claude-opus-5`   | Claude Opus 5, strongest coding and agentic work  |
-| `redrob/claude-sonnet-5` | Claude Sonnet 5, balanced coding                  |
-| `redrob/claude-fable-5`  | Claude Fable 5, long-form writing                 |
+| Model                    | Use                                                     |
+| ------------------------ | ------------------------------------------------------- |
+| `redrob/claude-opus-5-5` | Claude Opus 5.5, the default; runs at `medium` thinking |
+| `redrob/gpt-5.6-sol`     | GPT-5.6 Sol, the larger OpenAI-family model             |
+| `redrob/gpt-5.6-terra`   | GPT-5.6 Terra, cheaper GPT-5.6 tier                     |
+| `redrob/claude-opus-5`   | Claude Opus 5, strong coding and agentic work           |
+| `redrob/claude-sonnet-5` | Claude Sonnet 5, balanced coding                        |
+| `redrob/claude-fable-5`  | Claude Fable 5, long-form writing                       |
 
-`redrob/auto` is the default. Pick a specific model for a session with
-`redrob --model redrob/claude-opus-5`.
+`redrob/claude-opus-5-5` at `medium` thinking is the default. Pick another model for a session with
+`redrob --model redrob/claude-sonnet-5`, and another thinking level with
+`redrob run --variant high` (`ctrl+t` cycles it in the TUI).
 
-`redrob-ai` and `redrob-translate` have been retired and are no longer valid model ids. Replace
-them with `redrob/auto` in any config, agent, or command that still names them.
+`redrob/auto` has been retired: a saved choice of it, or a config, agent, or command that still
+names it, now runs `redrob/claude-opus-5-5`. `redrob-ai` and `redrob-translate` have been retired
+and are no longer valid model ids. Replace them with `redrob/claude-opus-5-5`.
 
 ### Agents
 

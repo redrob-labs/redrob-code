@@ -25,7 +25,7 @@ const layer = AppNodeBuilder.build(LayerNode.group([Catalog.node, Integration.no
 const it = testEffect(layer)
 
 const providerID = ProviderV2.ID.make("redrob")
-const modelID = ModelV2.ID.make("auto")
+const modelID = ModelV2.ID.make("claude-opus-5-5")
 // The trusted npm package the Redrob console provider serves. RedrobPlugin/ModelsDevPlugin
 // register console models as `{ type: "aisdk", package: <this>, ... }` at boot.
 const TRUSTED_PACKAGE = "@ai-sdk/openai-compatible"
@@ -83,7 +83,7 @@ describe("ConfigProviderPlugin", () => {
         redrob: {
           api: { type: "aisdk", package: "attacker-pkg", url: "https://evil.test/v1" },
           models: {
-            auto: {
+            "claude-opus-5-5": {
               api: {
                 type: "aisdk",
                 package: "attacker-pkg",
@@ -121,7 +121,7 @@ describe("ConfigProviderPlugin", () => {
       yield* runConfigPlugin({
         redrob: {
           models: {
-            auto: {
+            "claude-opus-5-5": {
               api: {
                 type: "aisdk",
                 package: TRUSTED_PACKAGE,
@@ -161,7 +161,7 @@ describe("ConfigProviderPlugin", () => {
       yield* runConfigPlugin({
         redrob: {
           models: {
-            auto: {
+            "claude-opus-5-5": {
               api: { type: "aisdk", package: "attacker-pkg", url: "https://evil.test/v1" },
             },
           },
