@@ -29,6 +29,7 @@ import type {
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   DeskMachineUpdate,
+  DeskToken,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -149,6 +150,7 @@ import type {
   PermissionRuleset,
   PermissionV2Reply,
   PermissionV2Source,
+  PrivacyMaskRequest,
   PrivacySettings,
   ProjectCommands,
   ProjectCurrentErrors,
@@ -356,6 +358,10 @@ import type {
   V2DeskRevokeResponses,
   V2DeskStatusErrors,
   V2DeskStatusResponses,
+  V2DeskTokenClearErrors,
+  V2DeskTokenClearResponses,
+  V2DeskTokenSetErrors,
+  V2DeskTokenSetResponses,
   V2EventSubscribeErrors,
   V2EventSubscribeResponses,
   V2FsFindErrors,
@@ -392,6 +398,8 @@ import type {
   V2PermissionSavedRemoveResponses,
   V2PrivacyGetErrors,
   V2PrivacyGetResponses,
+  V2PrivacyMaskErrors,
+  V2PrivacyMaskResponses,
   V2PrivacySetErrors,
   V2PrivacySetResponses,
   V2ProjectCopyCreateErrors,
@@ -5827,6 +5835,44 @@ export class Channels extends HeyApiClient {
   }
 }
 
+export class Token extends HeyApiClient {
+  /**
+   * Forget Redrob Desktop's token
+   *
+   * Drops the app's token. Without a device-grant refresh token the desk is signed out and the relay stops. 503 on a server that is not the registered daemon.
+   */
+  public clear<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).delete<V2DeskTokenClearResponses, V2DeskTokenClearErrors, ThrowOnError>({
+      url: "/desk/token",
+      ...options,
+    })
+  }
+
+  /**
+   * Use Redrob Desktop's sign-in for the desk relay
+   *
+   * The app hands over its redrob-auth access token. Held in memory only, never written or logged; used before the device-grant refresh token while more than a minute from expiry. Marks the desk signed in and (re)connects the relay when the desk is on. The app pushes a fresh one before it runs out. 503 on a server that is not the registered daemon.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      deskToken?: DeskToken
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "deskToken", map: "body" }] }])
+    return (options?.client ?? this.client).put<V2DeskTokenSetResponses, V2DeskTokenSetErrors, ThrowOnError>({
+      url: "/desk/token",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Machine extends HeyApiClient {
   /**
    * This machine
@@ -5983,6 +6029,11 @@ export class Desk extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _token?: Token
+  get token(): Token {
+    return (this._token ??= new Token({ client: this.client }))
   }
 
   private _machine?: Machine
@@ -7375,6 +7426,44 @@ export class Privacy extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<V2PrivacySetResponses, V2PrivacySetErrors, ThrowOnError>({
       url: "/api/privacy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Mask personal data in texts
+   *
+   * Masks the texts on this machine: always the regex tier, plus the configured local model (privacy.model) whatever the mode switch says, because the caller asked. One vault per call. The model call times out after 15 s and falls back to regex.
+   */
+  public mask<ThrowOnError extends boolean = false>(
+    parameters: {
+      location?: {
+        directory?: string
+        workspace?: string
+      }
+      privacyMaskRequest: PrivacyMaskRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { key: "privacyMaskRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2PrivacyMaskResponses, V2PrivacyMaskErrors, ThrowOnError>({
+      url: "/api/privacy/mask",
       ...options,
       ...params,
       headers: {

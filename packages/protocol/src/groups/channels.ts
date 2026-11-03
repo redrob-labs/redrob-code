@@ -68,6 +68,15 @@ export const DeskStatus = Schema.Struct({
   ),
 }).annotate({ identifier: "DeskStatus" })
 
+/** Redrob Desktop's own redrob-auth access token (client `redrob-desktop`), for `PUT /desk/token`. */
+export const DeskToken = Schema.Struct({
+  accessToken: Schema.String,
+  /** Epoch milliseconds. */
+  expiresAt: Schema.Number,
+  /** Shown as `account.email` by `desk.status`. */
+  email: Schema.optional(Schema.String),
+}).annotate({ identifier: "DeskToken" })
+
 export const DeskDevice = Schema.Struct({ id: Schema.String, name: Schema.String, kind: DeviceKind }).annotate({
   identifier: "DeskDevice",
 })
@@ -160,6 +169,33 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
         identifier: "v2.desk.logout",
         summary: "Sign out of the desk relay",
         description: "Drops the refresh token and disconnects. Approved devices are kept.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.put("desk.token.set", "/desk/token", {
+      payload: DeskToken,
+      success: DeskStatus,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.token.set",
+        summary: "Use Redrob Desktop's sign-in for the desk relay",
+        description:
+          "The app hands over its redrob-auth access token. Held in memory only, never written or logged; used before the device-grant refresh token while more than a minute from expiry. Marks the desk signed in and (re)connects the relay when the desk is on. The app pushes a fresh one before it runs out. 503 on a server that is not the registered daemon.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("desk.token.clear", "/desk/token", {
+      success: DeskStatus,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.token.clear",
+        summary: "Forget Redrob Desktop's token",
+        description:
+          "Drops the app's token. Without a device-grant refresh token the desk is signed out and the relay stops. 503 on a server that is not the registered daemon.",
       }),
     ),
   )

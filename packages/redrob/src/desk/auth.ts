@@ -7,6 +7,8 @@
  * sharing sends) is not one of those, so the daemon signs in as the public `redrob-code` desktop
  * client: RFC 8628 device grant once (`POST /desk/login` from the launcher, or `redrob desk login`),
  * `refresh_token` grant after that.
+ * Redrob Desktop can instead hand over its own access token (`PUT /desk/token`, `AppToken`); that
+ * one is held in memory only and used first while valid.
  * Only the refresh token is kept, in the secret store (`~/.redrob/channels/secrets.json`, 0600)
  * under `desk.refreshToken`. redrob-auth rotates it on every refresh, so every refresh writes the
  * new one back before the access token is used.
@@ -142,6 +144,52 @@ export type TokenStore = {
   set(key: string, value: string): Promise<void>
 }
 
+/** Access tokens closer than this to expiry are not used. */
+const EXPIRY_MARGIN_MS = 60_000
+
+/**
+ * The access token Redrob Desktop hands the engine (`PUT /desk/token`): the desktop's own
+ * redrob-auth sign-in (client `redrob-desktop`), which the chat API accepts too. Memory only:
+ * never written to disk, never logged. The app pushes a fresh one every few minutes.
+ */
+export class AppToken {
+  private value?: { readonly accessToken: string; readonly expiresAt: number; readonly email?: string }
+  private rejected = false
+
+  set(accessToken: string, expiresAt: number, email?: string): void {
+    this.value = { accessToken, expiresAt, ...(email ? { email } : {}) }
+    this.rejected = false
+  }
+
+  clear(): void {
+    this.value = undefined
+    this.rejected = false
+  }
+
+  /** The app has handed a token over, valid or not. */
+  get present(): boolean {
+    return this.value !== undefined
+  }
+
+  /** The token, unless the chat API refused it or it is within a minute of expiry. */
+  usable(now = Date.now()): string | undefined {
+    const value = this.value
+    if (!value || this.rejected || value.expiresAt - EXPIRY_MARGIN_MS <= now) return undefined
+    return value.accessToken
+  }
+
+  get email(): string | undefined {
+    return this.value?.email
+  }
+
+  /** True when `token` is this one; it stays unused until the app pushes another. */
+  reject(token: string): boolean {
+    if (this.value?.accessToken !== token) return false
+    this.rejected = true
+    return true
+  }
+}
+
 /**
  * Hands out a valid access token, refreshing from the stored refresh token near expiry. Concurrent
  * callers share one refresh, since a rotated refresh token can only be spent once.
@@ -153,14 +201,20 @@ export class AccessTokens {
   constructor(
     private readonly issuer: string,
     private readonly store: TokenStore,
+    /** An access token Redrob Desktop pushed (`PUT /desk/token`); used first while it is valid. */
+    private readonly app?: AppToken,
   ) {}
 
   async get(): Promise<string> {
+    const app = this.app?.usable()
+    if (app) return app
     if (this.current && this.current.expiresAt - 60_000 > Date.now()) return this.current.accessToken
     return (await this.renew()).accessToken
   }
 
-  invalidate(): void {
+  /** The chat API refused `token` (401): drop it so the next `get` refreshes or waits for the app. */
+  invalidate(token?: string): void {
+    if (token !== undefined && this.app?.reject(token)) return
     this.current = undefined
   }
 
@@ -168,7 +222,11 @@ export class AccessTokens {
     if (!this.inflight) {
       this.inflight = (async () => {
         const stored = await this.store.get("refreshToken")
-        if (!stored) throw new AuthError("signed_out", "run: redrob desk login")
+        if (!stored) {
+          // Only the app's token, and it ran out: not fatal, the app pushes a fresh one soon.
+          if (this.app?.present) throw new AuthError("waiting_for_app", "waiting for a fresh token from Redrob Desktop")
+          throw new AuthError("signed_out", "run: redrob desk login")
+        }
         const result = await post(this.issuer, "/oauth/token", {
           grant_type: "refresh_token",
           refresh_token: stored,
@@ -215,20 +273,23 @@ export class ChatApi {
   ) {}
 
   private async post(path: string, body: unknown): Promise<Response> {
-    const send = async () =>
-      fetch(`${this.base}${path}`, {
+    let token = ""
+    const send = async () => {
+      token = await this.tokens.get()
+      return fetch(`${this.base}${path}`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${await this.tokens.get()}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(20_000),
       })
+    }
     let response = await send()
     if (response.status === 401) {
-      this.tokens.invalidate()
+      this.tokens.invalidate(token)
       response = await send()
     }
     if (!response.ok) throw new ChatError(response.status, `${path}: ${response.status}`)

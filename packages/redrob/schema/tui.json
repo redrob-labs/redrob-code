@@ -66,7 +66,7 @@
         },
         "diff_open": {
           "$ref": "#/$defs/KeybindsValue",
-          "description": "Open diff viewer"
+          "description": "View changed files"
         },
         "diff_close": {
           "$ref": "#/$defs/KeybindsValue",
@@ -288,6 +288,26 @@
           "$ref": "#/$defs/KeybindsValue",
           "description": "Switch to session in quick slot 9"
         },
+        "session_answer_option_1": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Send suggested answer 1"
+        },
+        "session_answer_option_2": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Send suggested answer 2"
+        },
+        "session_answer_option_3": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Send suggested answer 3"
+        },
+        "session_answer_option_4": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Send suggested answer 4"
+        },
+        "session_answer_option_5": {
+          "$ref": "#/$defs/KeybindsValue",
+          "description": "Send suggested answer 5"
+        },
         "stash_delete": {
           "$ref": "#/$defs/KeybindsValue",
           "description": "Delete stash entry"
@@ -346,11 +366,11 @@
         },
         "variant_cycle": {
           "$ref": "#/$defs/KeybindsValue",
-          "description": "Cycle model variants"
+          "description": "Change thinking depth"
         },
         "variant_list": {
           "$ref": "#/$defs/KeybindsValue",
-          "description": "List model variants"
+          "description": "List thinking depths"
         },
         "messages_page_up": {
           "$ref": "#/$defs/KeybindsValue",
