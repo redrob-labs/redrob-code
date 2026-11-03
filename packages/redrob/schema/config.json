@@ -1273,6 +1273,18 @@
           },
           "additionalProperties": false
         },
+        "memory": {
+          "type": "object",
+          "properties": {
+            "budget": {
+              "minimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "description": "Most characters of remembered lessons and facts to put in the system prompt (default 8000). Newest entries are kept first."
+            }
+          },
+          "additionalProperties": false
+        },
         "experimental": {
           "type": "object",
           "properties": {

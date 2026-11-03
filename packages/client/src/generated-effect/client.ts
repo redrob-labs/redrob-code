@@ -66,31 +66,45 @@ const Endpoint2_4 = (raw: RawClient["server.channels"]) => () =>
 const Endpoint2_5 = (raw: RawClient["server.channels"]) => () =>
   raw["desk.logout"]({}).pipe(Effect.mapError(mapClientError))
 
-type Endpoint2_6Request = Parameters<RawClient["server.channels"]["desk.approve"]>[0]
-type Endpoint2_6Input = { readonly code: Endpoint2_6Request["params"]["code"] }
+type Endpoint2_6Request = Parameters<RawClient["server.channels"]["desk.token.set"]>[0]
+type Endpoint2_6Input = {
+  readonly accessToken: Endpoint2_6Request["payload"]["accessToken"]
+  readonly expiresAt: Endpoint2_6Request["payload"]["expiresAt"]
+  readonly email?: Endpoint2_6Request["payload"]["email"]
+}
 const Endpoint2_6 = (raw: RawClient["server.channels"]) => (input: Endpoint2_6Input) =>
+  raw["desk.token.set"]({
+    payload: { accessToken: input["accessToken"], expiresAt: input["expiresAt"], email: input["email"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+const Endpoint2_7 = (raw: RawClient["server.channels"]) => () =>
+  raw["desk.token.clear"]({}).pipe(Effect.mapError(mapClientError))
+
+type Endpoint2_8Request = Parameters<RawClient["server.channels"]["desk.approve"]>[0]
+type Endpoint2_8Input = { readonly code: Endpoint2_8Request["params"]["code"] }
+const Endpoint2_8 = (raw: RawClient["server.channels"]) => (input: Endpoint2_8Input) =>
   raw["desk.approve"]({ params: { code: input["code"] } }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint2_7Request = Parameters<RawClient["server.channels"]["desk.deny"]>[0]
-type Endpoint2_7Input = { readonly code: Endpoint2_7Request["params"]["code"] }
-const Endpoint2_7 = (raw: RawClient["server.channels"]) => (input: Endpoint2_7Input) =>
+type Endpoint2_9Request = Parameters<RawClient["server.channels"]["desk.deny"]>[0]
+type Endpoint2_9Input = { readonly code: Endpoint2_9Request["params"]["code"] }
+const Endpoint2_9 = (raw: RawClient["server.channels"]) => (input: Endpoint2_9Input) =>
   raw["desk.deny"]({ params: { code: input["code"] } }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint2_8Request = Parameters<RawClient["server.channels"]["desk.revoke"]>[0]
-type Endpoint2_8Input = { readonly id: Endpoint2_8Request["params"]["id"] }
-const Endpoint2_8 = (raw: RawClient["server.channels"]) => (input: Endpoint2_8Input) =>
+type Endpoint2_10Request = Parameters<RawClient["server.channels"]["desk.revoke"]>[0]
+type Endpoint2_10Input = { readonly id: Endpoint2_10Request["params"]["id"] }
+const Endpoint2_10 = (raw: RawClient["server.channels"]) => (input: Endpoint2_10Input) =>
   raw["desk.revoke"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError))
 
-const Endpoint2_9 = (raw: RawClient["server.channels"]) => () =>
+const Endpoint2_11 = (raw: RawClient["server.channels"]) => () =>
   raw["desk.machine.get"]({}).pipe(Effect.mapError(mapClientError))
 
-type Endpoint2_10Request = Parameters<RawClient["server.channels"]["desk.machine.update"]>[0]
-type Endpoint2_10Input = {
-  readonly name?: Endpoint2_10Request["payload"]["name"]
-  readonly kind?: Endpoint2_10Request["payload"]["kind"]
-  readonly access?: Endpoint2_10Request["payload"]["access"]
+type Endpoint2_12Request = Parameters<RawClient["server.channels"]["desk.machine.update"]>[0]
+type Endpoint2_12Input = {
+  readonly name?: Endpoint2_12Request["payload"]["name"]
+  readonly kind?: Endpoint2_12Request["payload"]["kind"]
+  readonly access?: Endpoint2_12Request["payload"]["access"]
 }
-const Endpoint2_10 = (raw: RawClient["server.channels"]) => (input?: Endpoint2_10Input) =>
+const Endpoint2_12 = (raw: RawClient["server.channels"]) => (input?: Endpoint2_12Input) =>
   raw["desk.machine.update"]({
     payload: { name: input?.["name"], kind: input?.["kind"], access: input?.["access"] },
   }).pipe(Effect.mapError(mapClientError))
@@ -102,11 +116,13 @@ const adaptGroup2 = (raw: RawClient["server.channels"]) => ({
   deskEnable: Endpoint2_3(raw),
   deskLogin: Endpoint2_4(raw),
   deskLogout: Endpoint2_5(raw),
-  deskApprove: Endpoint2_6(raw),
-  deskDeny: Endpoint2_7(raw),
-  deskRevoke: Endpoint2_8(raw),
-  deskMachine: Endpoint2_9(raw),
-  deskMachineUpdate: Endpoint2_10(raw),
+  deskTokenSet: Endpoint2_6(raw),
+  deskTokenClear: Endpoint2_7(raw),
+  deskApprove: Endpoint2_8(raw),
+  deskDeny: Endpoint2_9(raw),
+  deskRevoke: Endpoint2_10(raw),
+  deskMachine: Endpoint2_11(raw),
+  deskMachineUpdate: Endpoint2_12(raw),
 })
 
 const Endpoint3_0 = (raw: RawClient["server.apps"]) => () => raw["apps.list"]({}).pipe(Effect.mapError(mapClientError))

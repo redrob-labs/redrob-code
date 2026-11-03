@@ -261,6 +261,72 @@ export type ServerChannelsDeskLogoutOutput = {
   }>
 }
 
+export type ServerChannelsDeskTokenSetInput = {
+  readonly accessToken: {
+    readonly accessToken: string
+    readonly expiresAt: number
+    readonly email?: string | undefined
+  }["accessToken"]
+  readonly expiresAt: {
+    readonly accessToken: string
+    readonly expiresAt: number
+    readonly email?: string | undefined
+  }["expiresAt"]
+  readonly email?: {
+    readonly accessToken: string
+    readonly expiresAt: number
+    readonly email?: string | undefined
+  }["email"]
+}
+
+export type ServerChannelsDeskTokenSetOutput = {
+  readonly enabled: boolean
+  readonly signedIn: boolean
+  readonly account?: { readonly email: string } | undefined
+  readonly connected: boolean
+  readonly autoAll?: boolean | undefined
+  readonly login?:
+    | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+    | undefined
+  readonly pending: ReadonlyArray<{
+    readonly code: string
+    readonly name: string
+    readonly kind: "phone" | "web"
+    readonly expiresAt: number
+  }>
+  readonly devices: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly kind: "phone" | "web"
+    readonly addedAt: number
+    readonly online: boolean
+  }>
+}
+
+export type ServerChannelsDeskTokenClearOutput = {
+  readonly enabled: boolean
+  readonly signedIn: boolean
+  readonly account?: { readonly email: string } | undefined
+  readonly connected: boolean
+  readonly autoAll?: boolean | undefined
+  readonly login?:
+    | { readonly userCode: string; readonly verificationUriComplete: string; readonly expiresAt: number }
+    | undefined
+  readonly pending: ReadonlyArray<{
+    readonly code: string
+    readonly name: string
+    readonly kind: "phone" | "web"
+    readonly expiresAt: number
+  }>
+  readonly devices: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly kind: "phone" | "web"
+    readonly addedAt: number
+    readonly online: boolean
+  }>
+}
+
 export type ServerChannelsDeskApproveInput = { readonly code: { readonly code: string }["code"] }
 
 export type ServerChannelsDeskApproveOutput = {
