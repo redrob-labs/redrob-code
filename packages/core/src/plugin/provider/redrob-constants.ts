@@ -63,11 +63,9 @@ export const CONSOLE_OUTPUT_TOKENS = 32_000
 // strings so the V1 side can build its own branded ids and object keys without cross-package
 // branded-type friction.
 export const CONSOLE_MODELS = [
-  // `auto` publishes the full thinking range (low | medium | high | xhigh | max) in the live
-  // listing's `capabilities.thinkingLevels`, so claiming otherwise offline would hide the router's
-  // own reasoning control. Verified against GET ${CONSOLE_URL}/models and the console's public
-  // pricing catalogue.
-  { id: "auto", name: "Redrob Auto", thinking: true },
+  // The default. Publishes the full thinking range (low | medium | high | xhigh | max); the engine
+  // sends `medium` unless a variant picks another (ProviderTransform.options).
+  { id: "claude-opus-5-5", name: "Claude Opus 5.5", thinking: true },
   { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", thinking: false },
   { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", thinking: false },
   { id: "claude-opus-5", name: "Claude Opus 5", thinking: true },
@@ -78,8 +76,18 @@ export const CONSOLE_MODELS = [
 // backfill) are not forced to widen a literal union.
 export type ConsoleModelInfo = { readonly id: string; readonly name: string; readonly thinking: boolean }
 export const CONSOLE_MODEL_IDS = CONSOLE_MODELS.map((model) => model.id)
-// The primary/default console model, kept as a single id for callers that need exactly one. `auto`
-// is the console's own router and the canonical default for this CLI, so it is the id every caller
-// falls back to.
+// The primary/default console model, kept as a single id for callers that need exactly one.
 export const CONSOLE_MODEL = CONSOLE_MODELS[0]
 export const CONSOLE_MODEL_ID = CONSOLE_MODEL.id
+// The thinking level the default model runs at when nothing else is chosen.
+export const CONSOLE_DEFAULT_THINKING = "medium"
+// The cheap console model for internal helper calls (titles, generated names).
+export const CONSOLE_SMALL_MODEL_ID = "gpt-6-luna"
+
+// The retired console router. The console still accepts it as a hidden alias for the default model,
+// but it is never listed or offered, and a saved choice of it (recent models, config, agents,
+// `--model`) resolves to CONSOLE_MODEL_ID instead.
+const RETIRED_CONSOLE_MODEL_IDS: ReadonlySet<string> = new Set(["auto", "redrob-auto"])
+export const isRetiredConsoleModel = (id: string) => RETIRED_CONSOLE_MODEL_IDS.has(id)
+/** A redrob model id with the retired router mapped to the default model; any other id unchanged. */
+export const consoleModelID = (id: string): string => (isRetiredConsoleModel(id) ? CONSOLE_MODEL_ID : id)

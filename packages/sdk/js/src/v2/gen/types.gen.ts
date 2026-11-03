@@ -2966,6 +2966,12 @@ export type ConflictError = {
   resource?: string
 }
 
+export type DeskToken = {
+  accessToken: string
+  expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  email?: string
+}
+
 export type DeskDevice = {
   id: string
   name: string
@@ -3122,6 +3128,26 @@ export type ProviderNotFoundError = {
 export type PrivacySettings = {
   mode: "off" | "regex" | "model"
   model?: string
+}
+
+export type PrivacyMaskRequest = {
+  texts: Array<string>
+}
+
+export type PrivacyMaskEntity = {
+  placeholder: string
+  value: string
+  kind: "EMAIL" | "PHONE" | "CARD" | "RRN" | "PERSON" | "ORG" | "LOC"
+}
+
+export type PrivacyMaskResult = {
+  /**
+   * model only when the local model answered; regex when none is set, it failed or timed out
+   */
+  mode: "regex" | "model"
+  model: string
+  texts: Array<string>
+  entities: Array<PrivacyMaskEntity>
 }
 
 export type OutputFormat1 =
@@ -12877,6 +12903,64 @@ export type V2DeskLogoutResponses = {
 
 export type V2DeskLogoutResponse = V2DeskLogoutResponses[keyof V2DeskLogoutResponses]
 
+export type V2DeskTokenClearData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/desk/token"
+}
+
+export type V2DeskTokenClearErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskTokenClearError = V2DeskTokenClearErrors[keyof V2DeskTokenClearErrors]
+
+export type V2DeskTokenClearResponses = {
+  /**
+   * DeskStatus
+   */
+  200: DeskStatus
+}
+
+export type V2DeskTokenClearResponse = V2DeskTokenClearResponses[keyof V2DeskTokenClearResponses]
+
+export type V2DeskTokenSetData = {
+  body?: DeskToken
+  path?: never
+  query?: never
+  url: "/desk/token"
+}
+
+export type V2DeskTokenSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskTokenSetError = V2DeskTokenSetErrors[keyof V2DeskTokenSetErrors]
+
+export type V2DeskTokenSetResponses = {
+  /**
+   * DeskStatus
+   */
+  200: DeskStatus
+}
+
+export type V2DeskTokenSetResponse = V2DeskTokenSetResponses[keyof V2DeskTokenSetResponses]
+
 export type V2DeskApproveData = {
   body?: never
   path: {
@@ -14543,6 +14627,40 @@ export type V2PrivacySetResponses = {
 }
 
 export type V2PrivacySetResponse = V2PrivacySetResponses[keyof V2PrivacySetResponses]
+
+export type V2PrivacyMaskData = {
+  body: PrivacyMaskRequest
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/privacy/mask"
+}
+
+export type V2PrivacyMaskErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2PrivacyMaskError = V2PrivacyMaskErrors[keyof V2PrivacyMaskErrors]
+
+export type V2PrivacyMaskResponses = {
+  /**
+   * PrivacyMaskResult
+   */
+  200: PrivacyMaskResult
+}
+
+export type V2PrivacyMaskResponse = V2PrivacyMaskResponses[keyof V2PrivacyMaskResponses]
 
 export type V2PermissionRequestListData = {
   body?: never

@@ -58,6 +58,8 @@ export const endpointNames = {
   "desk.enable": "deskEnable",
   "desk.login": "deskLogin",
   "desk.logout": "deskLogout",
+  "desk.token.set": "deskTokenSet",
+  "desk.token.clear": "deskTokenClear",
   "desk.approve": "deskApprove",
   "desk.deny": "deskDeny",
   "desk.revoke": "deskRevoke",

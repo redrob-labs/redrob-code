@@ -14,6 +14,9 @@ import type {
   ServerChannelsDeskEnableOutput,
   ServerChannelsDeskLoginOutput,
   ServerChannelsDeskLogoutOutput,
+  ServerChannelsDeskTokenSetInput,
+  ServerChannelsDeskTokenSetOutput,
+  ServerChannelsDeskTokenClearOutput,
   ServerChannelsDeskApproveInput,
   ServerChannelsDeskApproveOutput,
   ServerChannelsDeskDenyInput,
@@ -387,6 +390,29 @@ export function make(options: ClientOptions) {
       deskLogout: (requestOptions?: RequestOptions) =>
         request<ServerChannelsDeskLogoutOutput>(
           { method: "POST", path: `/desk/logout`, successStatus: 200, declaredStatuses: [503, 401, 400], empty: false },
+          requestOptions,
+        ),
+      deskTokenSet: (input: ServerChannelsDeskTokenSetInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskTokenSetOutput>(
+          {
+            method: "PUT",
+            path: `/desk/token`,
+            body: { accessToken: input["accessToken"], expiresAt: input["expiresAt"], email: input["email"] },
+            successStatus: 200,
+            declaredStatuses: [503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskTokenClear: (requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskTokenClearOutput>(
+          {
+            method: "DELETE",
+            path: `/desk/token`,
+            successStatus: 200,
+            declaredStatuses: [503, 401, 400],
+            empty: false,
+          },
           requestOptions,
         ),
       deskApprove: (input: ServerChannelsDeskApproveInput, requestOptions?: RequestOptions) =>

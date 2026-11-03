@@ -107,7 +107,7 @@ export function consoleImageInput(model: string): boolean | undefined {
  * Known console ids that read images, used only when the listing publishes no image flag. Kept to
  * ids the listing also serves, so a retired id is never picked.
  */
-export const KNOWN_VISION_MODEL_IDS = ["claude-sonnet-5", "claude-opus-5", "gpt-5.6-sol"] as const
+export const KNOWN_VISION_MODEL_IDS = ["claude-opus-5-5", "claude-sonnet-5", "claude-opus-5", "gpt-5.6-sol"] as const
 
 const settingsFile = () => path.join(process.env.REDROB_TEST_HOME ?? os.homedir(), ".redrob", "desk", "settings.json")
 let configuredVision: (() => string | undefined) | undefined

@@ -47,6 +47,13 @@ export type DeskStatus = {
   readonly devices: readonly { id: string; name: string; kind: DeskKind; addedAt: number; online: boolean }[]
 }
 
+/** `PUT /desk/token` body: the app's redrob-auth access token and its expiry (epoch ms). */
+export type DeskToken = {
+  readonly accessToken: string
+  readonly expiresAt: number
+  readonly email?: string
+}
+
 /** No pending request with that code, or no approved device with that id (404). */
 export class DeskNotFound extends Error {}
 
@@ -60,6 +67,9 @@ export type DeskController = {
   /** Rejects with `DeskConflict` when already signed in. */
   login(): Promise<DeskLogin>
   logout(): Promise<DeskStatus>
+  /** Redrob Desktop's access token, held in memory; optional so an older controller still type-checks (503 without it). */
+  setToken?(token: DeskToken): Promise<DeskStatus>
+  clearToken?(): Promise<DeskStatus>
   /** These reject with `DeskNotFound` when nothing matches. */
   approve(code: string): Promise<DeskDevice>
   deny(code: string): Promise<DeskDevice>

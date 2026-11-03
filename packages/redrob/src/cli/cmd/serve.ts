@@ -133,6 +133,8 @@ export const ServeCommand = effectCmd({
             }
           },
           logout: () => desk.logout(),
+          setToken: (token) => desk.setToken(token),
+          clearToken: () => desk.clearToken(),
           approve: (code) => found(() => desk.approve(code)),
           deny: (code) => found(() => desk.deny(code)),
           revoke: (id) => found(() => desk.revoke(id)),

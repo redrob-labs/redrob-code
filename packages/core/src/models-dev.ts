@@ -19,6 +19,7 @@ import {
   CONSOLE_OUTPUT_TOKENS,
   CONSOLE_PACKAGE,
   CONSOLE_URL,
+  isRetiredConsoleModel,
   type ConsoleModelInfo,
 } from "./plugin/provider/redrob-constants"
 import { rememberConsoleModels, type ConsoleModelFacts } from "./plugin/provider/redrob-body-budget"
@@ -189,7 +190,7 @@ const ConsoleModelCapabilities = Schema.Struct({
 })
 
 // Assumed OpenAI-standard /v1/models listing shape returned by the console endpoint:
-//   { "object": "list", "data": [ { "id": "auto", "object": "model", "created": 0, ... } ] }
+//   { "object": "list", "data": [ { "id": "claude-opus-5-5", "object": "model", "created": 0, ... } ] }
 // Only `data[].id` is required for the catalog; other fields are optional and ignored so
 // the parse tolerates the endpoint adding metadata. `created` (seconds since epoch, when
 // present) seeds the model release date.
@@ -517,6 +518,8 @@ const layer = Layer.effect(
           rejected++
           continue
         }
+        // The retired router stays a hidden console alias for old clients; this one never offers it.
+        if (isRetiredConsoleModel(model.value.id)) continue
         models[model.value.id] = consoleModel(model.value)
         facts.push({
           id: model.value.id,
@@ -535,7 +538,7 @@ const layer = Layer.effect(
         )
       if (Object.keys(models).length === 0)
         return yield* Effect.fail(new Error("console /models returned no model this build can describe"))
-      // Always guarantee the primary `auto` model lists even if the endpoint omits it. Only the
+      // Always guarantee the primary (default) model lists even if the endpoint omits it. Only the
       // primary is backfilled: with a key the listing is authoritative, so a model it stops
       // advertising must not be resurrected from the static list.
       if (!models[CONSOLE_MODEL.id]) models[CONSOLE_MODEL.id] = redrobFallbackModel(CONSOLE_MODEL)

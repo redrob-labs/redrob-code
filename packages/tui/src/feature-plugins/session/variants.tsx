@@ -108,15 +108,12 @@ function activeSessionID(api: TuiPluginApi): string | undefined {
  * The models to fan out to.
  *
  * Taken from what the catalogue says is connected rather than hard-coded, so a deployment that serves
- * different ids does not need this file changed. `auto` is excluded: fanning out to the router twice would
- * be two charges for what may well be the same model, which is the opposite of the point.
+ * different ids does not need this file changed.
  */
 function fanOutModels(api: TuiPluginApi, count: number): string[] {
   const redrob = api.state.provider.find((provider) => provider.id === "redrob")
   if (!redrob) return []
-  return Object.keys(redrob.models ?? {})
-    .filter((model) => model !== "auto")
-    .slice(0, count)
+  return Object.keys(redrob.models ?? {}).slice(0, count)
 }
 
 const tui: TuiPlugin = async (api) => {

@@ -52,7 +52,12 @@ describe("desk forwarder turn end", () => {
 describe("desk forwarder model", () => {
   const catalog = {
     data: [
-      { id: "auto", providerID: "redrob", name: "Redrob Auto", capabilities: { input: ["text", "image"] } },
+      {
+        id: "claude-opus-5-5",
+        providerID: "redrob",
+        name: "Claude Opus 5.5",
+        capabilities: { input: ["text", "image"] },
+      },
       { id: "openai/gpt-5", providerID: "redrob", name: "GPT-5", capabilities: { input: ["text"] } },
     ],
   }
@@ -86,7 +91,9 @@ describe("desk forwarder model", () => {
 
   test("parses <provider>/<model>, keeping slashes in the model", () => {
     expect(parseModel("redrob/openai/gpt-5")).toEqual({ providerID: "redrob", id: "openai/gpt-5" })
-    expect(parseModel("redrob/auto")).toEqual({ providerID: "redrob", id: "auto" })
+    expect(parseModel("redrob/claude-opus-5-5")).toEqual({ providerID: "redrob", id: "claude-opus-5-5" })
+    // An older app's retired `redrob/auto` becomes the default model.
+    expect(parseModel("redrob/auto")).toEqual({ providerID: "redrob", id: "claude-opus-5-5" })
     expect(parseModel("auto")).toBeUndefined()
     expect(parseModel("/auto")).toBeUndefined()
     expect(parseModel("redrob/")).toBeUndefined()
@@ -124,16 +131,16 @@ describe("desk forwarder model", () => {
       { prompt: { text: "hi" } },
       { "x-redrob-model": "redrob/auto" },
     )
-    expect(res.headers).toEqual({ "X-Redrob-Model-Applied": "redrob/auto" })
+    expect(res.headers).toEqual({ "X-Redrob-Model-Applied": "redrob/claude-opus-5-5" })
     const switched = calls.findIndex((c) => c.path === `/api/session/${sessionID}/model`)
     const prompted = calls.findIndex((c) => c.path === `/api/session/${sessionID}/prompt`)
     expect(switched).toBeGreaterThanOrEqual(0)
     expect(switched).toBeLessThan(prompted)
-    expect(calls[switched]!.body).toEqual({ model: { id: "auto", providerID: "redrob" } })
+    expect(calls[switched]!.body).toEqual({ model: { id: "claude-opus-5-5", providerID: "redrob" } })
   })
 
   test("prompt with an unknown model keeps the session's model and reports it", async () => {
-    const kept = setup({ model: { id: "auto", providerID: "redrob" } })
+    const kept = setup({ model: { id: "claude-opus-5-5", providerID: "redrob" } })
     const res = await kept.req(
       3,
       "POST",
@@ -141,7 +148,7 @@ describe("desk forwarder model", () => {
       { prompt: { text: "hi" } },
       { "X-Redrob-Model": "redrob/gone" },
     )
-    expect(res.headers).toEqual({ "X-Redrob-Model-Applied": "redrob/auto" })
+    expect(res.headers).toEqual({ "X-Redrob-Model-Applied": "redrob/claude-opus-5-5" })
     expect(kept.calls.some((c) => c.path === `/api/session/${sessionID}/model`)).toBe(false)
 
     const fresh = setup()
@@ -170,7 +177,7 @@ describe("desk forwarder model", () => {
       body: {
         v: 1,
         models: [
-          { id: "redrob/auto", name: "Redrob Auto", imageInput: true },
+          { id: "redrob/claude-opus-5-5", name: "Claude Opus 5.5", imageInput: true },
           { id: "redrob/openai/gpt-5", name: "GPT-5", imageInput: false },
         ],
       },
