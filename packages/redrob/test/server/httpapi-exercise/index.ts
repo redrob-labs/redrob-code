@@ -878,6 +878,19 @@ const scenarios: Scenario[] = [
       object(body)
       check(body.mode === "off", "the setting should be echoed back")
     }),
+  http.protected
+    .post("/api/privacy/mask", "v2.privacy.mask")
+    .at((ctx) => ({ path: "/api/privacy/mask", headers: ctx.headers(), body: { texts: ["mail a@b.co now"] } }))
+    .json(200, (body) => {
+      object(body)
+      check(body.mode === "regex" && body.model === null, "no local model is set, so only the regex tier runs")
+      check(Array.isArray(body.texts) && body.texts[0] === "mail [EMAIL_1] now", "the email should be masked")
+      check(Array.isArray(body.entities) && body.entities.length === 1, "the placeholder should be listed")
+    }),
+  http.protected
+    .post("/api/privacy/mask", "v2.privacy.mask.empty")
+    .at((ctx) => ({ path: "/api/privacy/mask", headers: ctx.headers(), body: { texts: [] } }))
+    .status(400, undefined, "status"),
   http.protected.get("/api/command", "v2.command.list").json(200, locationData(array)),
   http.protected.get("/api/skill", "v2.skill.list").json(200, locationData(array)),
   http.protected
