@@ -555,7 +555,21 @@ const Endpoint13_1 = (raw: RawClient["server.privacy"]) => (input: Endpoint13_1I
     payload: { mode: input["mode"], model: input["model"] },
   }).pipe(Effect.mapError(mapClientError))
 
-const adaptGroup13 = (raw: RawClient["server.privacy"]) => ({ get: Endpoint13_0(raw), set: Endpoint13_1(raw) })
+type Endpoint13_2Request = Parameters<RawClient["server.privacy"]["privacy.mask"]>[0]
+type Endpoint13_2Input = {
+  readonly location?: Endpoint13_2Request["query"]["location"]
+  readonly texts: Endpoint13_2Request["payload"]["texts"]
+}
+const Endpoint13_2 = (raw: RawClient["server.privacy"]) => (input: Endpoint13_2Input) =>
+  raw["privacy.mask"]({ query: { location: input["location"] }, payload: { texts: input["texts"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+const adaptGroup13 = (raw: RawClient["server.privacy"]) => ({
+  get: Endpoint13_0(raw),
+  set: Endpoint13_1(raw),
+  mask: Endpoint13_2(raw),
+})
 
 type Endpoint14_0Request = Parameters<RawClient["server.permission"]["permission.request.list"]>[0]
 type Endpoint14_0Input = { readonly location?: Endpoint14_0Request["query"]["location"] }

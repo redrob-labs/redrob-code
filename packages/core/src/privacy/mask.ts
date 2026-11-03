@@ -86,6 +86,15 @@ export class Vault {
     return this.forward.size
   }
 
+  /** Every placeholder this vault handed out, with its real value and kind. */
+  entries(): { placeholder: string; value: string; kind: Kind }[] {
+    return [...this.backward].map(([placeholder, value]) => ({
+      placeholder,
+      value,
+      kind: placeholder.slice(1, placeholder.lastIndexOf("_")) as Kind,
+    }))
+  }
+
   private readonly scanned = new Set<string>()
 
   /** The texts the model tier has not read yet; marks them read. Keeps the local call to the new turn, not the whole history. */

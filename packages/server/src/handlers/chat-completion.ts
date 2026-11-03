@@ -145,7 +145,7 @@ function errorResponse(error: unknown): Effect.Effect<HttpServerResponse.HttpSer
  * honouring an arbitrary URL here would bypass that check and forward the
  * engine's own credential to whatever host the caller named.
  */
-const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
+export const resolveModel = Effect.fn("chat.resolveModel")(function* (model: string) {
   const [providerPart, ...rest] = model.split("/")
   const providerID = ProviderV2.ID.make(rest.length > 0 ? providerPart! : "redrob")
   const modelID = ModelV2.ID.make(rest.length > 0 ? rest.join("/") : model)

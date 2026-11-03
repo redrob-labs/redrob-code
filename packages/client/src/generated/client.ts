@@ -101,6 +101,8 @@ import type {
   PrivacyGetOutput,
   PrivacySetInput,
   PrivacySetOutput,
+  PrivacyMaskInput,
+  PrivacyMaskOutput,
   PermissionsListRequestsInput,
   PermissionsListRequestsOutput,
   PermissionsListSavedInput,
@@ -940,6 +942,19 @@ export function make(options: ClientOptions) {
             path: `/api/privacy`,
             query: { location: input["location"] },
             body: { mode: input["mode"], model: input["model"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      mask: (input: PrivacyMaskInput, requestOptions?: RequestOptions) =>
+        request<PrivacyMaskOutput>(
+          {
+            method: "POST",
+            path: `/api/privacy/mask`,
+            query: { location: input["location"] },
+            body: { texts: input["texts"] },
             successStatus: 200,
             declaredStatuses: [401, 400],
             empty: false,
