@@ -2669,6 +2669,24 @@ export type PrivacySetInput = {
 
 export type PrivacySetOutput = { readonly mode: "off" | "regex" | "model"; readonly model?: string | undefined }
 
+export type PrivacyMaskInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly texts: { readonly texts: ReadonlyArray<string> }["texts"]
+}
+
+export type PrivacyMaskOutput = {
+  readonly mode: "regex" | "model"
+  readonly model: string | null
+  readonly texts: ReadonlyArray<string>
+  readonly entities: ReadonlyArray<{
+    readonly placeholder: string
+    readonly value: string
+    readonly kind: "EMAIL" | "PHONE" | "CARD" | "RRN" | "PERSON" | "ORG" | "LOC"
+  }>
+}
+
 export type PermissionsListRequestsInput = {
   readonly location?: {
     readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
