@@ -88,8 +88,8 @@ export const ServeCommand = effectCmd({
       )
       const idleExitMs = args["idle-exit"] > 0 ? args["idle-exit"] * 60_000 : undefined
       setIdleExitAfterMs(idleExitMs)
-      // Windows: a login task written before the daemon was started headless opens a console
-      // window at every login; rewrite it (daemon/autostart.ts repairWin32). Fire and forget.
+      // Windows: a login task v0.18.7 wrote through `conhost --headless` does not start the daemon;
+      // write it back to the plain command (daemon/autostart.ts repairWin32). Fire and forget.
       void import("../../daemon/autostart").then((a) => a.repairWin32()).catch(() => undefined)
 
       // Chat channels (Slack, Telegram, ...) run inside the daemon. While any is on, the daemon
