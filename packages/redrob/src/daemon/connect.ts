@@ -9,7 +9,6 @@
  *      for the new record to answer.
  */
 import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
@@ -39,28 +38,6 @@ export function selfCommand(): { command: string; args: string[] } {
   const entrypoint = process.argv[1]
   if (!entrypoint) throw new Error("Failed to resolve the CLI entrypoint to start the daemon with")
   return { command: process.execPath, args: [entrypoint] }
-}
-
-/**
- * The command line that starts `command args` with no console window on Windows.
- *
- * `redrob.exe` is a console program. Started detached from a windowed app or another console
- * program, Windows gives it a console of its own, and `windowsHide` does not reliably hide that
- * window for a detached child (Bun's child_process ignores it there): people saw an empty console
- * titled with the binary's folder appear, and come back each time the daemon idle-exited and an
- * app started it again. `conhost.exe --headless` (Windows 10 1809 and later) hosts the console
- * without a window. Elsewhere, or with no conhost, the command is returned as it is.
- */
-export function hiddenCommand(
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  exists: (file: string) => boolean = existsSync,
-): { command: string; args: string[] } {
-  if (platform !== "win32") return { command, args }
-  const conhost = path.win32.join(env.SystemRoot || env.windir || "C:\\Windows", "System32", "conhost.exe")
-  return exists(conhost) ? { command: conhost, args: ["--headless", command, ...args] } : { command, args }
 }
 
 export async function stop(env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
@@ -107,8 +84,7 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
 
   const self = selfCommand()
   const idle = options.idleExitMinutes ?? 10
-  const daemon = hiddenCommand(self.command, [...self.args, "serve", "--register", "--idle-exit", String(idle)], env)
-  const child = spawn(daemon.command, daemon.args, {
+  const child = spawn(self.command, [...self.args, "serve", "--register", "--idle-exit", String(idle)], {
     detached: true,
     stdio: "ignore",
     // A detached child on Windows gets its own console window unless it is hidden.
