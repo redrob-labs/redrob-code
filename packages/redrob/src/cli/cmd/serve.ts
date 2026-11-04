@@ -76,16 +76,31 @@ export const ServeCommand = effectCmd({
       const Clients = yield* Effect.promise(() => import("@redrob-code/server/clients"))
       const Apps = yield* Effect.promise(() => import("@redrob-code/server/apps"))
       const id = Registry.newID()
-      yield* Effect.promise(() =>
-        Registry.write({
-          id,
-          version: InstallationVersion,
-          url: `http://${server.hostname}:${server.port}`,
-          port: server.port,
-          pid: process.pid,
-          secret,
-        }),
-      )
+      // One daemon per user. A daemon that cannot register is useless to every app (none can find
+      // it) yet would hold the binary and, on Windows, a console window for good: exit instead,
+      // when another healthy daemon already answers, when the record cannot be written, or when
+      // another daemon's record replaced ours in the same moment.
+      const registered = yield* Effect.promise(async () => {
+        const other = await Registry.read()
+        if (other && other.pid !== process.pid && Registry.alive(other.pid) && (await Registry.healthy(other))) {
+          return false
+        }
+        try {
+          await Registry.write({
+            id,
+            version: InstallationVersion,
+            url: `http://${server.hostname}:${server.port}`,
+            port: server.port,
+            pid: process.pid,
+            secret,
+          })
+        } catch (error) {
+          console.error(`Could not register the daemon: ${error instanceof Error ? error.message : String(error)}`)
+          return false
+        }
+        return (await Registry.read())?.id === id
+      })
+      if (!registered) process.exit(0)
       const idleExitMs = args["idle-exit"] > 0 ? args["idle-exit"] * 60_000 : undefined
       setIdleExitAfterMs(idleExitMs)
       // Windows: an older login task opens a console window at login (or, v0.18.7's, does not start

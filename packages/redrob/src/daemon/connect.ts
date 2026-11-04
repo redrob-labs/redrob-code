@@ -9,12 +9,17 @@
  *      for the new record to answer.
  */
 import { spawn } from "node:child_process"
+import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { InstallationVersion } from "@redrob-code/core/installation/version"
 import * as Registry from "./registry"
 
-export type Connection = { readonly url: string; readonly headers: { Authorization: string }; readonly record: Registry.Record }
+export type Connection = {
+  readonly url: string
+  readonly headers: { Authorization: string }
+  readonly record: Registry.Record
+}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -80,23 +85,49 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
   if (found) return found
 
   const stale = await Registry.read(env)
-  if (stale && Registry.alive(stale.pid)) await stop(env)
+  const deadline = Date.now() + (options.waitMs ?? 15_000)
 
+  // Several apps asking at once (the desktop's first start does) used to start one daemon each:
+  // only one could register, the rest kept running unregistered, held the binary so it could not
+  // be updated, and each left a console window on Windows. Only the caller holding the start lock
+  // spawns; the others wait for the record it writes.
+  const release = await Registry.tryStartLock(env)
+  if (!release) {
+    while (Date.now() < deadline) {
+      const found = await current(env)
+      if (found) return found
+      await sleep(200)
+    }
+    throw new Error("The Redrob Code daemon did not start in time")
+  }
+  try {
+    const again = await current(env)
+    if (again) return again
+    if (stale && Registry.alive(stale.pid)) await stop(env)
+    return await spawnAndWait(options, env, stale, deadline)
+  } finally {
+    await release()
+  }
+}
+
+async function spawnAndWait(
+  options: StartOptions,
+  env: NodeJS.ProcessEnv,
+  stale: Registry.Record | undefined,
+  deadline: number,
+): Promise<Connection> {
   const self = selfCommand()
   const idle = options.idleExitMinutes ?? 10
-  const child = spawn(self.command, [...self.args, "serve", "--register", "--idle-exit", String(idle)], {
-    detached: true,
-    stdio: "ignore",
-    // A detached child on Windows gets its own console window unless it is hidden.
-    windowsHide: true,
-    env,
-    // The daemon outlives its caller. Inheriting the caller's cwd (an app's install folder) would
-    // hold that folder open for the daemon's whole life and block the app's Windows update.
-    cwd: os.homedir(),
-  })
-  child.unref()
+  const argv = [self.command, ...self.args, "serve", "--register", "--idle-exit", String(idle)]
+  // The daemon outlives its caller. Inheriting the caller's cwd (an app's install folder) would
+  // hold that folder open for the daemon's whole life and block the app's Windows update.
+  const cwd = os.homedir()
+  if (process.platform === "win32") {
+    await spawnHiddenWin32(argv, env, cwd)
+  } else {
+    spawn(argv[0]!, argv.slice(1), { detached: true, stdio: "ignore", env, cwd }).unref()
+  }
 
-  const deadline = Date.now() + (options.waitMs ?? 15_000)
   while (Date.now() < deadline) {
     const record = await Registry.read(env)
     if (record && (!stale || record.id !== stale.id) && (await Registry.healthy(record))) {
@@ -108,6 +139,35 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
     await sleep(100)
   }
   throw new Error("The Redrob Code daemon did not start in time")
+}
+
+/**
+ * The launcher `spawnAndWait` runs on Windows: WScript.Shell.Run with window style 0 starts its
+ * arguments, quoted, with a hidden console, and returns at once.
+ */
+export const WIN32_START_LAUNCHER = [
+  "Set a = WScript.Arguments",
+  'c = ""',
+  "For i = 0 To a.Count - 1",
+  '  c = c & " " & Chr(34) & a(i) & Chr(34)',
+  "Next",
+  'CreateObject("WScript.Shell").Run Mid(c, 2), 0, False',
+  "",
+].join("\r\n")
+
+/**
+ * Starts the daemon on Windows through `wscript` and WIN32_START_LAUNCHER, so it has a console of
+ * its own, hidden. Spawned `detached` it had none, and then every console program it started
+ * without `windowsHide` (a shell command, git, a tool) got a new console: on Windows 11 a Windows
+ * Terminal window each. Measured on a Windows 11 PC: detached, a child with no `windowsHide`
+ * opened a Terminal window; through this launcher node `spawn`, `Bun.spawn` and `cmd /c` opened none.
+ */
+async function spawnHiddenWin32(argv: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<void> {
+  const launcher = path.join(Registry.directory(env), "start-hidden.vbs")
+  await fs.mkdir(path.dirname(launcher), { recursive: true })
+  await fs.writeFile(launcher, WIN32_START_LAUNCHER)
+  // wscript is a GUI program: no console of its own, and it exits once Run has started the daemon.
+  spawn("wscript.exe", ["//B", "//Nologo", launcher, ...argv], { stdio: "ignore", windowsHide: true, env, cwd }).unref()
 }
 
 export type Attachment = {
