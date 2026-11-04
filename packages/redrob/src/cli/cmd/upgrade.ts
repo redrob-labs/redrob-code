@@ -78,7 +78,11 @@ export const UpgradeCommand = {
       prompts.outro("Done")
       return
     }
-    spinner.stop("Upgrade complete")
+    if (method === "installer") {
+      // The setup runs after this process exits, so the new version is in place a few seconds later.
+      spinner.stop(`Installing ${target} in the background`)
+      prompts.log.info("The Windows installer closes redrob, replaces it and finishes on its own.")
+    } else spinner.stop("Upgrade complete")
     prompts.outro("Done")
   },
 }

@@ -9,6 +9,9 @@ import { errorMessage } from "@/util/error"
 import { ChildProcess } from "effect/unstable/process"
 import { AppProcess } from "@redrob-code/core/process"
 import path from "path"
+import os from "os"
+import fs from "fs/promises"
+import { spawn } from "child_process"
 import { makeRuntime } from "@redrob-code/core/effect/runtime"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@redrob-code/core/installation/version"
@@ -211,6 +214,33 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("curl") })),
     )
 
+    /**
+     * The Windows installer install: download the new setup next to the temp files and start it
+     * silently (Inno Setup's /VERYSILENT; /CLOSEAPPLICATIONS lets it close the running redrob so the
+     * files can be replaced). It runs after this process exits, so the upgrade finishes a few seconds
+     * after the command does. A running `.exe` cannot be overwritten in place, which is why this
+     * hands over to the installer instead of replacing the file itself.
+     */
+    const upgradeInstaller = Effect.fnUntraced(
+      function* (target: string) {
+        const name = `redrob-code-${target}-windows-x64-setup.exe`
+        const base = process.env["REDROB_CODE_DOWNLOAD_BASE"]?.trim().replace(/\/+$/, "") || RELEASE_DOWNLOAD_BASE
+        const response = yield* httpOk.execute(HttpClientRequest.get(`${base}/download/v${target}/${name}`))
+        const bytes = new Uint8Array(yield* response.arrayBuffer)
+        const file = path.join(os.tmpdir(), name)
+        yield* Effect.promise(() => fs.writeFile(file, bytes))
+        yield* Effect.sync(() =>
+          spawn(file, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], {
+            detached: true,
+            stdio: "ignore",
+            windowsHide: true,
+          }).unref(),
+        )
+        return file
+      },
+      Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("installer") })),
+    )
+
     const result: Interface = {
       info: Effect.fn("Installation.info")(function* () {
         return {
@@ -249,15 +279,14 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           case "curl":
             upgradeResult = yield* upgradeCurl(target)
             break
-          case "installer":
-            // Deliberately not an in-place upgrade. Windows will not let a running .exe be
-            // overwritten, and the installed copy is two files plus a PATH entry plus an uninstall
-            // registration -- state that belongs to the installer, not to a download-and-replace.
-            // So this is a refusal WITH a next step, which is different from `unknown`: we know
-            // exactly how this install got here and exactly what replaces it.
-            return yield* new UpgradeFailedError({
-              stderr: `redrob at ${process.execPath} was installed by the Windows installer, so it is upgraded by running the new installer rather than in place. Download redrob-code-${target}-windows-x64-setup.exe from ${RELEASE_DOWNLOAD_BASE}/tag/v${target}`,
-            })
+          case "installer": {
+            // Not an in-place upgrade: Windows will not let a running .exe be overwritten, and the
+            // installed copy is two files plus a PATH entry plus an uninstall registration -- state
+            // that belongs to the installer. So the new installer is downloaded and run silently.
+            const setup = yield* upgradeInstaller(target)
+            yield* Effect.logInfo("upgrade handed to the installer", { method: m, target, setup })
+            return
+          }
           default:
             // `unknown`. Re-running install.sh over a binary we did not place would write into
             // whatever directory it happens to sit in, so this refuses and the CLI tells the
