@@ -34,11 +34,16 @@
  * PC, so a `read_only` machine answers it too. `GET /desk/capabilities` reports
  * `privacy: { model, localModels }`: the configured masking model and the models a local provider
  * (Ollama, LM Studio, or a base URL on localhost / 127.0.0.1) serves.
+ *
+ * Files (Redrob Chat's PC folder tools): `GET /desk/files/find?name=`, `/desk/files/list?path=` and
+ * `/desk/files/read?path=&offset=&limit=` are answered here from the folders the person allowed in
+ * Redrob Desktop; a folder outside them is asked about at the PC first (files.ts).
  */
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import type { BusEvent, DaemonApi } from "./daemon"
+import { filesRequest } from "./files"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 
@@ -63,7 +68,9 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models"
+  readonly local?: "capabilities" | "attachment" | "models" | "files"
+  /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
+  readonly files?: "find" | "list" | "read"
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -105,6 +112,10 @@ export const ROUTES: readonly Route[] = [
   { method: "GET", path: /^\/desk\/models$/, local: "models" },
   // A file the session showed or handed to the user (`session.next.attachment`), in pieces.
   { method: "GET", path: new RegExp(`^/desk/attachment/${ID}/${ID}$`), query: true, local: "attachment" },
+  // The person's own files for Redrob Chat (files.ts): only allowed folders; others are asked at the PC.
+  { method: "GET", path: /^\/desk\/files\/find$/, query: true, local: "files", files: "find" },
+  { method: "GET", path: /^\/desk\/files\/list$/, query: true, local: "files", files: "list" },
+  { method: "GET", path: /^\/desk\/files\/read$/, query: true, local: "files", files: "read" },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -493,6 +504,8 @@ export class Forwarder {
       return link.send({ t: "res", id, status: 200, body: await capabilities(await this.privacy()) })
     if (route.local === "attachment")
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
+    if (route.local === "files" && route.files)
+      return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
