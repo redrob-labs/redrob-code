@@ -17,7 +17,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { selfCommand } from "./connect"
+import { hiddenCommand, selfCommand } from "./connect"
 
 export type Platform = "linux" | "darwin" | "win32"
 
@@ -186,9 +186,15 @@ function cmdQuote(value: string): string {
   return /[\s"]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value
 }
 
+/** The task's command line: the daemon, hosted by `conhost --headless` so login opens no console window. */
+function win32TaskCommand(): string {
+  const daemon = daemonCommand()
+  const { command, args } = hiddenCommand(daemon.command, daemon.args)
+  return [command, ...args].map(cmdQuote).join(" ")
+}
+
 async function installWin32(): Promise<void> {
-  const { command, args } = daemonCommand()
-  const tr = [command, ...args].map(cmdQuote).join(" ")
+  const tr = win32TaskCommand()
   // /F overwrites an existing task of the same name; /RL LIMITED = no elevation.
   const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", tr, "/RL", "LIMITED"])
   if (result.code !== 0) throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim() || result.code}`)
@@ -199,6 +205,23 @@ async function installWin32(): Promise<void> {
 async function uninstallWin32(): Promise<void> {
   // /Delete alone: the daemon the task started keeps running for attached apps.
   await run("schtasks.exe", ["/Delete", "/F", "/TN", TASK_NAME])
+}
+
+/**
+ * A task made before the daemon was hosted headless opens a console window at every login. If the
+ * installed task's command is not the one this build writes, write it again (the daemon it already
+ * started keeps running). Windows only; never throws.
+ */
+export async function repairWin32(): Promise<boolean> {
+  if (platform() !== "win32") return false
+  try {
+    const query = await run("schtasks.exe", ["/Query", "/TN", TASK_NAME, "/XML"])
+    if (query.code !== 0 || query.stdout.includes("--headless")) return false
+    const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", win32TaskCommand(), "/RL", "LIMITED"])
+    return result.code === 0
+  } catch {
+    return false
+  }
 }
 
 async function installedWin32(): Promise<boolean> {
