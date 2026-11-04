@@ -17,7 +17,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { hiddenCommand, selfCommand } from "./connect"
+import { selfCommand } from "./connect"
 
 export type Platform = "linux" | "darwin" | "win32"
 
@@ -186,10 +186,9 @@ function cmdQuote(value: string): string {
   return /[\s"]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value
 }
 
-/** The task's command line: the daemon, hosted by `conhost --headless` so login opens no console window. */
+/** The task's command line: the daemon itself. */
 function win32TaskCommand(): string {
-  const daemon = daemonCommand()
-  const { command, args } = hiddenCommand(daemon.command, daemon.args)
+  const { command, args } = daemonCommand()
   return [command, ...args].map(cmdQuote).join(" ")
 }
 
@@ -208,15 +207,16 @@ async function uninstallWin32(): Promise<void> {
 }
 
 /**
- * A task made before the daemon was hosted headless opens a console window at every login. If the
- * installed task's command is not the one this build writes, write it again (the daemon it already
- * started keeps running). Windows only; never throws.
+ * v0.18.7 wrote the login task as `conhost.exe --headless redrob.exe serve ...`. On Windows the
+ * daemon did not come up under it (apps said the engine was not running, and consoles piled up as
+ * they kept retrying), so a task carrying `--headless` is written back to the plain command.
+ * Windows only; never throws.
  */
 export async function repairWin32(): Promise<boolean> {
   if (platform() !== "win32") return false
   try {
     const query = await run("schtasks.exe", ["/Query", "/TN", TASK_NAME, "/XML"])
-    if (query.code !== 0 || query.stdout.includes("--headless")) return false
+    if (query.code !== 0 || !query.stdout.includes("--headless")) return false
     const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", win32TaskCommand(), "/RL", "LIMITED"])
     return result.code === 0
   } catch {
