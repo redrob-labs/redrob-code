@@ -186,13 +186,36 @@ function cmdQuote(value: string): string {
   return /[\s"]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value
 }
 
-/** The task's command line: the daemon itself. */
-function win32TaskCommand(): string {
+/** The launcher the task runs: `~/.redrob/redrob-engine.vbs`. */
+export function win32LauncherPath(): string {
+  return path.join(os.homedir(), ".redrob", "redrob-engine.vbs")
+}
+
+/**
+ * The launcher's text: WScript.Shell.Run with window style 0 starts the daemon with its console
+ * hidden and returns at once. Task Scheduler gives a console program a visible console of its own
+ * (on Windows 11 a Windows Terminal window titled with the binary's path), which is the empty
+ * window people saw at login and each time the task ran. Checked on windows-latest: the plain
+ * command opens that window, this launcher opens none and the daemon comes up.
+ */
+export function win32Launcher(): string {
   const { command, args } = daemonCommand()
-  return [command, ...args].map(cmdQuote).join(" ")
+  const line = [command, ...args].map(cmdQuote).join(" ").replace(/"/g, '""')
+  return `CreateObject("WScript.Shell").Run "${line}", 0, False\r\n`
+}
+
+/** The task's command line: wscript running the launcher, with no window of its own. */
+function win32TaskCommand(): string {
+  return ["wscript.exe", "//B", "//Nologo", win32LauncherPath()].map(cmdQuote).join(" ")
+}
+
+async function writeWin32Launcher(): Promise<void> {
+  await fs.mkdir(path.dirname(win32LauncherPath()), { recursive: true })
+  await fs.writeFile(win32LauncherPath(), win32Launcher())
 }
 
 async function installWin32(): Promise<void> {
+  await writeWin32Launcher()
   const tr = win32TaskCommand()
   // /F overwrites an existing task of the same name; /RL LIMITED = no elevation.
   const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", tr, "/RL", "LIMITED"])
@@ -207,16 +230,16 @@ async function uninstallWin32(): Promise<void> {
 }
 
 /**
- * v0.18.7 wrote the login task as `conhost.exe --headless redrob.exe serve ...`. On Windows the
- * daemon did not come up under it (apps said the engine was not running, and consoles piled up as
- * they kept retrying), so a task carrying `--headless` is written back to the plain command.
- * Windows only; never throws.
+ * A task written before the launcher (the plain command, which opens a console window at login,
+ * or v0.18.7's `conhost --headless`) is written again to run through the launcher. Windows only;
+ * never throws.
  */
 export async function repairWin32(): Promise<boolean> {
   if (platform() !== "win32") return false
   try {
     const query = await run("schtasks.exe", ["/Query", "/TN", TASK_NAME, "/XML"])
-    if (query.code !== 0 || !query.stdout.includes("--headless")) return false
+    if (query.code !== 0 || query.stdout.includes("redrob-engine.vbs")) return false
+    await writeWin32Launcher()
     const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", win32TaskCommand(), "/RL", "LIMITED"])
     return result.code === 0
   } catch {
