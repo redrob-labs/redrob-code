@@ -78,7 +78,48 @@ export async function write(record: Record, env: NodeJS.ProcessEnv = process.env
   await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
   const temp = `${target}.${record.id}.tmp`
   await fs.writeFile(temp, JSON.stringify(record), { mode: 0o600 })
-  await fs.rename(temp, target)
+  // Windows refuses a rename over a file another process has open (EPERM/EBUSY/EACCES), which is
+  // every client reading the record at that moment. Retry for a few seconds before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(temp, target)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt >= 40 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) {
+        await fs.rm(temp, { force: true }).catch(() => undefined)
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+}
+
+/**
+ * One start at a time: the lock is `run/start.lock`, made with O_EXCL so only one caller wins. A
+ * lock older than `staleMs` is from a starter that died and is taken over. Returns the release
+ * function, or undefined when another caller holds it.
+ */
+export async function tryStartLock(
+  env: NodeJS.ProcessEnv = process.env,
+  staleMs = 30_000,
+): Promise<(() => Promise<void>) | undefined> {
+  const lock = path.join(directory(env), "start.lock")
+  await fs.mkdir(path.dirname(lock), { recursive: true, mode: 0o700 })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const handle = await fs.open(lock, "wx", 0o600)
+      await handle.writeFile(String(process.pid))
+      await handle.close()
+      return () => fs.rm(lock, { force: true }).catch(() => undefined)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+      const age = await fs.stat(lock).then((s) => Date.now() - s.mtimeMs).catch(() => 0)
+      if (age < staleMs) return undefined
+      await fs.rm(lock, { force: true }).catch(() => undefined)
+    }
+  }
+  return undefined
 }
 
 /** Remove the record, but only if it is still ours: a newer daemon's record is left alone. */

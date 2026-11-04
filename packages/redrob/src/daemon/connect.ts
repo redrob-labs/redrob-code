@@ -80,8 +80,37 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
   if (found) return found
 
   const stale = await Registry.read(env)
-  if (stale && Registry.alive(stale.pid)) await stop(env)
+  const deadline = Date.now() + (options.waitMs ?? 15_000)
 
+  // Several apps asking at once (the desktop's first start does) used to start one daemon each:
+  // only one could register, the rest kept running unregistered, held the binary so it could not
+  // be updated, and each left a console window on Windows. Only the caller holding the start lock
+  // spawns; the others wait for the record it writes.
+  const release = await Registry.tryStartLock(env)
+  if (!release) {
+    while (Date.now() < deadline) {
+      const found = await current(env)
+      if (found) return found
+      await sleep(200)
+    }
+    throw new Error("The Redrob Code daemon did not start in time")
+  }
+  try {
+    const again = await current(env)
+    if (again) return again
+    if (stale && Registry.alive(stale.pid)) await stop(env)
+    return await spawnAndWait(options, env, stale, deadline)
+  } finally {
+    await release()
+  }
+}
+
+async function spawnAndWait(
+  options: StartOptions,
+  env: NodeJS.ProcessEnv,
+  stale: Registry.Record | undefined,
+  deadline: number,
+): Promise<Connection> {
   const self = selfCommand()
   const idle = options.idleExitMinutes ?? 10
   const child = spawn(self.command, [...self.args, "serve", "--register", "--idle-exit", String(idle)], {
@@ -96,7 +125,6 @@ export async function connectOrStart(options: StartOptions = {}): Promise<Connec
   })
   child.unref()
 
-  const deadline = Date.now() + (options.waitMs ?? 15_000)
   while (Date.now() < deadline) {
     const record = await Registry.read(env)
     if (record && (!stale || record.id !== stale.id) && (await Registry.healthy(record))) {
