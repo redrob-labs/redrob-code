@@ -197,3 +197,13 @@ describe("directory config", () => {
     )
   })
 })
+
+describe("Windows start launcher", () => {
+  test("runs every argument quoted, with a hidden window, without waiting", () => {
+    const text = Daemon.WIN32_START_LAUNCHER
+    expect(text).toContain("For i = 0 To a.Count - 1")
+    expect(text).toContain("Chr(34) & a(i) & Chr(34)")
+    expect(text).toContain('CreateObject("WScript.Shell").Run Mid(c, 2), 0, False')
+    expect(text.endsWith("\r\n")).toBe(true)
+  })
+})
