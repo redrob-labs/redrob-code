@@ -760,6 +760,27 @@ export const documents = (host: DocumentHost): Documents => ({
   pdf: makePdf(host),
 })
 
+/** Renders one spreadsheet cell as plain text for a tab-separated row. */
+const cellText = (value: CellValue) => (value === null ? "" : String(value).replace(/\r?\n/g, " "))
+
+/**
+ * The plain text of an OOXML document, as the `read` tool shows it: Word paragraphs in order,
+ * every sheet of a workbook as tab-separated rows under its name, and every slide numbered.
+ */
+export const officeText = (absolute: string, kind: "docx" | "xlsx" | "pptx") =>
+  Effect.gen(function* () {
+    const docs = documents({ directory: path.dirname(absolute) })
+    if (kind === "docx") return (yield* docs.docx.read({ path: absolute })).text
+    if (kind === "xlsx") {
+      const { sheets } = yield* docs.xlsx.read({ path: absolute })
+      return sheets
+        .map((sheet) => [`## Sheet: ${sheet.name}`, ...sheet.rows.map((row) => row.map(cellText).join("\t"))].join("\n"))
+        .join("\n\n")
+    }
+    const { slides } = yield* docs.pptx.read({ path: absolute })
+    return slides.map((slide) => [`## Slide ${slide.index + 1}`, ...slide.text].join("\n")).join("\n\n")
+  })
+
 /**
  * The refusing implementation, for the catalog preview — which describes the globals without
  * being a live execution and so has no directory to resolve a path against. Same discipline as

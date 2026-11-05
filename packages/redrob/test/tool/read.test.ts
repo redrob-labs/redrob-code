@@ -15,6 +15,7 @@ import { Permission } from "../../src/permission"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { Instruction } from "../../src/session/instruction"
 import { ReadTool } from "../../src/tool/read"
+import { documents } from "../../src/tool/document"
 import { Truncate } from "@/tool/truncate"
 import { Tool } from "@/tool/tool"
 import { Filesystem } from "@/util/filesystem"
@@ -604,6 +605,108 @@ describe("tool.read binary detection", () => {
 
       const err = yield* fail(dir, { filePath: path.join(dir, "module.wasm") })
       expect(err.message).toContain("Cannot read binary file")
+    }),
+  )
+
+  it.live("rejects legacy Office files with a save-as hint", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      yield* put(path.join(dir, "old.doc"), Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0x00, 0x00]))
+
+      const err = yield* fail(dir, { filePath: path.join(dir, "old.doc") })
+      expect(err.message).toContain("Cannot read binary file")
+      expect(err.message).toContain("Save it as .docx")
+    }),
+  )
+})
+
+describe("tool.read office documents", () => {
+  const docs = (dir: string) => documents({ directory: dir })
+
+  it.live("reads a .docx as extracted paragraph text", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const file = path.join(dir, "Welcome to Word.docx")
+      yield* docs(dir).docx.write({
+        path: file,
+        paragraphs: [{ text: "첫 번째 문단", heading: 1 }, { text: "Second paragraph" }],
+      })
+
+      const result = yield* exec(dir, { filePath: file })
+      expect(result.output).toContain("<note>Text extracted from a Word document")
+      expect(result.output).toContain("1: 첫 번째 문단")
+      expect(result.output).toContain("2: Second paragraph")
+      expect(result.output).toContain("(End of file - total 2 lines)")
+      expect(result.attachments).toBeUndefined()
+    }),
+  )
+
+  it.live("pages extracted .docx text with offset and limit", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const file = path.join(dir, "many.docx")
+      yield* docs(dir).docx.write({
+        path: file,
+        paragraphs: Array.from({ length: 5 }, (_, i) => ({ text: `para ${i + 1}` })),
+      })
+
+      const result = yield* exec(dir, { filePath: file, offset: 2, limit: 2 })
+      expect(result.output).toContain("2: para 2")
+      expect(result.output).toContain("3: para 3")
+      expect(result.output).not.toContain("para 4")
+      expect(result.output).toContain("Showing lines 2-3 of 5")
+      expect(result.metadata.truncated).toBe(true)
+    }),
+  )
+
+  it.live("reads a .xlsx as sheets of tab-separated rows", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const file = path.join(dir, "book.xlsx")
+      yield* docs(dir).xlsx.write({
+        path: file,
+        sheets: [
+          { name: "Sales", rows: [["Region", "Total"], ["Seoul", 42]] },
+          { name: "Notes", rows: [["done", true]] },
+        ],
+      })
+
+      const result = yield* exec(dir, { filePath: file })
+      expect(result.output).toContain("<note>Text extracted from an Excel workbook")
+      expect(result.output).toContain("1: ## Sheet: Sales")
+      expect(result.output).toContain("2: Region\tTotal")
+      expect(result.output).toContain("3: Seoul\t42")
+      expect(result.output).toContain("## Sheet: Notes")
+      expect(result.output).toContain("done\ttrue")
+    }),
+  )
+
+  it.live("reads a .pptx as numbered slides", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const file = path.join(dir, "deck.pptx")
+      yield* docs(dir).pptx.write({
+        path: file,
+        slides: [{ title: "Intro", bullets: ["alpha"] }, { title: "Outro" }],
+      })
+
+      const result = yield* exec(dir, { filePath: file })
+      expect(result.output).toContain("<note>Text extracted from a PowerPoint deck")
+      expect(result.output).toContain("1: ## Slide 1")
+      expect(result.output).toContain("Intro")
+      expect(result.output).toContain("alpha")
+      expect(result.output).toContain("## Slide 2")
+      expect(result.output).toContain("Outro")
+    }),
+  )
+
+  it.live("fails clearly on a .docx that is not a zip package", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      yield* put(path.join(dir, "broken.docx"), "not a zip")
+
+      const err = yield* fail(dir, { filePath: path.join(dir, "broken.docx") })
+      expect(err.message).toContain("Cannot extract text from")
     }),
   )
 })

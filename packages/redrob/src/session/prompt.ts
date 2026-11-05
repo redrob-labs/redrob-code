@@ -42,6 +42,7 @@ import { FSUtil } from "@redrob-code/core/fs-util"
 import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
+import { officeKind } from "@/util/media"
 import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -878,6 +879,47 @@ const layer = Layer.effect(
                     ask: () => Effect.void,
                   })
                   .pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
+              }
+
+              // Providers reject OOXML media types, so a Word/Excel/PowerPoint file is sent as the
+              // text the Read tool extracts from it and the file part itself is not forwarded.
+              if (mime !== "application/x-directory" && officeKind(filepath, mime)) {
+                const args = { filePath: filepath }
+                const pieces: Draft<SessionV1.Part>[] = [
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
+                  },
+                ]
+                const exit = yield* execRead(args).pipe(Effect.exit)
+                if (Exit.isSuccess(exit)) {
+                  pieces.push({
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: exit.value.output,
+                  })
+                } else {
+                  const error = Cause.squash(exit.cause)
+                  yield* Effect.logError("failed to read office document", { error, filepath })
+                  const message = error instanceof Error ? error.message : String(error)
+                  yield* events.publish(Session.Event.Error, {
+                    sessionID: input.sessionID,
+                    error: new NamedError.Unknown({ message }).toObject(),
+                  })
+                  pieces.push({
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Read tool failed to read ${filepath} with the following error: ${message}`,
+                  })
+                }
+                return pieces
               }
 
               if (mime === "text/plain") {

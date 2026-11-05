@@ -24,3 +24,27 @@ export function sniffAttachmentMime(bytes: Uint8Array, fallback: string) {
 
   return fallback
 }
+
+
+/** OOXML documents whose text the engine extracts instead of sending the file to the provider. */
+export type OfficeKind = "docx" | "xlsx" | "pptx"
+
+const OFFICE_MIMES: Record<string, OfficeKind> = {
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+}
+
+const OFFICE_EXTENSIONS: Record<string, OfficeKind> = { ".docx": "docx", ".xlsx": "xlsx", ".pptx": "pptx" }
+
+export function isOfficeDocument(mime: string) {
+  return mime in OFFICE_MIMES
+}
+
+/** The OOXML kind of a file, by mime first and then by extension. */
+export function officeKind(filepath: string, mime?: string): OfficeKind | undefined {
+  if (mime && OFFICE_MIMES[mime]) return OFFICE_MIMES[mime]
+  const dot = filepath.lastIndexOf(".")
+  if (dot < 0) return undefined
+  return OFFICE_EXTENSIONS[filepath.slice(dot).toLowerCase()]
+}
