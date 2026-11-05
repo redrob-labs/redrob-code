@@ -1,5 +1,6 @@
 import { Agent } from "@/agent/agent"
 import { Command } from "@/command"
+import { Config } from "@/config/config"
 import * as InstanceState from "@/effect/instance-state"
 import { Format } from "@/format"
 import { Global } from "@redrob-code/core/global"
@@ -16,12 +17,16 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
   Effect.gen(function* () {
     const agent = yield* Agent.Service
     const command = yield* Command.Service
+    const config = yield* Config.Service
     const format = yield* Format.Service
     const lsp = yield* LSP.Service
     const skill = yield* Skill.Service
     const vcs = yield* Vcs.Service
 
     const dispose = Effect.fn("InstanceHttpApi.dispose")(function* () {
+      // The global config is read once per process; an app that edited the file itself (Redrob
+      // Desktop adds a local model's provider) rebuilds the instance to have it read, so read it again.
+      yield* config.invalidate()
       yield* markInstanceForDisposal(yield* InstanceState.context)
       return true
     })
