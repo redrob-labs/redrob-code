@@ -824,6 +824,79 @@ describe("session.llm.stream", () => {
   )
 
   it.instance(
+    "masks personal data in the request and unmasks the streamed answer when privacy is on",
+    () =>
+      Effect.gen(function* () {
+        const email = "jiwon.kim@example.com"
+        const request = waitRequest(
+          "/chat/completions",
+          new Response(createChatStream("You wrote [EMAIL_1]."), {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        )
+        const resolved = yield* Provider.use.getModel(
+          ProviderV2.ID.make(redrobFixture.providerID),
+          ModelV2.ID.make(redrobFixture.modelID),
+        )
+        const sessionID = SessionID.make("session-privacy")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: MessageID.make("msg_user-privacy"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderV2.ID.make(redrobFixture.providerID), modelID: resolved.id },
+        } satisfies SessionV1.User
+
+        const events = yield* LLM.Service.use((svc) =>
+          svc
+            .stream({
+              user,
+              sessionID,
+              model: resolved,
+              agent,
+              system: ["You are a helpful assistant."],
+              messages: [{ role: "user", content: `Spell my email ${email} letter by letter` }],
+              tools: {},
+            })
+            .pipe(Stream.runCollect),
+        )
+
+        const sent = JSON.stringify((yield* Effect.promise(() => request)).body)
+        expect(sent).not.toContain(email)
+        expect(sent).toContain("[EMAIL_1]")
+        const text = Array.from(events)
+          .flatMap((event) => (event.type === "text-delta" ? [event.text] : []))
+          .join("")
+        expect(text).toBe(`You wrote ${email}.`)
+      }),
+    {
+      config: () => {
+        const fixture = loadFixture(vivgridFixture.providerID, vivgridFixture.modelID)
+        return {
+          privacy: { mask_pii: "regex" },
+          enabled_providers: [redrobFixture.providerID],
+          provider: {
+            [redrobFixture.providerID]: {
+              name: "RedrobCode Test",
+              npm: "@ai-sdk/openai-compatible",
+              models: { [fixture.model.id]: configModel(fixture.model) as ConfigModel },
+              options: { apiKey: "test-key", baseURL: `${state.server!.url.origin}/v1` },
+            },
+          },
+        }
+      },
+    },
+  )
+
+  it.instance(
     "sends temperature, tokens, and reasoning options for openai-compatible models",
     () =>
       Effect.gen(function* () {

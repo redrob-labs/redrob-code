@@ -232,13 +232,28 @@ pub fn connect_or_start(idle_exit_minutes: u32) -> Result<Record, String> {
 
 /// [`connect_or_start`], naming the app that asked (`REDROB_APP` on the `redrob service start`
 /// call; the daemon itself serves every app, so per-request labels go on the request as
+
+/// `redrob` as a child that opens no console window on Windows (`CREATE_NO_WINDOW`). An app is a
+/// windowed program with no console, so without it each call opened a Windows Terminal window for
+/// a few seconds (seen on Windows 11 at the desktop's first start, while the daemon was down).
+fn hidden(bin: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    command
+}
+
 /// `x-redrob-app`, see [`app_headers`]).
 pub fn connect_or_start_as(app: &str, idle_exit_minutes: u32) -> Result<Record, String> {
     if let Some(record) = current() {
         return Ok(record);
     }
     let bin = redrob_bin();
-    let output = Command::new(&bin)
+    let output = hidden(&bin)
         .args(["service", "start", "--json", "--idle-exit", &idle_exit_minutes.to_string()])
         .env("REDROB_APP", app)
         .output()
@@ -258,7 +273,7 @@ pub fn stop() -> Result<bool, String> {
         return Ok(false);
     }
     let bin = redrob_bin();
-    let output = Command::new(&bin).args(["service", "stop"]).output().map_err(|e| format!("could not run {}: {e}", bin.display()))?;
+    let output = hidden(&bin).args(["service", "stop"]).output().map_err(|e| format!("could not run {}: {e}", bin.display()))?;
     if !output.status.success() {
         return Err(format!("redrob service stop failed ({})", output.status));
     }

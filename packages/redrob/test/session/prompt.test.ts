@@ -8,7 +8,8 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { expect } from "bun:test"
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
 import path from "path"
-import { fileURLToPath } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
+import { documents } from "../../src/tool/document"
 import { NamedError } from "@redrob-code/core/util/error"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
@@ -2197,6 +2198,46 @@ noLLMServer.instance(
         (part) => part.type === "text" && part.synthetic && part.text.includes("Read tool failed to read"),
       )
       expect(hasFailure).toBe(true)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
+noLLMServer.instance(
+  "turns a file:// docx part into extracted text and drops the OOXML file part",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+
+      const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      const file = path.join(dir, "Welcome to Word.docx")
+      yield* documents({ directory: dir }).docx.write({
+        path: file,
+        paragraphs: [{ text: "Welcome heading", heading: 1 }, { text: "핵심 사항 문단" }],
+      })
+
+      const msg = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [
+          { type: "text", text: "이 문서의 주요 내용과 핵심 사항을 요약해 주세요" },
+          { type: "file", mime: docxMime, url: pathToFileURL(file).href, filename: "Welcome to Word.docx" },
+        ],
+      })
+
+      if (msg.info.role !== "user") throw new Error("expected user message")
+      expect(msg.parts.some((part) => part.type === "file")).toBe(false)
+      const text = msg.parts.filter((part) => part.type === "text").map((part) => part.text)
+      expect(text.some((t) => t.startsWith("Called the Read tool with the following input:"))).toBe(true)
+      expect(text.some((t) => t.includes("1: Welcome heading") && t.includes("2: 핵심 사항 문단"))).toBe(true)
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: msg.info.id })
+      expect(stored.parts.some((part) => part.type === "file")).toBe(false)
 
       yield* sessions.remove(session.id)
     }),
