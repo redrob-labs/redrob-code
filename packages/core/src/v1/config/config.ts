@@ -3,6 +3,7 @@ export * as ConfigV1 from "./config"
 import { Schema } from "effect"
 import { NonNegativeInt, PositiveInt, type DeepMutable } from "../../schema"
 import { ConfigExperimental } from "../../config/experimental"
+import { ConfigPrivacy } from "../../config/privacy"
 import { ConfigReference } from "../../config/reference"
 import { ConfigAgentV1 } from "./agent"
 import { ConfigAttachmentV1 } from "./attachment"
@@ -190,6 +191,9 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  privacy: Schema.optional(ConfigPrivacy.Info).annotate({
+    description: "PII masking: replace personal data with placeholders before a request leaves this machine",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

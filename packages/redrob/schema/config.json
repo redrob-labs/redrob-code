@@ -737,6 +737,26 @@
       },
       "additionalProperties": false
     },
+    "ConfigV2.Privacy": {
+      "type": "object",
+      "properties": {
+        "mask_pii": {
+          "type": "string",
+          "enum": [
+            "off",
+            "regex",
+            "model"
+          ],
+          "description": "Replace personal data with placeholders before a request leaves this machine"
+        },
+        "model": {
+          "type": "string",
+          "description": "For mask_pii = model: the LOCAL model that names people, organisations and places, as provider/model",
+          "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+        }
+      },
+      "additionalProperties": false
+    },
     "Policy.Effect": {
       "type": "string",
       "enum": [
@@ -1284,6 +1304,10 @@
             }
           },
           "additionalProperties": false
+        },
+        "privacy": {
+          "$ref": "#/$defs/ConfigV2.Privacy",
+          "description": "PII masking: replace personal data with placeholders before a request leaves this machine"
         },
         "experimental": {
           "type": "object",
