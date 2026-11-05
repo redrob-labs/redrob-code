@@ -8,7 +8,8 @@ import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
-import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import { isPdfAttachment, officeKind, sniffAttachmentMime, type OfficeKind } from "@/util/media"
+import { officeText } from "./document"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -17,6 +18,18 @@ const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+
+const OFFICE_NOTE: Record<OfficeKind, string> = {
+  docx: "Text extracted from a Word document (.docx): paragraphs in order. Formatting, images, headers and footers are not included.",
+  xlsx: "Text extracted from an Excel workbook (.xlsx): each sheet under its name, one row per line, cells separated by tabs. Formulas show their cached values.",
+  pptx: "Text extracted from a PowerPoint deck (.pptx): slides numbered in deck order. Images and speaker notes are not included.",
+}
+
+const LEGACY_OFFICE: Record<string, { name: string; modern: string }> = {
+  ".doc": { name: "Word 97-2003", modern: ".docx" },
+  ".xls": { name: "Excel 97-2003", modern: ".xlsx" },
+  ".ppt": { name: "PowerPoint 97-2003", modern: ".pptx" },
+}
 
 class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 
@@ -134,10 +147,41 @@ export const ReadTool = Tool.define<
       )
     })
 
-    const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
+    // One page of lines under the offset, line-count and byte caps. `push` returns true once the
+    // byte cap is reached and no further line can be taken.
+    const pager = (opts: { limit: number; offset: number }) => {
       const start = opts.offset - 1
       const raw: string[] = []
       const flags = { bytes: 0, count: 0, cut: false, more: false, done: false }
+      const push = (text: string) => {
+        if (flags.done) return true
+        flags.count += 1
+        if (flags.count <= start) return false
+
+        if (raw.length >= opts.limit) {
+          flags.more = true
+          return false
+        }
+
+        const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
+        const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
+        if (flags.bytes + size <= MAX_BYTES) {
+          raw.push(line)
+          flags.bytes += size
+          return false
+        }
+
+        flags.cut = true
+        flags.more = true
+        flags.done = true
+        return true
+      }
+      const result = () => ({ raw, count: flags.count, cut: flags.cut, more: flags.more, offset: opts.offset })
+      return { push, result }
+    }
+
+    const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
+      const page = pager(opts)
 
       // Note: prefer manual TextDecoder over Stream.decodeText — when the source stream
       // ends without flushing, decodeText drops the final unterminated line. We also
@@ -148,36 +192,22 @@ export const ReadTool = Tool.define<
       yield* fs.stream(filepath).pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
         Stream.splitLines,
-        Stream.runForEach((text) =>
-          Effect.gen(function* () {
-            if (flags.done) return yield* new ReadStop()
-            flags.count += 1
-            if (flags.count <= start) return
-
-            if (raw.length >= opts.limit) {
-              flags.more = true
-              return
-            }
-
-            const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
-            const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
-            if (flags.bytes + size <= MAX_BYTES) {
-              raw.push(line)
-              flags.bytes += size
-              return
-            }
-
-            flags.cut = true
-            flags.more = true
-            flags.done = true
-            return yield* new ReadStop()
-          }),
-        ),
+        Stream.runForEach((text) => (page.push(text) ? Effect.fail(new ReadStop()) : Effect.void)),
         Effect.catchTag("ReadStop", () => Effect.void),
       )
 
-      return { raw, count: flags.count, cut: flags.cut, more: flags.more, offset: opts.offset }
+      return page.result()
     })
+
+    const textLines = (text: string, opts: { limit: number; offset: number }) => {
+      const page = pager(opts)
+      if (text.length > 0) {
+        for (const line of text.split(/\r?\n/)) {
+          if (page.push(line)) break
+        }
+      }
+      return page.result()
+    }
 
     const isBinaryFile = (filepath: string, bytes: Uint8Array) => {
       const ext = path.extname(filepath).toLowerCase()
@@ -192,12 +222,6 @@ export const ReadTool = Tool.define<
         case ".jar":
         case ".war":
         case ".7z":
-        case ".doc":
-        case ".docx":
-        case ".xls":
-        case ".xlsx":
-        case ".ppt":
-        case ".pptx":
         case ".odt":
         case ".ods":
         case ".odp":
@@ -324,18 +348,42 @@ export const ReadTool = Tool.define<
         }
       }
 
-      if (isBinaryFile(filepath, sample)) {
-        return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
+      const ext = path.extname(filepath).toLowerCase()
+      const legacy = LEGACY_OFFICE[ext]
+      if (legacy) {
+        return yield* Effect.fail(
+          new Error(
+            `Cannot read binary file: ${filepath} is a legacy ${legacy.name} file (${ext}), which cannot be read as text. Save it as ${legacy.modern} and read that file instead.`,
+          ),
+        )
       }
 
-      const file = yield* lines(filepath, { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 })
+      const office = officeKind(filepath, mime)
+      const opts = { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 }
+      let file: ReturnType<typeof textLines>
+      if (office) {
+        const text = yield* officeText(filepath, office).pipe(
+          Effect.mapError((error) => new Error(`Cannot extract text from ${filepath}: ${error.message}`)),
+        )
+        file = textLines(text, opts)
+      } else {
+        if (isBinaryFile(filepath, sample)) {
+          return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
+        }
+        file = yield* lines(filepath, opts)
+      }
       if (file.count < file.offset && !(file.count === 0 && file.offset === 1)) {
         return yield* Effect.fail(
           new Error(`Offset ${file.offset} is out of range for this file (${file.count} lines)`),
         )
       }
 
-      let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")
+      let output = [
+        `<path>${filepath}</path>`,
+        `<type>file</type>`,
+        ...(office ? [`<note>${OFFICE_NOTE[office]}</note>`] : []),
+        "<content>\n",
+      ].join("\n")
       output += file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
 
       const last = file.offset + file.raw.length - 1
@@ -350,7 +398,7 @@ export const ReadTool = Tool.define<
       }
       output += "\n</content>"
 
-      yield* warm(filepath)
+      if (!office) yield* warm(filepath)
 
       if (loaded.length > 0) {
         output += `\n\n<system-reminder>\n${loaded.map((item) => item.content).join("\n\n")}\n</system-reminder>`

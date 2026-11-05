@@ -138,6 +138,29 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("drops stored OOXML file parts instead of sending them to the provider", async () => {
+    const messageID = "m-docx"
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          { ...basePart(messageID, "p1"), type: "text", text: "summarize" },
+          {
+            ...basePart(messageID, "p2"),
+            type: "file",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename: "Welcome to Word.docx",
+            url: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,UEsDBA==",
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+
+    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "summarize" }] },
+    ])
+  })
+
   test("filters out messages with only ignored parts", async () => {
     const messageID = "m-user"
 

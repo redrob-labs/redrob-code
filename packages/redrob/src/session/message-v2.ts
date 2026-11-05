@@ -31,7 +31,7 @@ import { MessageTable, PartTable, SessionTable } from "@redrob-code/core/session
 import { ProviderError } from "@/provider/error"
 import { iife } from "@/util/iife"
 import { errorMessage } from "@/util/error"
-import { isMedia } from "@/util/media"
+import { isMedia, isOfficeDocument } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
@@ -208,8 +208,14 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             type: "text",
             text: part.text,
           })
-        // text/plain and directory files are converted into text parts, ignore them
-        if (part.type === "file" && part.mime !== "text/plain" && part.mime !== "application/x-directory") {
+        // text/plain, directory and OOXML files are converted into text parts, ignore them.
+        // Providers reject OOXML media types, so a part stored by an older engine is dropped too.
+        if (
+          part.type === "file" &&
+          part.mime !== "text/plain" &&
+          part.mime !== "application/x-directory" &&
+          !isOfficeDocument(part.mime)
+        ) {
           if (options?.stripMedia && isMedia(part.mime)) {
             userMessage.parts.push({
               type: "text",
