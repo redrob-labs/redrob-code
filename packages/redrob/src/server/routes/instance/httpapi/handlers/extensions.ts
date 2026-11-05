@@ -8,6 +8,7 @@ import {
   gatewayMessage,
   gatewayUrl,
   redrobKey,
+  sniffMime,
 } from "@/tool/image_generate"
 import { SharedAccount } from "@redrob-code/core/shared-account"
 import { Effect, Schema } from "effect"
@@ -36,18 +37,6 @@ const REFERENCE_MIME: Record<string, string> = {
 /** MCP Apps limits, as Cowork's mcp-app-host had them. */
 const MAX_APP_HTML_BYTES = 2 * 1024 * 1024
 const APP_CALL_TIMEOUT_MS = 120_000
-
-/** `1536x1024` -> `3:2`, the aspect the gateway's image models take. */
-function aspectOf(size: unknown): string | undefined {
-  const match = typeof size === "string" ? /^(\d+)x(\d+)$/.exec(size.trim()) : null
-  if (!match) return undefined
-  const w = Number(match[1])
-  const h = Number(match[2])
-  if (!w || !h) return undefined
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
-  const d = gcd(w, h)
-  return `${w / d}:${h / d}`
-}
 
 function message(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -98,24 +87,31 @@ export const extensionsHandlers = HttpApiBuilder.group(InstanceHttpApi, "extensi
         catch: (error) => new Error(message(error)),
       })
       const text = imagePrompt(action, prompt, urls.length)
-      const aspect = aspectOf(args.size)
-      const request = yield* HttpClientRequest.post(`${gatewayUrl()}/chat/completions`).pipe(
-        HttpClientRequest.bearerToken(key),
-        HttpClientRequest.acceptJson,
-        HttpClientRequest.bodyJson({
-          model,
-          messages: [
-            {
-              role: "user",
-              content: urls.length
-                ? [{ type: "text", text }, ...urls.map((url) => ({ type: "image_url", image_url: { url } }))]
-                : text,
-            },
-          ],
-          modalities: ["image", "text"],
-          ...(aspect ? { image_config: { aspect_ratio: aspect } } : {}),
-        }),
-      )
+      const size = typeof args.size === "string" && /^\d+x\d+$/.test(args.size.trim()) ? args.size.trim() : undefined
+      /*
+       * The gateway's Images API: `generations` for a prompt alone, `edits` (multipart, one image) when
+       * there are references. Its chat completions refuse `modalities`, so asking there was a 400. `edits`
+       * takes one image, so a blend sends the first and names the others' count in the prompt.
+       */
+      const request = urls.length
+        ? yield* Effect.sync(() => {
+            const form = new FormData()
+            form.append("model", model)
+            form.append("prompt", text)
+            if (size) form.append("size", size)
+            const [, mime, b64] = /^data:([^;]+);base64,(.*)$/s.exec(urls[0]) ?? []
+            form.append("image", new Blob([Buffer.from(b64 ?? "", "base64")], { type: mime }), "image")
+            return HttpClientRequest.post(`${gatewayUrl()}/images/edits`).pipe(
+              HttpClientRequest.bearerToken(key),
+              HttpClientRequest.acceptJson,
+              HttpClientRequest.bodyFormData(form),
+            )
+          })
+        : yield* HttpClientRequest.post(`${gatewayUrl()}/images/generations`).pipe(
+            HttpClientRequest.bearerToken(key),
+            HttpClientRequest.acceptJson,
+            HttpClientRequest.bodyJson({ model, prompt: text, n: 1, ...(size ? { size } : {}) }),
+          )
       const response = yield* http
         .execute(request)
         .pipe(Effect.timeoutOrElse({ duration: IMAGE_TIMEOUT_MS, orElse: () => Effect.fail(new Error("Image generation timed out.")) }))
@@ -123,12 +119,9 @@ export const extensionsHandlers = HttpApiBuilder.group(InstanceHttpApi, "extensi
       if (response.status < 200 || response.status >= 300)
         return { ok: false, error: `The Redrob gateway answered ${response.status}: ${gatewayMessage(body)}` }
       const payload = yield* decodeResponse(body)
-      const reply = payload.choices[0]?.message
-      const picture = (reply?.images ?? []).map((item) => decodeImageDataUrl(item.image_url.url)).find(Boolean)
-      if (!picture) {
-        const said = reply?.content?.trim()
-        return { ok: false, error: `${model} returned no image${said ? `. It said: ${said.slice(0, 500)}` : "."}` }
-      }
+      const b64 = payload.data[0]?.b64_json
+      const picture = b64 ? decodeImageDataUrl(`data:${sniffMime(b64)};base64,${b64}`) : undefined
+      if (!picture) return { ok: false, error: `${model} returned no image.` }
       const costUsd = payload.redrob?.costUsd
       return {
         ok: true,

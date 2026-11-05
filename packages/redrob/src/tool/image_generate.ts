@@ -19,8 +19,8 @@ import { assertExternalDirectoryEffect } from "./external-directory"
  * store (or `REDROB_API_KEY`), the desktop app never reads it, and no plugin API hands it out. Calling
  * the gateway from here keeps the key where it is and bills the image to the same account as the chat.
  *
- * The gateway relays an image model's pictures in OpenRouter's shape, `choices[0].message.images`,
- * when asked with `modalities: ["image", "text"]`. The picture is written under `artifacts/` and also
+ * The gateway's Images API (`POST /images/generations`, OpenAI's shape) answers with the picture as
+ * `data[0].b64_json`. Its chat completions refuse `modalities`, so asking there failed with a 400. The picture is written under `artifacts/` and also
  * returned as an attachment, which is what puts it inline in the conversation and in front of the model.
  */
 
@@ -57,12 +57,10 @@ export const Parameters = Schema.Struct({
 })
 
 const GatewayResponse = Schema.Struct({
-  choices: Schema.Array(
+  data: Schema.Array(
     Schema.Struct({
-      message: Schema.Struct({
-        content: Schema.optional(Schema.NullOr(Schema.String)),
-        images: Schema.optional(Schema.Array(Schema.Struct({ image_url: Schema.Struct({ url: Schema.String }) }))),
-      }),
+      b64_json: Schema.optional(Schema.String),
+      revised_prompt: Schema.optional(Schema.NullOr(Schema.String)),
     }),
   ),
   redrob: Schema.optional(Schema.Struct({ costUsd: Schema.optional(Schema.Number) })),
@@ -140,14 +138,10 @@ export const ImageGenerateTool = Tool.define(
             metadata: { filepath, prompt, model },
           })
 
-          const request = yield* HttpClientRequest.post(`${gatewayUrl()}/chat/completions`).pipe(
+          const request = yield* HttpClientRequest.post(`${gatewayUrl()}/images/generations`).pipe(
             HttpClientRequest.bearerToken(key),
             HttpClientRequest.acceptJson,
-            HttpClientRequest.bodyJson({
-              model,
-              messages: [{ role: "user", content: prompt }],
-              modalities: ["image", "text"],
-            }),
+            HttpClientRequest.bodyJson({ model, prompt, n: 1 }),
           )
           const response = yield* http.execute(request).pipe(
             Effect.timeoutOrElse({
@@ -160,12 +154,9 @@ export const ImageGenerateTool = Tool.define(
             throw new Error(`The Redrob gateway answered ${response.status}: ${gatewayMessage(body)}`)
           }
           const payload = yield* decodeResponse(body)
-          const message = payload.choices[0]?.message
-          const image = (message?.images ?? []).map((item) => decodeImageDataUrl(item.image_url.url)).find(Boolean)
-          if (!image) {
-            const said = message?.content?.trim()
-            throw new Error(`${model} returned no image${said ? `. It said: ${said.slice(0, 500)}` : "."}`)
-          }
+          const first = payload.data[0]
+          const image = first?.b64_json ? decodeImageDataUrl(`data:${sniffMime(first.b64_json)};base64,${first.b64_json}`) : undefined
+          if (!image) throw new Error(`${model} returned no image.`)
 
           /* A model that answered in another format keeps the chosen name with the right extension. */
           if (EXTENSIONS[image.mime] !== extension) {
@@ -181,7 +172,7 @@ export const ImageGenerateTool = Tool.define(
 
           const relative = path.relative(instance.worktree, filepath)
           const costUsd = payload.redrob?.costUsd
-          const caption = message?.content?.trim()
+          const caption = first?.revised_prompt?.trim()
           return {
             title: relative,
             output: [`Generated ${relative} with ${model}.`, caption ? `The model said: ${caption}` : undefined]
@@ -215,4 +206,12 @@ export function gatewayMessage(body: string): string {
     }
   } catch {}
   return body.slice(0, 200) || "no details"
+}
+
+/** The picture's type from the first bytes of its base64 (PNG, JPEG, WebP or GIF); PNG when unsure. */
+export function sniffMime(b64: string): string {
+  if (b64.startsWith("/9j/")) return "image/jpeg"
+  if (b64.startsWith("UklGR")) return "image/webp"
+  if (b64.startsWith("R0lGOD")) return "image/gif"
+  return "image/png"
 }

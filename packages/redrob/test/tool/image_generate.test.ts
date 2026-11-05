@@ -26,7 +26,7 @@ const it = testEffect(
   ),
 )
 
-type Seen = { authorization: string | null; body: Record<string, unknown> }
+type Seen = { authorization: string | null; path: string; body: Record<string, unknown> }
 
 /** A stand-in for the Redrob gateway that records what reached it. */
 function gateway(answer: (body: Record<string, unknown>) => Response) {
@@ -35,7 +35,7 @@ function gateway(answer: (body: Record<string, unknown>) => Response) {
     port: 0,
     async fetch(request) {
       const body: Record<string, unknown> = await request.json()
-      seen.push({ authorization: request.headers.get("authorization"), body })
+      seen.push({ authorization: request.headers.get("authorization"), path: new URL(request.url).pathname, body })
       return answer(body)
     },
   })
@@ -44,14 +44,8 @@ function gateway(answer: (body: Record<string, unknown>) => Response) {
 
 const imageAnswer = () =>
   Response.json({
-    choices: [
-      {
-        message: {
-          content: "A red square.",
-          images: [{ type: "image_url", image_url: { url: `data:image/png;base64,${PIXEL_PNG}` } }],
-        },
-      },
-    ],
+    created: 1,
+    data: [{ b64_json: PIXEL_PNG, revised_prompt: "A red square." }],
     redrob: { costUsd: 0.039 },
   })
 
@@ -112,9 +106,11 @@ describe("tool.image_generate", () => {
         expect(seen[0].authorization).toBe("Bearer rk_test_key")
         expect(seen[0].body).toMatchObject({
           model: DEFAULT_IMAGE_MODEL,
-          modalities: ["image", "text"],
-          messages: [{ role: "user", content: "A small red square on white" }],
+          prompt: "A small red square on white",
+          n: 1,
         })
+        expect(seen[0].body).not.toHaveProperty("modalities")
+        expect(seen[0].path).toBe("/images/generations")
 
         const filepath = path.join(test.directory, "artifacts", "a-small-red-square-on-white.png")
         expect(Buffer.from(yield* Effect.promise(() => fs.readFile(filepath))).toString("base64")).toBe(PIXEL_PNG)
@@ -155,13 +151,13 @@ describe("tool.image_generate", () => {
     }),
   )
 
-  it.instance("fails with what the model said when it returns no image", () =>
+  it.instance("fails when the gateway returns no image", () =>
     Effect.gen(function* () {
-      const { server } = gateway(() => Response.json({ choices: [{ message: { content: "I cannot draw that." } }] }))
+      const { server } = gateway(() => Response.json({ created: 1, data: [] }))
       process.env.REDROB_CONSOLE_URL = server.url.toString()
       try {
         const exit = yield* run({ prompt: "Something" }).pipe(Effect.exit)
-        expect(failure(exit)).toContain("returned no image. It said: I cannot draw that.")
+        expect(failure(exit)).toContain("returned no image.")
       } finally {
         void server.stop(true)
       }
