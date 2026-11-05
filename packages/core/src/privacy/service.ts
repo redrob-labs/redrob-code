@@ -29,6 +29,16 @@ export class Error extends globalThis.Error {
 
 export class Service extends Context.Service<Service, Interface>()("@redrob/v2/Privacy") {}
 
+/**
+ * The value last set in this process. Location services are built per directory (and the v1 session
+ * runtime keeps its own location map), so a per-location Ref alone would leave every other location
+ * on the value it read at boot. The switch is machine-wide, so once it is flipped every location reads it.
+ */
+let live: Mask.Settings | undefined
+
+/** The value set in this process, if any: what a caller that reads config itself must prefer. */
+export const current = (): Mask.Settings | undefined => live
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -52,11 +62,12 @@ const layer = Layer.effect(
       })
 
     return Service.of({
-      get: () => Ref.get(current),
+      get: () => (live ? Effect.succeed(live) : Ref.get(current)),
       set: Effect.fn("Privacy.set")(function* (settings) {
         const next: Mask.Settings = { mode: settings.mode, model: settings.model?.trim() || undefined }
         yield* write(next)
         yield* Ref.set(current, next)
+        live = next
         return next
       }),
     })

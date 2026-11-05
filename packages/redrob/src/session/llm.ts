@@ -6,7 +6,7 @@ import { SessionV1 } from "@redrob-code/core/v1/session"
 import { serviceUse } from "@redrob-code/core/effect/service-use"
 import { Context, Effect, Layer } from "effect"
 import * as Stream from "effect/Stream"
-import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
+import { generateText, streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import type { LLMEvent } from "@redrob-code/llm"
 import { LLMClient } from "@redrob-code/llm/route"
 import type { LLMClientService } from "@redrob-code/llm/route"
@@ -30,6 +30,12 @@ import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
 import { LLMRunnerTools } from "./llm/runner-tools"
+import { LLMPrivacy } from "./llm/privacy"
+import { Mask } from "@redrob-code/core/privacy/mask"
+import { Privacy } from "@redrob-code/core/privacy/service"
+import type { ConfigV1 } from "@redrob-code/core/v1/config/config"
+import { ProviderV2 } from "@redrob-code/core/provider"
+import { ModelV2 } from "@redrob-code/core/model"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -60,6 +66,9 @@ export class Service extends Context.Service<Service, Interface>()("@redrob/LLM"
 
 export const use = serviceUse(Service)
 
+/** How long the local model may take to name entities before the regex tier answers alone. */
+const ENTITY_TIMEOUT = "15 seconds"
+
 const live: Layer.Layer<
   Service,
   never,
@@ -82,6 +91,31 @@ const live: Layer.Layer<
     const events = yield* EventV2Bridge.Service
     const llmClient = yield* LLMClient.Service
     const flags = yield* RuntimeFlags.Service
+    /**
+     * PII masking: the engine-wide privacy switch, read on every turn so a switch flipped in the app
+     * takes effect on the next message. One vault per session. Off by default.
+     */
+    const vaults = new LLMPrivacy.Vaults()
+    /** The value `PUT /api/privacy` set in this process wins; otherwise the `privacy` block of the loaded config. */
+    const privacySettings = (cfg: Pick<ConfigV1.Info, "privacy">): Mask.Settings =>
+      Privacy.current() ?? { mode: cfg.privacy?.mask_pii ?? "off", model: cfg.privacy?.model?.trim() || undefined }
+    /** Model tier: ask the configured LOCAL model for names, organisations and places, and teach the vault. */
+    const learnEntities = Effect.fn("LLM.learnEntities")(function* (vault: Mask.Vault, modelRef: string, text: string) {
+      const slash = modelRef.indexOf("/")
+      if (slash <= 0) return
+      const answer = yield* Effect.gen(function* () {
+        const local = yield* provider.getModel(
+          ProviderV2.ID.make(modelRef.slice(0, slash)),
+          ModelV2.ID.make(modelRef.slice(slash + 1)),
+        )
+        const language = yield* provider.getLanguage(local)
+        return yield* Effect.tryPromise(() =>
+          generateText({ model: language, prompt: Mask.ENTITY_PROMPT + text, maxOutputTokens: 512, maxRetries: 0 }),
+        )
+      }).pipe(Effect.timeout(ENTITY_TIMEOUT), Effect.option)
+      if (Option.isNone(answer)) return
+      for (const entity of Mask.parseEntities(answer.value.text)) vault.add(entity)
+    })
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
       yield* Effect.logInfo("stream", {
@@ -112,6 +146,13 @@ const live: Layer.Layer<
         flags,
         isWorkflow,
       })
+
+      const privacy = privacySettings(cfg)
+      const vault = vaults.forTurn(privacy, input.sessionID)
+      if (vault && privacy.mode === "model" && privacy.model) {
+        const fresh = vault.fresh(LLMPrivacy.readableTexts(prepared.messages))
+        if (fresh.length > 0) yield* learnEntities(vault, privacy.model, fresh.join("\n"))
+      }
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via redrob's tool system
@@ -240,6 +281,7 @@ const live: Layer.Layer<
           providerOptions: prepared.params.options,
           headers: prepared.headers,
           abort: input.abort,
+          vault,
         })
         if (native.type === "supported") {
           yield* Effect.logInfo("llm runtime selected", {
@@ -329,6 +371,9 @@ const live: Layer.Layer<
           model: wrapLanguageModel({
             model: language,
             middleware: [
+              // Outermost, so the prompt is masked before any other transform and every part that
+              // leaves the model (runner-executed tools included) is unmasked.
+              ...(vault ? [LLMPrivacy.middleware(vault)] : []),
               {
                 specificationVersion: "v3" as const,
                 async transformParams(args) {

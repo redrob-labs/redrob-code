@@ -18,6 +18,7 @@ import {
 } from "@redrob-code/llm"
 import type { LLMClientShape } from "@redrob-code/llm/route"
 import { LLMNative } from "./native-request"
+import { Mask } from "@redrob-code/core/privacy/mask"
 
 export type RuntimeStatus =
   | { readonly type: "supported"; readonly apiKey: string; readonly baseURL?: string }
@@ -41,6 +42,8 @@ type StreamInput = {
   readonly providerOptions?: Record<string, any>
   readonly headers: Record<string, string>
   readonly abort: AbortSignal
+  /** PII masking for this turn; absent when the privacy switch is off. */
+  readonly vault?: Mask.Vault
 }
 
 export function status(input: Pick<StreamInput, "model" | "provider" | "auth">): RuntimeStatus {
@@ -87,7 +90,7 @@ export function stream(input: StreamInput): StreamResult {
   // — if a field ever needs to differ between the two surfaces, the
   // translation belongs here, not split across both packages.
   const tools = nativeTools(input.tools, input)
-  const request = LLMNative.request({
+  const built = LLMNative.request({
     model: input.model,
     apiKey: current.apiKey,
     baseURL: current.baseURL,
@@ -100,18 +103,21 @@ export function stream(input: StreamInput): StreamResult {
     providerOptions: ProviderTransform.providerOptions(input.model, input.providerOptions ?? {}),
     headers: { ...providerHeaders(input.provider.options.headers), ...input.headers },
   })
+  const vault = input.vault
+  // The provider sees placeholders; tool calls are unmasked before they are dispatched, so tools
+  // run on real values and the processor stores what the person wrote.
+  const full = LLMRequest.update(built, { tools: [...built.tools, ...toDefinitions(tools)] })
+  const request = vault ? Mask.maskRequest(vault, full, { system: true }) : full
+  const unmask = vault ? Mask.unmaskEvents(vault) : undefined
   const stream = Stream.scoped(
     Stream.unwrap(
       Effect.gen(function* () {
         const settlements = yield* FiberSet.make<void>()
         const results = yield* Queue.unbounded<LLMEvent, Cause.Done>()
         const provider = input.llmClient
-          .stream(
-            LLMRequest.update(request, {
-              tools: [...request.tools, ...toDefinitions(tools)],
-            }),
-          )
+          .stream(request)
           .pipe(
+            Stream.flatMap((event) => (unmask ? Stream.fromIterable(unmask(event)) : Stream.make(event))),
             Stream.flatMap((event) =>
               event.type !== "tool-call" || event.providerExecuted
                 ? Stream.make(event)

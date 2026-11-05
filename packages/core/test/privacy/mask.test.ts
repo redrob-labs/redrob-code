@@ -72,4 +72,48 @@ describe("privacy mask", () => {
       ]),
     ).toEqual({ mode: "regex", model: "ollama/qwen" })
   })
+
+  test("system prompt, reasoning, replayed tool calls and json tool results are masked on request", () => {
+    const vault = new Mask.Vault()
+    const request = {
+      model: {} as never,
+      system: [{ type: "text" as const, text: "You help hong@example.com" }],
+      messages: [
+        {
+          role: "assistant" as const,
+          content: [
+            { type: "reasoning" as const, text: "they wrote hong@example.com" },
+            { type: "tool-call" as const, id: "t1", name: "send", input: { to: "hong@example.com" } },
+          ],
+        },
+        {
+          role: "tool" as const,
+          content: [
+            {
+              type: "tool-result" as const,
+              id: "t1",
+              name: "send",
+              result: { type: "json" as const, value: { sent: ["hong@example.com"] } },
+            },
+          ],
+        },
+      ],
+    } as never
+    const masked = JSON.stringify(Mask.maskRequest(vault, request, { system: true }))
+    expect(masked).not.toContain("hong@example.com")
+    expect(masked).toContain("[EMAIL_1]")
+  })
+
+  test("streamed reasoning is restored across split deltas", () => {
+    const vault = new Mask.Vault()
+    vault.maskText("hong@example.com")
+    const unmask = Mask.unmaskEvents(vault)
+    const events = [
+      ...unmask({ type: "reasoning-delta", id: "r", text: "mail [EMA" } as never),
+      ...unmask({ type: "reasoning-delta", id: "r", text: "IL_1] now" } as never),
+      ...unmask({ type: "reasoning-end", id: "r" } as never),
+    ]
+    const text = events.flatMap((event) => (event.type === "reasoning-delta" ? [event.text] : [])).join("")
+    expect(text).toBe("mail hong@example.com now")
+  })
 })

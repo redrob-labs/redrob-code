@@ -1,6 +1,6 @@
 export * as Mask from "./mask"
 
-import type { ContentPart, LLMEvent, LLMRequest, Message } from "@redrob-code/llm"
+import type { ContentPart, LLMEvent, LLMRequest, Message, ToolContent } from "@redrob-code/llm"
 import type { ConfigPrivacy } from "../config/privacy"
 
 /**
@@ -117,6 +117,15 @@ export class Vault {
     return this.mask(text)
   }
 
+  /** Walk any JSON-ish value and mask every string in it (tool-call inputs, json tool results). */
+  maskDeep<T>(value: T): T {
+    if (typeof value === "string") return this.maskText(value) as T
+    if (Array.isArray(value)) return value.map((item) => this.maskDeep(item)) as T
+    if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.maskDeep(item)])) as T
+    return value
+  }
+
   unmask(text: string): string {
     if (this.backward.size === 0) return text
     return text.replace(PLACEHOLDER, (placeholder) => this.backward.get(placeholder) ?? placeholder)
@@ -158,19 +167,44 @@ export class Vault {
 
 const maskPart = (vault: Vault, part: ContentPart): ContentPart => {
   if (part.type === "text") return { ...part, text: vault.maskText(part.text) }
-  if (part.type === "tool-result" && part.result.type === "text" && typeof part.result.value === "string")
-    return { ...part, result: { ...part.result, value: vault.maskText(part.result.value) } }
-  /* ponytail: json tool results and media are passed through. Mask them when a tool is found to leak. */
+  if (part.type === "reasoning") return { ...part, text: vault.maskText(part.text) }
+  /* An earlier tool call was unmasked for the tool; the model must see it the way it wrote it. */
+  if (part.type === "tool-call") return { ...part, input: vault.maskDeep(part.input) }
+  if (part.type === "tool-result") {
+    const result = part.result
+    if (result.type === "content") {
+      const value: ReadonlyArray<ToolContent> = result.value
+      return {
+        ...part,
+        result: {
+          ...result,
+          value: value.map((item) => (item.type === "text" ? { ...item, text: vault.maskText(item.text) } : item)),
+        },
+      }
+    }
+    return { ...part, result: { ...result, value: vault.maskDeep(result.value) } }
+  }
+  /* ponytail: media is passed through. */
   return part
 }
 
-/** The request as the provider will see it. The system prompt is ours and is left alone. */
-export const maskRequest = (vault: Vault, request: LLMRequest): LLMRequest => {
+/**
+ * The request as the provider will see it. By default the system prompt is ours and is left alone;
+ * `system: true` masks it too, for callers whose system prompt carries user-written text.
+ */
+export const maskRequest = (
+  vault: Vault,
+  request: LLMRequest,
+  options: { readonly system?: boolean } = {},
+): LLMRequest => {
   const messages: Message[] = request.messages.map((message) => ({
     ...message,
     content: message.content.map((part) => maskPart(vault, part)),
   }))
-  return { ...request, messages }
+  const system = options.system
+    ? request.system.map((part) => ({ ...part, text: vault.maskText(part.text) }))
+    : request.system
+  return { ...request, system, messages }
 }
 
 /** The texts of a request a model-tier detector should read: user and tool text, never the system prompt. */
@@ -190,16 +224,27 @@ export const readableTexts = (request: LLMRequest): string[] =>
  */
 export const unmaskEvents = (vault: Vault) => {
   const blocks = new Map<string, ReturnType<Vault["unmasker"]>>()
+  const block = (key: string) => {
+    const found = blocks.get(key) ?? vault.unmasker()
+    blocks.set(key, found)
+    return found
+  }
+  const rest = (key: string) => {
+    const text = blocks.get(key)?.flush() ?? ""
+    blocks.delete(key)
+    return text
+  }
   return (event: LLMEvent): LLMEvent[] => {
-    if (event.type === "text-delta") {
-      const block = blocks.get(event.id) ?? vault.unmasker()
-      blocks.set(event.id, block)
-      return [{ ...event, text: block.push(event.text) }]
-    }
+    if (event.type === "text-delta") return [{ ...event, text: block(`text:${event.id}`).push(event.text) }]
     if (event.type === "text-end") {
-      const rest = blocks.get(event.id)?.flush() ?? ""
-      blocks.delete(event.id)
-      return rest ? [{ type: "text-delta", id: event.id, text: vault.unmask(rest) }, event] : [event]
+      const text = rest(`text:${event.id}`)
+      return text ? [{ type: "text-delta", id: event.id, text: vault.unmask(text) }, event] : [event]
+    }
+    if (event.type === "reasoning-delta")
+      return [{ ...event, text: block(`reasoning:${event.id}`).push(event.text) }]
+    if (event.type === "reasoning-end") {
+      const text = rest(`reasoning:${event.id}`)
+      return text ? [{ type: "reasoning-delta", id: event.id, text: vault.unmask(text) }, event] : [event]
     }
     if (event.type === "tool-call") return [{ ...event, input: vault.unmaskDeep(event.input) }]
     return [event]
