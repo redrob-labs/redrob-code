@@ -68,6 +68,9 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     ),
     experimental: info.experimental?.policies && { policies: info.experimental.policies },
     providers: providers(info.provider),
+    // The same shape in both versions. Without it a v1 redrob.json (what apps write) started every
+    // location with masking off and no local model, and the next privacy write lost the model.
+    privacy: info.privacy,
   }
 }
 
