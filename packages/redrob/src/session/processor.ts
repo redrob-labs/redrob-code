@@ -11,6 +11,7 @@ import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
 import { LLM } from "./llm"
+import { LLMPrivacy } from "./llm/privacy"
 import { MessageV2 } from "./message-v2"
 import { isOverflow } from "./overflow"
 import { PartID } from "./schema"
@@ -671,7 +672,14 @@ const layer = Layer.effect(
             ctx.currentText = undefined
             ctx.reasoningMap = {}
             yield* status.set(ctx.sessionID, { type: "busy" })
-            const stream = llm.stream(streamInput)
+            const stream = llm.stream({
+              ...streamInput,
+              // Kind -> count of what this answer's requests carried masked; saved with the message at step-finish.
+              onMasked: (counts) => {
+                if (Object.keys(counts).length === 0) return
+                ctx.assistantMessage.masked = LLMPrivacy.mergeCounts(ctx.assistantMessage.masked, counts)
+              },
+            })
 
             yield* stream.pipe(
               Stream.tap((event) => handleEvent(event)),

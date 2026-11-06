@@ -19,6 +19,7 @@ import {
 import type { LLMClientShape } from "@redrob-code/llm/route"
 import { LLMNative } from "./native-request"
 import { Mask } from "@redrob-code/core/privacy/mask"
+import { LLMPrivacy } from "./privacy"
 
 export type RuntimeStatus =
   | { readonly type: "supported"; readonly apiKey: string; readonly baseURL?: string }
@@ -44,6 +45,7 @@ type StreamInput = {
   readonly abort: AbortSignal
   /** PII masking for this turn; absent when the privacy switch is off. */
   readonly vault?: Mask.Vault
+  readonly onMasked?: (counts: LLMPrivacy.Counts) => void
 }
 
 export function status(input: Pick<StreamInput, "model" | "provider" | "auth">): RuntimeStatus {
@@ -108,6 +110,7 @@ export function stream(input: StreamInput): StreamResult {
   // run on real values and the processor stores what the person wrote.
   const full = LLMRequest.update(built, { tools: [...built.tools, ...toDefinitions(tools)] })
   const request = vault ? Mask.maskRequest(vault, full, { system: true }) : full
+  if (vault) input.onMasked?.(LLMPrivacy.sentCounts(vault, { system: request.system, messages: request.messages }))
   const unmask = vault ? Mask.unmaskEvents(vault) : undefined
   const stream = Stream.scoped(
     Stream.unwrap(

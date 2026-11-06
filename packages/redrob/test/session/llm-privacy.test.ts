@@ -113,6 +113,27 @@ describe("session.llm privacy masking", () => {
     expect(JSON.stringify(masked)).toContain("[EMAIL_1]")
   })
 
+  test("onMasked reports kind -> count of what the provider was sent, never the values", async () => {
+    const vault = new LLMPrivacy.Vaults().forTurn({ mode: "regex" }, "ses_counts")!
+    vault.add({ value: "김지원", kind: "PERSON" })
+    vault.add({ value: "Unsent Corp", kind: "ORG" })
+    const { mock } = model()
+    const reports: LLMPrivacy.Counts[] = []
+    const result = streamText({
+      model: wrapLanguageModel({ model: mock, middleware: [LLMPrivacy.middleware(vault, (c) => reports.push(c))] }),
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: `김지원 900101-1234567, 010-1234-5678, ${EMAIL}, again ${EMAIL}` }],
+        },
+      ],
+    })
+    for await (const _ of result.fullStream) void _
+    expect(reports[0]).toEqual({ PERSON: 1, RRN: 1, PHONE: 1, EMAIL: 1 })
+    expect(JSON.stringify(reports)).not.toContain("김지원")
+    expect(LLMPrivacy.mergeCounts({ PERSON: 2 }, { PERSON: 1, EMAIL: 1 })).toEqual({ PERSON: 2, EMAIL: 1 })
+  })
+
   test("readableTexts skips the system prompt", () => {
     expect(LLMPrivacy.readableTexts(messages)).toEqual([`Spell my email ${EMAIL} letter by letter`])
   })

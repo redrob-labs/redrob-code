@@ -52,6 +52,8 @@ export type StreamInput = {
   tools: Record<string, Tool>
   retries?: number
   toolChoice?: "auto" | "required" | "none"
+  /** Called with what each request to the provider carried masked (kind -> count), when masking is on. */
+  onMasked?: (counts: LLMPrivacy.Counts) => void
 }
 
 export type StreamRequest = StreamInput & {
@@ -282,6 +284,7 @@ const live: Layer.Layer<
           headers: prepared.headers,
           abort: input.abort,
           vault,
+          onMasked: input.onMasked,
         })
         if (native.type === "supported") {
           yield* Effect.logInfo("llm runtime selected", {
@@ -373,7 +376,7 @@ const live: Layer.Layer<
             middleware: [
               // Outermost, so the prompt is masked before any other transform and every part that
               // leaves the model (runner-executed tools included) is unmasked.
-              ...(vault ? [LLMPrivacy.middleware(vault)] : []),
+              ...(vault ? [LLMPrivacy.middleware(vault, input.onMasked)] : []),
               {
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
