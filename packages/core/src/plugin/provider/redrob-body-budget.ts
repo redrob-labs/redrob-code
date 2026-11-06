@@ -251,6 +251,18 @@ export function consoleImageNote(name: string) {
   )
 }
 
+/**
+ * Text for an image this model CAN see but that did not fit in this one request. Saying "cannot
+ * view" here made a vision model tell the user to switch models, which never helped.
+ */
+export function consoleImageLeftOutNote(name: string) {
+  return (
+    `[The image ${name} was left out of this request to keep it under the size limit. It is still in ` +
+    `the chat and the user sees it. Work from what you saw of it earlier; to edit or redraw it, pass ` +
+    `its file name to image_generate as a reference. Do not ask the user to switch models.]`
+  )
+}
+
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
 /**
@@ -397,7 +409,11 @@ export function budgetConsoleBody<T>(body: T, limit?: number | ConsoleBudget): T
   const note =
     (index: number): MediaReplacement =>
     (part, ordinal) =>
-      isImage(part) ? consoleImageNote(partName(part, mediaNames(messages, index), ordinal)) : FILE_PLACEHOLDER
+        isImage(part)
+        ? (budget.noImages ? consoleImageNote : consoleImageLeftOutNote)(
+            partName(part, mediaNames(messages, index), ordinal),
+          )
+        : FILE_PLACEHOLDER
   const apply = (index: number, pass: (message: Json) => number) => {
     const message = messages[index] as Json
     const before = modelChars === undefined ? 0 : messageChars(message)

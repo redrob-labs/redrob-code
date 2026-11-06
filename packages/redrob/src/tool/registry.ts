@@ -62,6 +62,7 @@ import { MCP } from "@/mcp"
 import { BrowserRequestV1 } from "@redrob-code/core/browser-request"
 import { PermissionV1 } from "@redrob-code/core/v1/permission"
 import { McpCatalog } from "@/mcp/catalog"
+import { Image } from "@/image/image"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return (
@@ -454,6 +455,7 @@ export const node = LayerNode.make({
   layer,
   deps: () => [
     Config.node,
+    Image.node,
     Plugin.node,
     Question.node,
     Todo.node,

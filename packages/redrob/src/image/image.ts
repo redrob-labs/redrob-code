@@ -7,7 +7,10 @@ import { Context, Effect, Layer, Schema } from "effect"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-const MAX_BASE64_BYTES = 5 * 1024 * 1024
+// About 1.1 MB of image. A phone photo or a generated picture is re-encoded under this (vision
+// models read no more detail than ~2000 px anyway), so several fit in one console request (4.3 MB)
+// instead of being dropped from it.
+const MAX_BASE64_BYTES = 1_500_000
 const MAX_WIDTH = 2000
 const MAX_HEIGHT = 2000
 const AUTO_RESIZE = true
