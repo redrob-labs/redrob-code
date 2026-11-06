@@ -7,3 +7,5 @@ Usage notes:
   - Write the prompt as a full visual description: subject, setting, style, composition, colors, and any text that must appear in the image
   - `filename` is optional and has no extension; a name is derived from the prompt when it is omitted, and an existing file is never overwritten
   - Leave `model` unset unless the user names an image model
+  - To edit, restyle or build on an image already in this conversation (one the user attached earlier, or one you made), put its file name in `references`. The image model then sees it. Never ask the user to attach it again
+  - Look closely at reference images and spell out in the prompt every detail that must survive: exact text, logos, faces, colors, layout and proportions

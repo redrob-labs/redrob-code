@@ -25,13 +25,15 @@ export const CONSOLE_URL = (Flag.REDROB_CONSOLE_URL ?? "https://console.redrob.a
 export const CONSOLE_PACKAGE = "@ai-sdk/openai-compatible"
 
 // The console endpoint runs on Vercel, which limits the request BODY in bytes, not tokens: over
-// 2 MB the console route answers 413 "The request body is larger than this endpoint accepts (2mb)",
-// and over ~4.5 MB Vercel itself answers 413 FUNCTION_PAYLOAD_TOO_LARGE before the function runs.
+// ~4.5 MB Vercel answers 413 FUNCTION_PAYLOAD_TOO_LARGE before the function runs, and the console's
+// own parser stops at the same 4.5mb (REQUEST_BODY_LIMIT). It used to stop at 2mb, and the 1.8 MB
+// budget kept from then turned one photo or one generated picture into "this model cannot view the
+// image".
 // A long session crosses that long before the 1M-token context window (base64 images, big tool
 // outputs, file reads), and compaction resends the same history, so it 413s too. Every console
 // request body is therefore shrunk to this budget before it is sent (./redrob-body-budget.ts); the
-// 200 KB margin under 2 MB covers headers and JSON-encoding differences.
-export const CONSOLE_MAX_BODY_BYTES = 1_800_000
+// 200 KB margin under 4.5 MB covers headers and JSON-encoding differences.
+export const CONSOLE_MAX_BODY_BYTES = 4_300_000
 
 /**
  * The Console's skill library (`/skills/index.json` and one directory per skill). Every engine pulls

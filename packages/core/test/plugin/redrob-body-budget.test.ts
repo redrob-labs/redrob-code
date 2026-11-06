@@ -3,6 +3,7 @@ import {
   budgetConsoleBody,
   CHAR_LIMIT_TTL_MS,
   consoleCharLimit,
+  consoleImageLeftOutNote,
   consoleImageNote,
   consoleVisionModel,
   forgetConsoleCharLimits,
@@ -80,7 +81,7 @@ describe("console character limit", () => {
     const result = budgetConsoleBody(input, { modelChars: 50_000 })
     expect(contentOf(result, 1)).toEqual([
       { type: "text", text: "old" },
-      { type: "text", text: consoleImageNote("the image") },
+      { type: "text", text: consoleImageLeftOutNote("the image") },
     ])
     expect((contentOf(result, 3) as Message[])[1]).toEqual(image(20_000))
   })
@@ -95,7 +96,7 @@ describe("console character limit", () => {
     const result = budgetConsoleBody(input, { modelChars: 81_920 })
     const note = (contentOf(result, 4) as Message[])[1]!
     expect(note.type).toBe("text")
-    expect(note.text).toBe(consoleImageNote("screen.png"))
+    expect(note.text).toBe(consoleImageLeftOutNote("screen.png"))
     expect(chars(result)).toBeLessThan(81_920)
   })
 
@@ -110,7 +111,7 @@ describe("console character limit", () => {
 
   test("sends the note up front for an image over 60% of a known limit", () => {
     const result = budgetConsoleBody(body(imageTurn(60_000, "a.png")), { modelChars: 81_920 })
-    expect((contentOf(result, 4) as Message[])[1]!.text).toBe(consoleImageNote("a.png"))
+    expect((contentOf(result, 4) as Message[])[1]!.text).toBe(consoleImageLeftOutNote("a.png"))
   })
 
   test("a remembered limit pre-drops images only for that same model id", () => {
@@ -249,7 +250,7 @@ describe("vision model switch", () => {
     rememberConsoleCharLimit("gpt-5.6-terra", 50_000)
     const tight = routeConsoleBody(body(imageTurn(60_000)))
     expect(tight.switched).toBeUndefined()
-    expect((contentOf(tight.body, 4) as Message[])[1]!.text).toBe(consoleImageNote("george-v3.png"))
+    expect((contentOf(tight.body, 4) as Message[])[1]!.text).toBe(consoleImageLeftOutNote("george-v3.png"))
   })
 
   test("without a vision model the image becomes the note", () => {
