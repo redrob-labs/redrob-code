@@ -70,7 +70,6 @@ export const CONSOLE_MODELS = [
   { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", thinking: false },
   { id: "claude-opus-5", name: "Claude Opus 5", thinking: true },
   { id: "claude-sonnet-5", name: "Claude Sonnet 5", thinking: true },
-  { id: "claude-fable-5", name: "Claude Fable 5", thinking: true },
 ] as const
 // Structural, not `(typeof CONSOLE_MODELS)[number]`, so callers that build one entry (the primary
 // backfill) are not forced to widen a literal union.
