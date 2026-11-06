@@ -134,7 +134,7 @@ jobs:
 
   sign-macos:
     needs: [version, build]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       APPLE_CODESIGN_CERT_P12_BASE64: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
       APPLE_CODESIGN_CERT_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
