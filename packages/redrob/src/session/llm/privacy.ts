@@ -161,11 +161,37 @@ export const unmaskStream = (vault: Mask.Vault) => {
   })
 }
 
-/** The AI SDK middleware: mask what goes out, unmask what comes back. */
-export const middleware = (vault: Mask.Vault): LanguageModelV3Middleware => ({
+/** What was masked in one request: placeholder kind -> how many distinct values. Never values, never text. */
+export type Counts = Record<string, number>
+
+/**
+ * Count the vault's placeholders that appear in what the provider was sent. Only placeholders this
+ * vault handed out count, so a literal `[PERSON_9]` someone typed is not reported as masked.
+ */
+export const sentCounts = (vault: Mask.Vault, sent: unknown): Counts => {
+  const text = typeof sent === "string" ? sent : JSON.stringify(sent)
+  const counts: Counts = {}
+  if (!text) return counts
+  for (const entry of vault.entries()) {
+    if (text.includes(entry.placeholder)) counts[entry.kind] = (counts[entry.kind] ?? 0) + 1
+  }
+  return counts
+}
+
+/** Merge two counts, keeping the larger figure per kind (a later step of the same turn re-sends the earlier prompt). */
+export const mergeCounts = (a: Counts | undefined, b: Counts): Counts => {
+  const merged: Counts = { ...a }
+  for (const [kind, count] of Object.entries(b)) merged[kind] = Math.max(merged[kind] ?? 0, count)
+  return merged
+}
+
+/** The AI SDK middleware: mask what goes out, unmask what comes back. `onMasked` hears what each request carried masked. */
+export const middleware = (vault: Mask.Vault, onMasked?: (counts: Counts) => void): LanguageModelV3Middleware => ({
   specificationVersion: "v3",
   async transformParams({ params }) {
-    return { ...params, prompt: maskPrompt(vault, params.prompt) }
+    const prompt = maskPrompt(vault, params.prompt)
+    onMasked?.(sentCounts(vault, prompt))
+    return { ...params, prompt }
   },
   async wrapStream({ doStream }) {
     const { stream, ...rest } = await doStream()

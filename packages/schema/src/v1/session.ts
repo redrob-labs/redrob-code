@@ -489,6 +489,12 @@ export const Assistant = Schema.Struct({
    */
   routedModel: Schema.optional(Schema.String),
   upstreamProvider: Schema.optional(Schema.String),
+  /*
+   * What PII masking hid from the provider for this answer: placeholder kind (`PERSON`, `ORG`, `LOC`,
+   * `EMAIL`, `PHONE`, `RRN`, `CARD`) -> how many distinct values. Counts only, never the values or the
+   * masked text. Absent when masking was off or nothing was masked.
+   */
+  masked: Schema.optional(Schema.Record(Schema.String, NonNegativeInt)),
   tokens: Schema.Struct({
     total: Schema.optional(Schema.Finite),
     input: Schema.Finite,
