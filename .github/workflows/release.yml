@@ -134,7 +134,7 @@ jobs:
 
   sign-macos:
     needs: [version, build]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       APPLE_CODESIGN_CERT_P12_BASE64: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
       APPLE_CODESIGN_CERT_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
@@ -254,7 +254,9 @@ jobs:
               --issuer "$APPLE_NOTARY_API_ISSUER_ID" \
               --wait
             xcrun stapler staple "$dmg"
-            xcrun stapler validate "$dmg"
+            # `stapler staple` validates the ticket itself ("The staple and validate action worked!").
+            # A second `stapler validate` does an online CloudKit lookup that fails on macos-15 runners
+            # with NSURLErrorDomain -1005 after a good staple, which failed the 0.18.13 release twice.
             echo "$dmg notarized and stapled"
           done
 

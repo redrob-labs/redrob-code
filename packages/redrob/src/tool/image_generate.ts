@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as path from "path"
 import * as Tool from "./tool"
@@ -11,6 +11,9 @@ import { Watcher } from "@redrob-code/core/filesystem/watcher"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { CONSOLE_URL } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { fileURLToPath } from "url"
+import { Image } from "@/image/image"
+import type { SessionV1 } from "@redrob-code/core/v1/session"
 
 /**
  * Image generation through the Redrob gateway, on the Redrob credential this engine already holds.
@@ -24,8 +27,14 @@ import { assertExternalDirectoryEffect } from "./external-directory"
  * returned as an attachment, which is what puts it inline in the conversation and in front of the model.
  */
 
-/** A good, mid-priced default. Any image-output model the gateway serves can be named instead. */
-export const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image"
+/**
+ * Redrob Chat's default. 2.5 Flash Image lost fine detail (small text, faces, product edges) in user
+ * tests. Any image-output model the gateway serves can be named instead.
+ */
+export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-image"
+
+/** At most this many earlier images go with one request, newest first. */
+const MAX_REFERENCES = 4
 
 /**
  * The gateway, read per call. `REDROB_CONSOLE_URL` is the same developer seam `CONSOLE_URL` honours
@@ -54,7 +63,33 @@ export const Parameters = Schema.Struct({
   model: Schema.optional(Schema.String).annotate({
     description: `Optional image model id served by the Redrob gateway. Defaults to ${DEFAULT_IMAGE_MODEL}.`,
   }),
+  references: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description:
+      "Images to edit or build on: file names of images already in this conversation (attached by the user or made by this tool), or file paths. The user never has to attach them again.",
+  }),
 })
+
+type ImageRef = { filename?: string; mime: string; url: string }
+
+/** Every image in the conversation, newest first: user attachments and images tools returned. */
+export function conversationImages(messages: readonly SessionV1.WithParts[]): ImageRef[] {
+  const found: ImageRef[] = []
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === "file" && part.mime.startsWith("image/")) found.push(part)
+      if (part.type === "tool" && part.state.status === "completed") {
+        for (const file of part.state.attachments ?? []) if (file.mime.startsWith("image/")) found.push(file)
+      }
+    }
+  }
+  return found.reverse()
+}
+
+/** The conversation image a reference names (file name or path ending), else undefined. */
+export function matchReference(reference: string, images: readonly ImageRef[]): ImageRef | undefined {
+  const wanted = path.basename(reference.trim()).toLowerCase()
+  return images.find((image) => image.filename?.toLowerCase() === wanted)
+}
 
 const GatewayResponse = Schema.Struct({
   choices: Schema.Array(
@@ -106,6 +141,34 @@ export const ImageGenerateTool = Tool.define(
     const auth = yield* Auth.Service
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
+    // Optional so the tool still builds where no image service is wired (tests): references then go unshrunk.
+    const imageService = yield* Effect.serviceOption(Image.Service)
+
+    /** One reference as a data URL the gateway can carry: a conversation image or a file on disk, shrunk to fit. */
+    const resolveReference = (reference: string, images: readonly ImageRef[], worktree: string) =>
+      Effect.gen(function* () {
+        const hit = matchReference(reference, images)
+        let url = hit?.url
+        let mime = hit?.mime
+        if (!url || url.startsWith("file://")) {
+          const file = url ? fileURLToPath(url) : path.resolve(worktree, reference.trim())
+          const ext = path.extname(file).slice(1).toLowerCase()
+          mime = mime ?? Object.entries(EXTENSIONS).find(([, e]) => e === ext || (ext === "jpeg" && e === "jpg"))?.[0]
+          if (!mime) throw new Error(`"${reference}" is not an image in this conversation or a png/jpg/webp/gif file.`)
+          const bytes = yield* Effect.tryPromise({
+            try: () => Bun.file(file).bytes(),
+            catch: () => new Error(`Could not read the image "${reference}".`),
+          }).pipe(Effect.orDie)
+          url = `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`
+        }
+        const dataUrl: string = url
+        if (Option.isNone(imageService)) return dataUrl
+        const part = { id: "ref", sessionID: "ref", messageID: "ref", type: "file", mime: mime!, url: dataUrl } as never
+        return yield* imageService.value.normalize(part).pipe(
+          Effect.map((shrunk) => shrunk.url),
+          Effect.orElseSucceed(() => dataUrl),
+        )
+      })
 
     return {
       description: DESCRIPTION,
@@ -119,6 +182,11 @@ export const ImageGenerateTool = Tool.define(
           const model = params.model?.trim() || DEFAULT_IMAGE_MODEL
 
           const instance = yield* InstanceState.context
+          const images = conversationImages(ctx.messages)
+          const references: string[] = []
+          for (const reference of (params.references ?? []).slice(0, MAX_REFERENCES)) {
+            references.push(yield* resolveReference(reference, images, instance.worktree))
+          }
           const directory = path.join(instance.directory, "artifacts")
           const stem = slug(params.filename?.trim() || prompt)
 
@@ -145,7 +213,18 @@ export const ImageGenerateTool = Tool.define(
             HttpClientRequest.acceptJson,
             HttpClientRequest.bodyJson({
               model,
-              messages: [{ role: "user", content: prompt }],
+              messages: [
+                {
+                  role: "user",
+                  content:
+                    references.length === 0
+                      ? prompt
+                      : [
+                          { type: "text", text: prompt },
+                          ...references.map((url) => ({ type: "image_url", image_url: { url } })),
+                        ],
+                },
+              ],
               modalities: ["image", "text"],
             }),
           )

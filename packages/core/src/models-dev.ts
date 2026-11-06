@@ -444,6 +444,8 @@ function authStoreApiKey(): Effect.Effect<string | undefined> {
 
 /** How old the saved console listing may be and still be used without waiting for a refetch. */
 const MAX_STALE_MS = 24 * 60 * 60 * 1000
+/** How soon a failed listing is tried again. */
+const FALLBACK_RETRY_MS = 30 * 1000
 const diskCachePath = () => join(Global.Path.cache, "console-models.json")
 /** Which key a saved listing belongs to, without writing the key itself to disk. */
 const keyFingerprint = (apiKey: string) => Hash.sha256(apiKey).slice(0, 16)
@@ -452,12 +454,12 @@ const keyFingerprint = (apiKey: string) => Hash.sha256(apiKey).slice(0, 16)
  * The last console listing, when it belongs to this key and is younger than MAX_STALE_MS.
  * Anything else (no file, unreadable JSON, another key, too old) is "no copy", never an error.
  */
-function readDiskCache(apiKey: string): Effect.Effect<Record<string, Provider> | undefined> {
+function readDiskCache(apiKey: string, maxAgeMs = MAX_STALE_MS): Effect.Effect<Record<string, Provider> | undefined> {
   return Effect.tryPromise(() => Bun.file(diskCachePath()).json()).pipe(
     Effect.map((data) => {
       const saved = data as { key?: unknown; at?: unknown; catalog?: unknown }
       if (saved?.key !== keyFingerprint(apiKey)) return undefined
-      if (typeof saved.at !== "number" || Date.now() - saved.at > MAX_STALE_MS) return undefined
+      if (typeof saved.at !== "number" || Date.now() - saved.at > maxAgeMs) return undefined
       if (typeof saved.catalog !== "object" || saved.catalog === null) return undefined
       return saved.catalog as Record<string, Provider>
     }),
@@ -520,6 +522,9 @@ const layer = Layer.effect(
         }
         // The retired router stays a hidden console alias for old clients; this one never offers it.
         if (isRetiredConsoleModel(model.value.id)) continue
+        // A model that only answers with `provider_data_share: true` (Fable) fails every request
+        // here, because this client never opts in to data retention. Same rule as Redrob Chat.
+        if (model.value.capabilities?.requiresProviderDataShare) continue
         models[model.value.id] = consoleModel(model.value)
         facts.push({
           id: model.value.id,
@@ -586,6 +591,8 @@ const layer = Layer.effect(
 
     /** Set by `refresh` so the next populate goes to the network instead of the disk copy. */
     let forceNetwork = false
+    /** When the in-memory list is a stand-in after a failed fetch: the next get() after this refetches. */
+    let retryAt = 0
 
     const populate = Effect.gen(function* () {
       // Test-only seam: when REDROB_MODELS_FIXTURE points at a catalog JSON file, load it and
@@ -601,7 +608,13 @@ const layer = Layer.effect(
         return fromFixture
       }
       const apiKey = yield* resolveApiKey()
-      if (Flag.REDROB_DISABLE_MODELS_FETCH || !apiKey) return fallbackCatalog()
+      if (Flag.REDROB_DISABLE_MODELS_FETCH) return fallbackCatalog()
+      // No key yet (the desktop hands it over after sign-in): try again soon instead of keeping
+      // the text-only list for the life of the process.
+      if (!apiKey) {
+        retryAt = Date.now() + FALLBACK_RETRY_MS
+        return fallbackCatalog()
+      }
       const fetchAndStore = fetchModels(apiKey).pipe(
         Effect.tap((catalog) => writeDiskCache(apiKey, catalog)),
         Effect.tapCause((cause) =>
@@ -626,12 +639,34 @@ const layer = Layer.effect(
         yield* fetchAndStore.pipe(Effect.ignore, Effect.forkDetach)
         return cached
       }
-      return yield* fetchAndStore.pipe(Effect.orElseSucceed(fallbackCatalog))
+      /*
+        A failed fetch used to leave the built-in text-only list in memory for the life of the
+        process: images were refused ("this model cannot read images") and thinking levels were gone
+        until the app restarted. Now the last listing for this key is used whatever its age, and the
+        fetch is tried again shortly.
+      */
+      return yield* fetchAndStore.pipe(
+        Effect.catchCause(() =>
+          Effect.gen(function* () {
+            retryAt = Date.now() + FALLBACK_RETRY_MS
+            return (yield* readDiskCache(apiKey, Number.POSITIVE_INFINITY)) ?? fallbackCatalog()
+          }),
+        ),
+      )
     }).pipe(Effect.withSpan("ModelsDev.populate"))
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
 
-    const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
+    const get = (): Effect.Effect<Record<string, Provider>> =>
+      Effect.suspend(() => {
+        if (retryAt === 0 || Date.now() < retryAt) return cachedGet
+        retryAt = 0
+        forceNetwork = true
+        return invalidate.pipe(
+          Effect.andThen(cachedGet),
+          Effect.tap(() => events.publish(Event.Refreshed, {})),
+        )
+      })
 
     const refresh = Effect.fn("ModelsDev.refresh")(function* (_force = false) {
       // Skip the invalidate + publish when a real console fetch is impossible (the flag disables

@@ -321,7 +321,8 @@ describe("ProviderTransform.options - setCacheKey", () => {
       expect(result.prompt_cache_key).toBeUndefined()
       expect(result.include).toBeUndefined()
       expect(result.reasoningSummary).toBeUndefined()
-      expect(result.reasoningEffort).toBe("medium")
+      // The console refuses `reasoning_effort`; its control is `thinking`.
+      expect(result.reasoningEffort).toBeUndefined()
     })
   }
 

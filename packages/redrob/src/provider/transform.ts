@@ -1303,7 +1303,8 @@ export function options(input: {
 
   if (input.model.api.id.includes("gpt-5") && !input.model.api.id.includes("gpt-5-chat")) {
     if (!input.model.api.id.includes("gpt-5-pro")) {
-      result["reasoningEffort"] = "medium"
+      // The console takes `thinking`, not `reasoning_effort` (see reasoningEffort below).
+      if (input.model.providerID !== "redrob") result["reasoningEffort"] = "medium"
       if (
         input.model.api.npm === "@ai-sdk/openai" ||
         input.model.api.npm === "@ai-sdk/azure" ||
