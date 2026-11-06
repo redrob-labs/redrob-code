@@ -87,6 +87,16 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("keeps the privacy switch and its local model through the v1 migration", () =>
+    Effect.sync(() => {
+      const migrated = ConfigMigrateV1.migrate({
+        privacy: { mask_pii: "model", model: "redrob-privacy/veil-pii-ko-lite" },
+      })
+      const info = Schema.decodeUnknownSync(Config.Info)(migrated, { errors: "all" })
+      expect(info.privacy).toEqual({ mask_pii: "model", model: "redrob-privacy/veil-pii-ko-lite" })
+    }),
+  )
+
   it.effect("migrates v1 provider setup options into AISDK settings", () =>
     Effect.sync(() => {
       const migrated = ConfigMigrateV1.migrate({
