@@ -254,7 +254,9 @@ jobs:
               --issuer "$APPLE_NOTARY_API_ISSUER_ID" \
               --wait
             xcrun stapler staple "$dmg"
-            xcrun stapler validate "$dmg"
+            # `stapler staple` validates the ticket itself ("The staple and validate action worked!").
+            # A second `stapler validate` does an online CloudKit lookup that fails on macos-15 runners
+            # with NSURLErrorDomain -1005 after a good staple, which failed the 0.18.13 release twice.
             echo "$dmg notarized and stapled"
           done
 
