@@ -274,6 +274,14 @@ Copy each value exactly as written in the text. Use empty arrays when there is n
 TEXT:
 `
 
+/**
+ * Our own brand is not anyone's personal data, and the model must read it to do the work
+ * ("레드롭 홍보 포스트 만들어 줘"). The local model tags it as an ORG, so it is dropped here:
+ * "Redrob" / "레드롭" alone or followed by a product name ("Redrob Canvas", "레드롭 챗").
+ */
+const OWN_BRAND = /^(?:redrob|레드롭)(?:\s+\S+)?$/i
+export const isOwnBrand = (value: string): boolean => OWN_BRAND.test(value.trim())
+
 /** Parse the local model's answer. Anything that is not the asked-for shape is ignored, never trusted. */
 export const parseEntities = (answer: string): Entity[] => {
   const start = answer.indexOf("{")
@@ -291,7 +299,7 @@ export const parseEntities = (answer: string): Entity[] => {
     const values = (parsed as Record<string, unknown>)[kind]
     return Array.isArray(values)
       ? values
-          .filter((value): value is string => typeof value === "string" && value.trim().length > 1)
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 1 && !isOwnBrand(value))
           .map((value) => ({ value: value.trim(), kind }))
       : []
   })
