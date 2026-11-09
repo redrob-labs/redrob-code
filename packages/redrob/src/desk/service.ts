@@ -53,6 +53,10 @@ export class DeskService {
     private readonly onChange: () => void = () => {},
   ) {
     this.pairing = new Pairing()
+    // The web's file panel follows the work folder's changes (`file.watcher.updated`), which the
+    // engine only watches for when this is on. Locations opened from now on read it; set it to 0
+    // to keep the watcher off.
+    process.env.REDROB_EXPERIMENTAL_FILEWATCHER ??= "1"
   }
 
   /** True while the relay connection runs; the daemon stays up for it. */

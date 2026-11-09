@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
+import { deskHome } from "./settings"
 
 /** One piece of a file: at most this many bytes, which is also the default. */
 export const FILE_CHUNK_BYTES = 512 * 1024
@@ -31,7 +32,7 @@ const FIND_BUDGET_MS = 4_000
 const LIST_MAX_ENTRIES = 2_000
 
 export function deskDir(): string {
-  return path.join(homedir(), ".redrob", "desk")
+  return path.join(deskHome(), ".redrob", "desk")
 }
 
 const asksDir = () => path.join(deskDir(), "folder-asks")
