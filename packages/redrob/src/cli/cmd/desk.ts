@@ -9,6 +9,10 @@
 import { cmd } from "./cmd"
 import { UI } from "@/cli/ui"
 import { Daemon } from "@/daemon/connect"
+import * as Autostart from "@/daemon/autostart"
+import { endpoints } from "@/desk/auth"
+import { chatConnectApi, connect, isToken, thisMachine, type DeskLocal } from "@/desk/connect"
+import { updateMachine } from "@/desk/settings"
 
 type Kind = "phone" | "web"
 
@@ -80,6 +84,38 @@ function printStatus(status: Status): void {
   UI.println(`${status.devices.length} approved device(s)`)
 }
 
+/** A local call that must succeed; `call` already printed why it did not. */
+async function need<T>(result: Promise<T | undefined>): Promise<T> {
+  const value = await result
+  if (value === undefined) throw new Error("the engine refused the request")
+  return value
+}
+
+/**
+ * The engine running for good: registered to start at login and started now, or, where that is
+ * not possible (no systemd user session) or not wanted, started here with no idle exit.
+ */
+async function ensureEngine(autostart: boolean): Promise<boolean> {
+  if (autostart) {
+    const state = await Autostart.install().catch((error: unknown) => {
+      dim(`could not register the engine to start at login: ${error instanceof Error ? error.message : String(error)}`)
+      return undefined
+    })
+    if (state?.installed) {
+      UI.println(`engine starts at login (${state.location})`)
+      for (let i = 0; i < 75; i++) {
+        if (await Daemon.current()) return true
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+    }
+  }
+  const started = await Daemon.connectOrStart({ idleExitMinutes: 0 }).catch((error: unknown) => {
+    fail(`could not start the engine: ${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  })
+  return started !== undefined
+}
+
 export const DeskCommand = cmd({
   command: "desk",
   aliases: ["mobile"],
@@ -142,6 +178,36 @@ export const DeskCommand = cmd({
               if (!status.login) return fail("sign-in did not finish; run: redrob desk login")
             }
             fail("the sign-in code expired; run: redrob desk login")
+          },
+        }),
+      )
+      .command(
+        cmd({
+          command: "connect <code>",
+          describe: "connect this machine to Redrob Chat with the rc_ code from the web's connect card",
+          builder: (yargs) =>
+            yargs
+              .positional("code", { type: "string", demandOption: true })
+              .option("autostart", {
+                type: "boolean",
+                default: true,
+                describe: "start the engine at login (systemd user / launchd); --no-autostart skips it",
+              }),
+          handler: async (args) => {
+            const token = String(args.code)
+            if (!isToken(token)) return fail("that is not a connect code (rc_...); copy the line from the web again")
+            if (!(await ensureEngine(args.autostart))) return
+            const self = await updateMachine({ kind: "server" })
+            const local: DeskLocal = {
+              status: () => need(call<Status>("/desk/status")),
+              login: () => need(call<Login>("/desk/login", "POST")),
+              enable: async () => void (await need(call<Status>("/desk/enable", "POST", { enabled: true }))),
+              approve: (code) => need(call<Device>(`/desk/pending/${encodeURIComponent(code)}/approve`, "POST")),
+            }
+            await connect(chatConnectApi(endpoints().chatApi, token), local, {
+              machine: thisMachine(self.id, self.name),
+              say: (line) => UI.println(line),
+            }).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)))
           },
         }),
       )

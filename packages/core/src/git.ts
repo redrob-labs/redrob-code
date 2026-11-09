@@ -555,6 +555,8 @@ const layer = Layer.effect(
       return (yield* repositoryOperation("list_files", input.repository, [
         "diff",
         "--name-only",
+        // A rename lists only its new name, and the old file would then never be restored.
+        "--no-renames",
         "-z",
         input.from,
         input.to,
