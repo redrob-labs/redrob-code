@@ -67,16 +67,64 @@ describe("Snapshot", () => {
     ),
   )
 
-  testEffect(Layer.empty).live("treats capture outside Git as unavailable", () =>
+  testEffect(Layer.empty).live("captures and restores a folder with no Git repository", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) =>
         Effect.gen(function* () {
+          const folder = path.join(tmp.path, "documents")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.join(folder, "sheets"), { recursive: true })
+            await fs.writeFile(path.join(folder, "sheets", "a.csv"), "a,1\n")
+            await fs.writeFile(path.join(folder, "sheets", "b.csv"), "b,2\n")
+          })
+          yield* Effect.gen(function* () {
+            const snapshot = yield* Snapshot.Service
+            const before = yield* snapshot.capture()
+            expect(before).toBeDefined()
+            if (!before) return
+
+            yield* Effect.promise(async () => {
+              await fs.writeFile(path.join(folder, "merged.csv"), "a,1\nb,2\n")
+              await fs.rm(path.join(folder, "sheets", "b.csv"))
+              await fs.writeFile(path.join(folder, "sheets", "a.csv"), "a,9\n")
+            })
+            const after = yield* snapshot.capture()
+            expect(after).toBeDefined()
+            if (!after) return
+
+            const files = yield* snapshot.files({ from: before, to: after })
+            expect(files).toEqual([
+              RelativePath.make("merged.csv"),
+              RelativePath.make("sheets/a.csv"),
+              RelativePath.make("sheets/b.csv"),
+            ])
+            yield* snapshot.restore({ files: new Map(files.map((file) => [file, before])) })
+            expect(yield* read(path.join(folder, "sheets", "a.csv"))).toBe("a,1\n")
+            expect(yield* read(path.join(folder, "sheets", "b.csv"))).toBe("b,2\n")
+            expect(yield* Effect.promise(() => fs.stat(path.join(folder, "merged.csv")).then(() => true, () => false))).toBe(false)
+          }).pipe(Effect.provide(snapshotLayer(tmp.path, folder)))
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  testEffect(Layer.empty).live("does not snapshot a file system root or the home folder outside Git", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          expect(Snapshot.trackableFolder("/")).toBe(false)
+          expect(Snapshot.trackableFolder("/home/me", "/home/me")).toBe(false)
+          expect(Snapshot.trackableFolder("/home", "/home/me")).toBe(false)
+          expect(Snapshot.trackableFolder("/home/me/Downloads", "/home/me")).toBe(true)
+          expect(Snapshot.trackableFolder("/srv/data", "/home/me")).toBe(true)
+          const root = path.parse(tmp.path).root
           expect(
             yield* Effect.gen(function* () {
               const snapshot = yield* Snapshot.Service
               return yield* snapshot.capture()
-            }).pipe(Effect.provide(snapshotLayer(tmp.path, tmp.path))),
+            }).pipe(Effect.provide(snapshotLayer(tmp.path, root))),
           ).toBeUndefined()
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),

@@ -17,9 +17,11 @@ export type RoutineTriggerData =
     }
   | {
       readonly type: "watch"
-      readonly kind: "github_pr"
-      /** Full pull request URL. */
-      readonly url: string
+      readonly kind: "github_pr" | "ci_run" | "url" | "command"
+      /** Pull request URL, Actions run URL, or the URL to poll. Unset for `command`. */
+      readonly url?: string
+      /** The shell command a `command` watch runs. */
+      readonly command?: string
       /** Seconds between polls. */
       readonly interval: number
     }

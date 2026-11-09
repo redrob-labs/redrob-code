@@ -15,7 +15,13 @@ export const Parameters = Schema.Struct({
   cron: Schema.optional(Schema.String).annotate({ description: "For a schedule: 5-field cron expression" }),
   every: Schema.optional(Schema.Number).annotate({ description: "For a schedule: interval in seconds (min 60)" }),
   timezone: Schema.optional(Schema.String).annotate({ description: "For a cron schedule: IANA time zone" }),
-  url: Schema.optional(Schema.String).annotate({ description: "For a watch: full GitHub pull request URL" }),
+  kind: Schema.optional(Schema.Literals(["github_pr", "ci_run", "url", "command"])).annotate({
+    description: "For a watch: what to poll (default github_pr)",
+  }),
+  url: Schema.optional(Schema.String).annotate({
+    description: "For a watch: the pull request URL, the GitHub Actions run URL, or the http(s) URL to poll",
+  }),
+  command: Schema.optional(Schema.String).annotate({ description: "For a command watch: the shell command to run" }),
   interval: Schema.optional(Schema.Number).annotate({
     description: "For a watch: seconds between polls (default 300)",
   }),
@@ -35,7 +41,7 @@ const describe = (info: Routine.Info) => {
         ? `cron "${trigger.cron}"${trigger.timezone ? ` (${trigger.timezone})` : ""}`
         : `every ${trigger.every}s`
       : trigger.type === "watch"
-        ? `watching ${trigger.url}`
+        ? `watching ${trigger.kind === "command" ? `\`${trigger.command}\`` : trigger.url}`
         : "autopilot"
   return `${info.id} [${info.status}] ${when}, ${info.cycles}/${info.maxCycles} runs: ${info.goal}`
 }
@@ -50,11 +56,14 @@ const triggerOf = (params: Schema.Schema.Type<typeof Parameters>): Routine.Trigg
     }
   }
   if (params.trigger === "watch") {
-    if (!params.url) return "A watch needs `url`."
+    const kind = params.kind ?? "github_pr"
+    if (kind === "command" ? !params.command : !params.url)
+      return kind === "command" ? "A command watch needs `command`." : "A watch needs `url`."
     return {
       type: "watch",
-      kind: "github_pr",
-      url: params.url,
+      kind,
+      ...(params.url !== undefined ? { url: params.url } : {}),
+      ...(params.command !== undefined ? { command: params.command } : {}),
       ...(params.interval !== undefined ? { interval: Math.round(params.interval) } : {}),
     }
   }
@@ -92,12 +101,16 @@ export const RoutineTool = Tool.define<typeof Parameters, Metadata, Routine.Serv
           const goal = params.goal?.trim()
           if (!goal) return yield* Effect.fail(new Error("create needs `goal`."))
 
+          // A command watch runs a shell command on every poll, unattended: it passes the bash rules first.
+          if (trigger.type === "watch" && trigger.kind === "command" && trigger.command) {
+            yield* ctx.ask({ permission: "bash", patterns: [trigger.command], always: [], metadata: { command: trigger.command } })
+          }
           // Asked before anything is stored: a routine spends turns later, when nobody is watching.
           yield* ctx.ask({
             permission: "routine",
             patterns: [
               trigger.type === "watch"
-                ? trigger.url
+                ? (trigger.url ?? trigger.command ?? "watch")
                 : trigger.type === "schedule"
                   ? (trigger.cron ?? `every ${trigger.every}s`)
                   : "after_turn",

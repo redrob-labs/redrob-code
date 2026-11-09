@@ -54,6 +54,7 @@ import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constan
 import { SessionID } from "@redrob-code/schema/session-id"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { filesRequest } from "./files"
+import { isRevertBody, listRoutines, revertWork, routineEvent, stopRoutine, unrevertWork } from "./routine"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { Roots, absolute, queryOf, within } from "./roots"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
@@ -87,15 +88,26 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models" | "files" | "file" | "skills"
+  readonly local?: "capabilities" | "attachment" | "models" | "files" | "file" | "skills" | "routine"
   /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
   readonly files?: "find" | "list" | "read"
   /** Which `/desk/file/*` call (write.ts), for `local: "file"`. */
   readonly file?: WriteOp
+  /** Which routine or snapshot call (routine.ts), for `local: "routine"`. */
+  readonly routine?: "list" | "stop" | "revert" | "unrevert"
 }
 
 /** What this desk adds for code work (code-work contract 2.1); the web shows a feature only when listed. */
-export const FEATURES = ["files", "files.write", "pty", "commands", "worktree", "skills.push"] as const
+export const FEATURES = [
+  "files",
+  "files.write",
+  "pty",
+  "commands",
+  "worktree",
+  "skills.push",
+  "routine",
+  "snapshot",
+] as const
 
 /** `POST /pty`: a terminal in the work folder, `{ command?, args?, cwd?, title? }`, nothing else. */
 function isPtyCreate(body: unknown): boolean {
@@ -201,6 +213,11 @@ export const ROUTES: readonly Route[] = [
   { method: "POST", path: /^\/desk\/file\/delete$/, local: "file", file: "delete" },
   // The chat's skills this desk holds, so it sends a skill's files only once (skills.ts).
   { method: "GET", path: /^\/desk\/skills$/, local: "skills" },
+  // Routines (schedules and watches) on this machine, and work snapshots (routine.ts).
+  { method: "GET", path: /^\/desk\/routine$/, query: true, local: "routine", routine: "list" },
+  { method: "POST", path: new RegExp(`^/desk/routine/${ID}/stop$`), local: "routine", routine: "stop" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/revert$`), body: isRevertBody, invalidBody: 400, local: "routine", routine: "revert" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/unrevert$`), local: "routine", routine: "unrevert" },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -448,7 +465,7 @@ function sessionModel(body: unknown): string {
 }
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
-const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
+const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted", "routine.wait"])
 /** Events after which the machine's running-session or approval count may differ. */
 const ACTIVITY_EVENTS = new Set([
   "permission.v2.asked",
@@ -779,6 +796,8 @@ export class Forwarder {
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "files" && route.files)
       return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
+    if (route.local === "routine" && route.routine)
+      return link.send({ t: "res", id, ...(await this.routine(route.routine, allowed.params, request)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
@@ -906,6 +925,27 @@ export class Forwarder {
     return { applied: sessionModel(current?.body) }
   }
 
+  /** `/desk/routine*` and `/desk/snapshot/*` (routine.ts). */
+  private async routine(
+    action: NonNullable<Route["routine"]>,
+    params: string[],
+    request: Request,
+  ): Promise<{ status: number; body?: unknown }> {
+    const [target = ""] = params
+    const run =
+      action === "list"
+        ? listRoutines(this.daemon, request.path)
+        : action === "stop"
+          ? stopRoutine(this.daemon, target)
+          : action === "revert"
+            ? revertWork(this.daemon, target, request.body)
+            : unrevertWork(this.daemon, target)
+    return run.catch((error: unknown) => {
+      this.log(`desk ${action} failed: ${error instanceof Error ? error.message : String(error)}`)
+      return { status: 502 }
+    })
+  }
+
   /** `GET /desk/attachment/:sessionID/:id`: a piece of an announced attachment, 404 for anything else. */
   async attachment(params: string[], path: string): Promise<{ status: number; body?: unknown }> {
     const [sessionID, attachmentID] = params
@@ -1001,6 +1041,12 @@ export class Forwarder {
   }
 
   private onEvent(event: BusEvent): void {
+    // A routine change reaches every device as `routine.wait`: the wait block and the schedule list follow it.
+    if (event.type === "routine.updated") {
+      const wait = routineEvent(event.data)
+      if (wait) this.onEvent(wait)
+      return
+    }
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)

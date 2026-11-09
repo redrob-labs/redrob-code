@@ -109,7 +109,13 @@ const toTrigger = (data: RoutineTriggerData): Trigger => {
       ...(data.timezone !== undefined ? { timezone: data.timezone } : {}),
     }
   }
-  return { type: "watch", kind: data.kind, url: data.url, interval: data.interval }
+  return {
+    type: "watch",
+    kind: data.kind,
+    ...(data.url !== undefined ? { url: data.url } : {}),
+    ...(data.command !== undefined ? { command: data.command } : {}),
+    interval: data.interval,
+  }
 }
 
 const toInfo = (row: Row): Info => ({
@@ -152,11 +158,11 @@ export function normalizeTrigger(trigger: Trigger): Result.Result<RoutineTrigger
       ...(trigger.timezone ? { timezone: trigger.timezone } : {}),
     })
   }
-  const url = trigger.url.trim().replace(/\/$/, "")
-  if (!RoutineWatch.isPullRequestUrl(url)) return Result.fail("watch needs a full GitHub pull request URL.")
   const interval = trigger.interval ?? DEFAULT_WATCH_INTERVAL
   if (interval < MIN_INTERVAL) return Result.fail(`interval must be at least ${MIN_INTERVAL} seconds.`)
-  return Result.succeed({ type: "watch", kind: "github_pr", url, interval })
+  const subject = RoutineWatch.subject(trigger)
+  if (typeof subject === "string") return Result.fail(subject)
+  return Result.succeed({ type: "watch", ...subject, interval })
 }
 
 const ACTIVE: Status[] = ["running", "paused"]
