@@ -94,8 +94,18 @@ describe("desk code work routes", () => {
     const res = await req("GET", "/desk/capabilities")
     forwarder.stop()
     expect(res.status).toBe(200)
-    expect(res.body.features).toEqual([...FEATURES])
-    expect(res.body.features).toEqual(["files", "files.write", "pty", "commands", "worktree", "skills.push"])
+    // `browser` follows when this machine has a Chromium the runner browser can start.
+    expect(res.body.features.slice(0, FEATURES.length)).toEqual([...FEATURES])
+    expect([...FEATURES]).toEqual([
+      "files",
+      "files.write",
+      "pty",
+      "commands",
+      "worktree",
+      "skills.push",
+      "routine",
+      "snapshot",
+    ])
   })
 
   test("file, find and command routes pass only for a session's work folder", async () => {
