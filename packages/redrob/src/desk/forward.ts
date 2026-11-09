@@ -44,6 +44,7 @@ import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { filesRequest } from "./files"
+import { isRevertBody, listRoutines, revertWork, routineEvent, stopRoutine, unrevertWork } from "./routine"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 
@@ -68,9 +69,11 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models" | "files"
+  readonly local?: "capabilities" | "attachment" | "models" | "files" | "routine"
   /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
   readonly files?: "find" | "list" | "read"
+  /** Which routine or snapshot call (routine.ts), for `local: "routine"`. */
+  readonly routine?: "list" | "stop" | "revert" | "unrevert"
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -116,6 +119,11 @@ export const ROUTES: readonly Route[] = [
   { method: "GET", path: /^\/desk\/files\/find$/, query: true, local: "files", files: "find" },
   { method: "GET", path: /^\/desk\/files\/list$/, query: true, local: "files", files: "list" },
   { method: "GET", path: /^\/desk\/files\/read$/, query: true, local: "files", files: "read" },
+  // Routines (schedules and watches) on this machine, and work snapshots (routine.ts).
+  { method: "GET", path: /^\/desk\/routine$/, query: true, local: "routine", routine: "list" },
+  { method: "POST", path: new RegExp(`^/desk/routine/${ID}/stop$`), local: "routine", routine: "stop" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/revert$`), body: isRevertBody, invalidBody: 400, local: "routine", routine: "revert" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/unrevert$`), local: "routine", routine: "unrevert" },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -212,6 +220,12 @@ export type DeskPrivacy = { readonly model: string | null; readonly localModels:
 
 const NO_PRIVACY: DeskPrivacy = { model: null, localModels: [] }
 
+/**
+ * `GET /desk/capabilities` `features` (code-work contract 2.1): what this engine serves beyond the
+ * first desk routes. The web shows a feature only when it is listed; an older engine lists none.
+ */
+export const FEATURES: readonly string[] = ["routine", "snapshot"]
+
 /** `GET /desk/capabilities`: the approval modes this machine offers, read fresh each time. */
 export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
   v: 1
@@ -220,6 +234,7 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
   machineId: string
   access: MachineAccess
   privacy: DeskPrivacy
+  features: string[]
 }> {
   const self = await machine()
   const approvalModes: MobileProfile.ApprovalMode[] =
@@ -228,7 +243,15 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
       : self.access === "trusted" && (await allowAutoAll())
         ? ["ask", "edits", "all"]
         : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access, privacy }
+  return {
+    v: 1,
+    approvalModes,
+    defaultApproval: "edits",
+    machineId: self.id,
+    access: self.access,
+    privacy,
+    features: [...FEATURES],
+  }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -354,7 +377,7 @@ function sessionModel(body: unknown): string {
 }
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
-const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
+const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted", "routine.wait"])
 /** Events after which the machine's running-session or approval count may differ. */
 const ACTIVITY_EVENTS = new Set([
   "permission.v2.asked",
@@ -506,6 +529,8 @@ export class Forwarder {
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "files" && route.files)
       return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
+    if (route.local === "routine" && route.routine)
+      return link.send({ t: "res", id, ...(await this.routine(route.routine, allowed.params, request)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
@@ -619,6 +644,27 @@ export class Forwarder {
     return { applied: sessionModel(current?.body) }
   }
 
+  /** `/desk/routine*` and `/desk/snapshot/*` (routine.ts). */
+  private async routine(
+    action: NonNullable<Route["routine"]>,
+    params: string[],
+    request: Request,
+  ): Promise<{ status: number; body?: unknown }> {
+    const [target = ""] = params
+    const run =
+      action === "list"
+        ? listRoutines(this.daemon, request.path)
+        : action === "stop"
+          ? stopRoutine(this.daemon, target)
+          : action === "revert"
+            ? revertWork(this.daemon, target, request.body)
+            : unrevertWork(this.daemon, target)
+    return run.catch((error: unknown) => {
+      this.log(`desk ${action} failed: ${error instanceof Error ? error.message : String(error)}`)
+      return { status: 502 }
+    })
+  }
+
   /** `GET /desk/attachment/:sessionID/:id`: a piece of an announced attachment, 404 for anything else. */
   async attachment(params: string[], path: string): Promise<{ status: number; body?: unknown }> {
     const [sessionID, attachmentID] = params
@@ -707,6 +753,12 @@ export class Forwarder {
   }
 
   private onEvent(event: BusEvent): void {
+    // A routine change reaches every device as `routine.wait`: the wait block and the schedule list follow it.
+    if (event.type === "routine.updated") {
+      const wait = routineEvent(event.data)
+      if (wait) this.onEvent(wait)
+      return
+    }
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
