@@ -52,11 +52,13 @@ import path from "node:path"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
 import { SessionID } from "@redrob-code/schema/session-id"
+import { RunnerBrowser } from "../browser"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { filesRequest } from "./files"
 import { isRevertBody, listRoutines, revertWork, routineEvent, stopRoutine, unrevertWork } from "./routine"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
 import { Roots, absolute, queryOf, within } from "./roots"
+import { bodies as screenBodies, forget as forgetScreen, screenRequest, type ScreenCall } from "./screen"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 import { SessionSkills, SkillsError, parseSkills, type PushedSkill } from "./skills"
 import { Streams } from "./stream"
@@ -88,13 +90,15 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models" | "files" | "file" | "skills" | "routine"
+  readonly local?: "capabilities" | "attachment" | "models" | "files" | "file" | "skills" | "routine" | "screen"
   /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
   readonly files?: "find" | "list" | "read"
   /** Which `/desk/file/*` call (write.ts), for `local: "file"`. */
   readonly file?: WriteOp
   /** Which routine or snapshot call (routine.ts), for `local: "routine"`. */
   readonly routine?: "list" | "stop" | "revert" | "unrevert"
+  /** Which `/desk/browser*` call (screen.ts), for `local: "screen"`. */
+  readonly screen?: ScreenCall
 }
 
 /** What this desk adds for code work (code-work contract 2.1); the web shows a feature only when listed. */
@@ -218,6 +222,42 @@ export const ROUTES: readonly Route[] = [
   { method: "POST", path: new RegExp(`^/desk/routine/${ID}/stop$`), local: "routine", routine: "stop" },
   { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/revert$`), body: isRevertBody, invalidBody: 400, local: "routine", routine: "revert" },
   { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/unrevert$`), local: "routine", routine: "unrevert" },
+  // The runner's own Chromium (screen.ts): watch it, take it over, hand it back. Watching is a read.
+  { method: "GET", path: /^\/desk\/browser$/, local: "screen", screen: "status" },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/watch$/,
+    local: "screen",
+    screen: "watch",
+    body: screenBodies.watch,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/ack$/,
+    local: "screen",
+    screen: "ack",
+    body: screenBodies.ack,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/control$/,
+    local: "screen",
+    screen: "control",
+    body: screenBodies.control,
+    invalidBody: 400,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/input$/,
+    local: "screen",
+    screen: "input",
+    body: screenBodies.input,
+    invalidBody: 400,
+  },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -331,6 +371,8 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
       : self.access === "trusted" && (await allowAutoAll())
         ? ["ask", "edits", "all"]
         : ["ask", "edits"]
+  const features: string[] = [...FEATURES]
+  if (await RunnerBrowser.available()) features.push("browser")
   return {
     v: 1,
     approvalModes,
@@ -338,7 +380,7 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
     machineId: self.id,
     access: self.access,
     privacy,
-    features: [...FEATURES],
+    features,
   }
 }
 
@@ -603,6 +645,7 @@ export class Forwarder {
   unlink(link: Link): void {
     if (link.timer) clearTimeout(link.timer)
     link.streams?.closeAll()
+    forgetScreen(link)
     this.links.delete(link)
   }
 
@@ -798,6 +841,8 @@ export class Forwarder {
       return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
     if (route.local === "routine" && route.routine)
       return link.send({ t: "res", id, ...(await this.routine(route.routine, allowed.params, request)) })
+    if (route.local === "screen" && route.screen)
+      return link.send({ t: "res", id, ...(await screenRequest(route.screen, link, request.body)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
