@@ -27,6 +27,10 @@ export class Service extends ConfigService.Service<Service>()("@redrob/RuntimeFl
     broad: bool("REDROB_DISABLE_CLAUDE_CODE"),
     direct: bool("REDROB_DISABLE_CLAUDE_CODE_SKILLS"),
   }).pipe(Config.map((flags) => flags.broad || flags.direct)),
+  disableClaudeCodeCommands: Config.all({
+    broad: bool("REDROB_DISABLE_CLAUDE_CODE"),
+    direct: bool("REDROB_DISABLE_CLAUDE_CODE_COMMANDS"),
+  }).pipe(Config.map((flags) => flags.broad || flags.direct)),
   enableExa: Config.all({
     experimental,
     enabled: bool("REDROB_ENABLE_EXA"),

@@ -9,8 +9,13 @@ import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises
 import { homedir, hostname } from "node:os"
 import path from "node:path"
 
+/** The home folder the desk keeps its files under (the test home in tests, where `homedir()` is cached). */
+export function deskHome(): string {
+  return process.env.REDROB_TEST_HOME ?? homedir()
+}
+
 export function settingsPath(): string {
-  return path.join(homedir(), ".redrob", "desk", "settings.json")
+  return path.join(deskHome(), ".redrob", "desk", "settings.json")
 }
 
 async function readSettings(): Promise<Record<string, unknown>> {
@@ -130,7 +135,7 @@ export async function updateMachine(update: MachineUpdate): Promise<Machine> {
 }
 
 export function eventsPath(): string {
-  return path.join(homedir(), ".redrob", "desk", "events.jsonl")
+  return path.join(deskHome(), ".redrob", "desk", "events.jsonl")
 }
 
 /** Append one line to `~/.redrob/desk/events.jsonl`, which the launcher reads to tell the person at the PC. */

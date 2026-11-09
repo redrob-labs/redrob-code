@@ -64,6 +64,10 @@ export const ServeCommand = effectCmd({
     // layer reads it, and it is what goes into the record, so other apps can authenticate.
     const secret = Registry ? Registry.newSecret() : undefined
     if (secret) process.env.REDROB_SERVER_PASSWORD = secret
+    // The shared daemon runs the desk, whose file panel follows a work folder's changes
+    // (`file.watcher.updated`); the engine only watches when this is on, read when the runtime
+    // starts. `REDROB_EXPERIMENTAL_FILEWATCHER=0` keeps it off.
+    if (Registry) process.env.REDROB_EXPERIMENTAL_FILEWATCHER ??= "1"
     else if (!Flag.REDROB_SERVER_PASSWORD) {
       console.log("Warning: REDROB_SERVER_PASSWORD is not set; server is unsecured.")
     }

@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect"
 import path from "path"
 import fs from "fs/promises"
 import { WriteTool } from "../../src/tool/write"
+import { ReadStamps } from "@redrob-code/core/tool/stamps"
 import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
@@ -260,6 +261,25 @@ describe("tool.write", () => {
         yield* Effect.promise(() => fs.chmod(readonlyPath, 0o444))
         const exit = yield* run({ filePath: readonlyPath, content: "new content" }).pipe(Effect.exit)
         expect(exit._tag).toBe("Failure")
+      }),
+    )
+
+    it.instance("refuses to overwrite a file changed after the agent read it", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "shared.txt")
+        const session = { ...ctx, sessionID: SessionID.make("ses_test-write-stale") }
+        yield* Effect.promise(() => fs.writeFile(filepath, "agent saw this", "utf-8"))
+        yield* ReadStamps.record(session.sessionID, filepath)
+        yield* Effect.promise(() => Bun.sleep(5))
+        yield* Effect.promise(() => fs.writeFile(filepath, "the person's edit, longer", "utf-8"))
+        const exit = yield* run({ filePath: filepath, content: "agent overwrite" }, session).pipe(Effect.exit)
+        expect(exit._tag).toBe("Failure")
+        expect(yield* Effect.promise(() => fs.readFile(filepath, "utf-8"))).toBe("the person's edit, longer")
+
+        yield* ReadStamps.record(session.sessionID, filepath)
+        const result = yield* run({ filePath: filepath, content: "agent v2" }, session)
+        expect(result.output).toContain("Wrote file successfully")
       }),
     )
   })

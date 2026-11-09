@@ -1,4 +1,5 @@
 import { Effect, Option, Schema, Scope, Stream } from "effect"
+import { ReadStamps } from "@redrob-code/core/tool/stamps"
 import { NonNegativeInt } from "@redrob-code/core/schema"
 import * as path from "path"
 import * as Tool from "./tool"
@@ -321,6 +322,7 @@ export const ReadTool = Tool.define<
         }
       }
 
+      yield* ReadStamps.record(ctx.sessionID, filepath)
       const loaded = yield* instruction.resolve(ctx.messages, filepath, ctx.messageID)
       const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 

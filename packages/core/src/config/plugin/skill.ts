@@ -2,6 +2,7 @@ export * as ConfigSkillPlugin from "./skill"
 
 import { define } from "../../plugin/internal"
 import path from "path"
+import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import { Config } from "../../config"
 import { AbsolutePath } from "../../schema"
@@ -9,6 +10,17 @@ import { SkillV2 } from "../../skill"
 import { Global } from "../../global"
 import { Location } from "../../location"
 import { CONSOLE_SKILLS_URL } from "../../plugin/provider/redrob-constants"
+
+/**
+ * The per-directory folder apps write into, outside the project tree: `<state>/directories/<key>`,
+ * the key being the SHA-256 of the absolute, normalised path (lower-cased on Windows). The same
+ * rule as `ConfigPaths.directoryConfigDir` in packages/redrob.
+ */
+export function appDirectory(state: string, directory: string) {
+  let resolved = path.resolve(directory).replace(/[\\/]+$/, "")
+  if (process.platform === "win32") resolved = resolved.toLowerCase()
+  return path.join(state, "directories", createHash("sha256").update(resolved).digest("hex"))
+}
 
 export const Plugin = define({
   id: "config-skill",
@@ -35,6 +47,14 @@ export const Plugin = define({
             }),
           )
         }
+        // Skills an app put for this directory, outside the project tree (the desk writes the
+        // chat's skills for a session there and removes them when the session ends).
+        draft.source(
+          SkillV2.DirectorySource.make({
+            type: "directory",
+            path: AbsolutePath.make(path.join(appDirectory(global.state, location.directory), "skills")),
+          }),
+        )
         for (const item of items) {
           if (URL.canParse(item) && /^(https?:)$/.test(new URL(item).protocol)) {
             draft.source(SkillV2.UrlSource.make({ type: "url", url: item }))
