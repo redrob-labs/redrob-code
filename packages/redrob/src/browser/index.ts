@@ -81,7 +81,27 @@ const ownerWaiters = new Set<() => void>()
 const viewers = new Map<Viewer, { waiting?: number }>()
 let seq = 0
 let last: Frame | undefined
-let pending: { seq: number; ack: () => void; timer: ReturnType<typeof setTimeout> } | undefined
+/**
+ * Frames Chromium sent and nobody acked yet. Chromium keeps up to two in flight, so this can hold
+ * more than one; a viewer's ack of `n` acks every frame up to `n`.
+ */
+let pending: { seq: number; ack: () => void; timer: ReturnType<typeof setTimeout> }[] = []
+/** Frames are painted one after another, so `seq` follows Chromium's order. */
+let painting: Promise<void> = Promise.resolve()
+
+function settle(upTo: number): void {
+  const done = pending.filter((entry) => entry.seq <= upTo)
+  pending = pending.filter((entry) => entry.seq > upTo)
+  for (const entry of done) {
+    clearTimeout(entry.timer)
+    entry.ack()
+  }
+}
+
+function dropPending(): void {
+  for (const entry of pending) clearTimeout(entry.timer)
+  pending = []
+}
 
 /** The Chromium this machine has: `REDROB_BROWSER_PATH`, Playwright's own, then any in its cache. */
 export async function executable(): Promise<string | undefined> {
@@ -170,8 +190,7 @@ function follow(state: Open, page: Page): void {
 
 function reset(): void {
   opened = undefined
-  pending && clearTimeout(pending.timer)
-  pending = undefined
+  dropPending()
   last = undefined
   if (idle) clearTimeout(idle)
   idle = undefined
@@ -214,15 +233,18 @@ export async function close(): Promise<void> {
 async function cast(state: Open): Promise<void> {
   const previous = state.cdp
   state.cdp = undefined
-  pending && clearTimeout(pending.timer)
-  pending = undefined
+  dropPending()
   await previous?.detach().catch(() => undefined)
   if (viewers.size === 0) return
   const page = state.page
   const cdp = await page.context().newCDPSession(page)
   state.cdp = cdp
   cdp.on("Page.screencastFrame", (event) => {
-    void onFrame(state, cdp, event).catch(() => cdp.send("Page.screencastFrameAck", { sessionId: event.sessionId }))
+    painting = painting.then(() =>
+      onFrame(state, cdp, event).catch(
+        () => void cdp.send("Page.screencastFrameAck", { sessionId: event.sessionId }).catch(() => undefined),
+      ),
+    )
   })
   await cdp.send("Page.startScreencast", {
     format: "jpeg",
@@ -250,17 +272,16 @@ async function onFrame(
     seq: ++seq,
   }
   last = frame
-  pending && clearTimeout(pending.timer)
-  pending = {
+  pending.push({
     seq: frame.seq,
     ack,
     timer: setTimeout(() => {
-      // Nobody acked: unstick every viewer and let Chromium go on.
-      for (const view of viewers.values()) view.waiting = undefined
-      pending = undefined
-      ack()
+      // Nobody acked: unstick the viewers waiting on it and let Chromium go on.
+      for (const view of viewers.values())
+        if (view.waiting !== undefined && view.waiting <= frame.seq) view.waiting = undefined
+      settle(frame.seq)
     }, ACK_TIMEOUT_MS),
-  }
+  })
   for (const [viewer, view] of viewers) {
     if (view.waiting !== undefined) continue
     view.waiting = frame.seq
@@ -297,12 +318,7 @@ export function ack(viewer: Viewer, n: number): void {
   const view = viewers.get(viewer)
   if (!view || view.waiting === undefined || n < view.waiting) return
   view.waiting = undefined
-  if (pending && pending.seq === n) {
-    clearTimeout(pending.timer)
-    const { ack: send } = pending
-    pending = undefined
-    send()
-  }
+  settle(n)
   // It missed newer pictures while it was busy; send the latest so it does not stay behind.
   if (last && last.seq > n) {
     view.waiting = last.seq
@@ -624,10 +640,47 @@ export async function input(event: Input): Promise<void> {
 
 export type Reading = { url: string; title: string; text: string }
 
+/** What is typed in the page's password fields, iframes included. */
+async function passwordValues(page: Page): Promise<string[]> {
+  const values: string[] = []
+  for (const frame of page.frames()) {
+    const found = await frame
+      .locator("input[type=password]")
+      .evaluateAll((fields) => fields.map((field) => (field as HTMLInputElement).value))
+      .catch(() => [] as string[])
+    values.push(...found.filter((value) => value.length > 0))
+  }
+  return values
+}
+
+/**
+ * The snapshot shows what a password field holds, as plain text. Each such value becomes its
+ * length. Matched on the value, so another line ending in the same text is hidden too; that errs
+ * on the safe side.
+ */
+export function hidePasswords(tree: string, values: string[]): string {
+  if (values.length === 0) return tree
+  const secret = new Set(values)
+  return tree
+    .split("\n")
+    .map((line) => {
+      // `textbox "Password" [ref=e7]: <value>`, or a `- text: <value>` child when it has a placeholder.
+      for (const value of secret)
+        for (const written of [value, JSON.stringify(value)])
+          if (line.endsWith(`: ${written}`))
+            return `${line.slice(0, -written.length)}[password, ${[...value].length} characters]`
+      return line
+    })
+    .join("\n")
+}
+
 /** The page as the agent reads it: URL, title, and the numbered accessibility tree. */
 export async function read(): Promise<Reading> {
   const { page } = await current()
-  const tree = await page.ariaSnapshot({ mode: "ai", timeout: ACTION_TIMEOUT_MS })
+  const tree = hidePasswords(
+    await page.ariaSnapshot({ mode: "ai", timeout: ACTION_TIMEOUT_MS }),
+    await passwordValues(page),
+  )
   stale = undefined
   const text =
     tree.length > MAX_READ_CHARS

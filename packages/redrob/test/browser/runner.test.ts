@@ -11,6 +11,7 @@ const PAGE = `<!doctype html><html><head><title>Login test</title></head><body s
 <input id="email" placeholder="Email" style="position:absolute;left:40px;top:300px;width:300px;height:40px">
 <input id="pw" type="password" value="hunter2"
   style="position:absolute;left:40px;top:400px;width:400px;height:60px;background:#f00;color:#000;border:0">
+<input type="password" placeholder="Repeat it" value="hunter3: again" style="position:absolute;left:40px;top:520px">
 </body></html>`
 
 const hasChromium = await RunnerBrowser.available()
@@ -52,6 +53,21 @@ describe("desk browser routes", () => {
     expect(refusal({ method: "POST", path: "/desk/browser/eval", body: {} })).toBe(403)
   })
 
+  test("password values in a reading become their length", () => {
+    const tree = [
+      '- textbox "Password" [ref=e7]: hunter2',
+      '- textbox "Pin" [ref=e8]:',
+      '  - text: "a: b"',
+      "- text: hunter2x",
+    ]
+    expect(RunnerBrowser.hidePasswords(tree.join("\n"), ["hunter2", "a: b"]).split("\n")).toEqual([
+      '- textbox "Password" [ref=e7]: [password, 7 characters]',
+      '- textbox "Pin" [ref=e8]:',
+      "  - text: [password, 4 characters]",
+      "- text: hunter2x",
+    ])
+  })
+
   test("input bodies are checked field by field", () => {
     expect(RunnerBrowser.parseInput({ kind: "text", text: "안녕하세요" })).toEqual({ kind: "text", text: "안녕하세요" })
     expect(RunnerBrowser.parseInput({ kind: "key", type: "keyDown", key: "Enter", evil: 1 })).toEqual({
@@ -75,7 +91,11 @@ function desk() {
     events: async (_listener: (event: BusEvent) => void, signal: AbortSignal) =>
       new Promise((resolve) => signal.addEventListener("abort", resolve)),
   } as unknown as DaemonApi
-  const forwarder = new Forwarder(daemon, async () => undefined, () => undefined)
+  const forwarder = new Forwarder(
+    daemon,
+    async () => undefined,
+    () => undefined,
+  )
   const sent: Record<string, unknown>[] = []
   const link = forwarder.link(async (message) => void sent.push(message))
   let id = 0
@@ -112,6 +132,11 @@ describe.skipIf(!hasChromium)("runner browser", () => {
   test("reads numbered elements, clicks by number, and asks for a new reading after a navigation", async () => {
     const first = await RunnerBrowser.open(base)
     expect(first.title).toBe("Login test")
+    // The agent never reads what a password field holds, only how long it is.
+    expect(first.text).not.toContain("hunter2")
+    expect(first.text).not.toContain("hunter3")
+    expect(first.text).toContain("[password, 7 characters]")
+    expect(first.text).toContain("[password, 14 characters]")
     const button = first.text.match(/button "Press me" \[ref=(\w+)\]/)?.[1]
     expect(button).toBeDefined()
     const after = await RunnerBrowser.click(button!)
@@ -175,8 +200,8 @@ describe.skipIf(!hasChromium)("runner browser", () => {
 
     expect((await call("POST", "/desk/browser/control", { owner: "user" })).body).toEqual({ owner: "user" })
     expect(sent.some((message) => message.type === "browser.control" && message.owner === "user")).toBe(true)
-    let waited: string | undefined | null = null
-    const agent = RunnerBrowser.turn().then((line) => (waited = line))
+    const result: { line: string | undefined | null } = { line: null }
+    const agent = RunnerBrowser.turn().then((line) => (result.line = line))
 
     const press = { kind: "mouse", x: 200, y: 430, button: "left", clickCount: 1 }
     await call("POST", "/desk/browser/input", { ...press, type: "mousePressed" })
@@ -186,15 +211,15 @@ describe.skipIf(!hasChromium)("runner browser", () => {
     await call("POST", "/desk/browser/input", { kind: "key", type: "rawKeyDown", key: "Enter", code: "Enter" })
     await call("POST", "/desk/browser/input", { kind: "scroll", x: 600, y: 300, deltaY: 200 })
     await Bun.sleep(100)
-    expect(waited).toBeNull()
+    expect(result.line).toBeNull()
 
     await call("POST", "/desk/browser/control", { owner: "agent" })
     await agent
-    expect(waited).toContain("The user had the browser and handed it back.")
-    expect(waited).toContain("typed 6 characters into a password field")
-    expect(waited).not.toContain("s3cret")
-    expect(waited).toContain("pressed Enter")
-    expect(waited).toContain("scrolled")
+    expect(result.line).toContain("The user had the browser and handed it back.")
+    expect(result.line).toContain("typed 6 characters into a password field")
+    expect(result.line).not.toContain("s3cret")
+    expect(result.line).toContain("pressed Enter")
+    expect(result.line).toContain("scrolled")
     // Said once: the next action gets nothing extra.
     expect(await RunnerBrowser.turn()).toBeUndefined()
   })
