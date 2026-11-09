@@ -1,16 +1,20 @@
-Schedule work to run later in this session, or watch a GitHub pull request and act when it changes.
+Schedule work to run later in this session, or watch something (a GitHub pull request, a CI run, a URL, a command's result) and act when it changes.
 
 Each wake sends one ordinary prompt to this session carrying the goal and the approaches already ruled out, so a later run does not repeat a dead end.
 
 ## Actions
 - `create` with `trigger: "schedule"`: run on a cron expression (`cron`, optional IANA `timezone`) or every `every` seconds (at least 60).
-- `create` with `trigger: "watch"`: poll the pull request at `url` every `interval` seconds (default 300) and wake only when its state, head commit, review decision, checks or reviews change. Ends by itself once the pull request is merged or closed.
+- `create` with `trigger: "watch"`: poll every `interval` seconds (default 300, at least 60) and wake only when the subject changes. `kind` says what is polled:
+  - `github_pr` (default): the pull request at `url`; wakes when its state, head commit, review decision, checks or reviews change. Ends by itself once merged or closed.
+  - `ci_run`: the GitHub Actions run at `url` (`https://github.com/<owner>/<repo>/actions/runs/<id>`); wakes when its status, conclusion or a job changes. Ends by itself once the run completes.
+  - `url`: the http(s) `url`; wakes when its HTTP status changes (or it becomes unreachable / reachable). Use for "tell me when the deploy is up".
+  - `command`: runs the shell `command` in this folder; wakes when its exit code or output changes. Asks the same permission as running the command.
 - `list`: the routines of this session.
 - `stop`: end the routine with `id` for good.
 
 ## When to use
 - The user asks to do something at a time or on a cadence ("every morning", "at 6pm").
-- The user asks to keep an eye on a pull request (CI result, review, merge) and react.
+- The user asks to keep an eye on a pull request, a CI run, a deploy URL or a command's result and react when it changes.
 
 ## When NOT to use
 - Do not poll in a loop with sleeps or shell commands; create a watch instead.

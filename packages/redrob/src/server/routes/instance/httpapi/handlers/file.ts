@@ -5,6 +5,7 @@ import { Ripgrep } from "@redrob-code/core/ripgrep"
 import { FSUtil } from "@redrob-code/core/fs-util"
 import { Location } from "@redrob-code/core/location"
 import { AbsolutePath, RelativePath } from "@redrob-code/core/schema"
+import { Vcs } from "@/project/vcs"
 import { Effect, Layer, Option } from "effect"
 import ignore from "ignore"
 import path from "path"
@@ -14,6 +15,7 @@ import { InstanceHttpApi } from "../api"
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
   Effect.gen(function* () {
     const ripgrep = yield* Ripgrep.Service
+    const vcs = yield* Vcs.Service
     const locations = yield* LocationServiceMap.Service
 
     const filesystem = Effect.fnUntraced(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
@@ -124,8 +126,14 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       )
     })
 
+    // The files changed against git in this location, so a file panel can mark what was edited.
     const status = Effect.fn("FileHttpApi.status")(function* () {
-      return []
+      return (yield* vcs.status()).map((item) => ({
+        path: item.file,
+        added: Math.max(0, Math.trunc(item.additions)),
+        removed: Math.max(0, Math.trunc(item.deletions)),
+        status: item.status,
+      }))
     })
 
     return handlers

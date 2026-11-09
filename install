@@ -22,6 +22,8 @@ Options:
     -v, --version <version> Install a specific version (e.g., 1.0.180)
     -b, --binary <path>     Install from a local binary instead of downloading
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
+        --connect <code>    After installing, connect this machine to Redrob Chat with the
+                            rc_ code from the web's connect card (sign-in, desk on, start at login)
 
 Examples:
     curl -fsSL https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install | bash
@@ -33,6 +35,7 @@ EOF
 requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
+connect_code=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -61,6 +64,15 @@ while [[ $# -gt 0 ]]; do
         --no-modify-path)
             no_modify_path=true
             shift
+            ;;
+        --connect)
+            if [[ "${2:-}" =~ ^rc_[A-Za-z0-9_-]{8,128}$ ]]; then
+                connect_code="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --connect needs the rc_... code from the web's connect card${NC}"
+                exit 1
+            fi
             ;;
         *)
             echo -e "${ORANGE}Warning: Unknown option '$1'${NC}" >&2
@@ -271,9 +283,23 @@ check_version() {
             print_message info "${MUTED}Installed version: ${NC}$installed_version."
         else
             print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
-            exit 0
+            already_installed=true
         fi
     fi
+}
+
+already_installed=false
+
+# `--connect`: sign in, turn the desk on and start at login, with the binary just installed.
+run_connect() {
+    [ -n "$connect_code" ] || return 0
+    local bin="${INSTALL_DIR}/redrob"
+    if [ "$already_installed" = "true" ] && [ -n "${redrob_path:-}" ]; then
+        bin="$redrob_path"
+    fi
+    echo -e ""
+    print_message info "${MUTED}Connecting this machine to Redrob Chat${NC}"
+    "$bin" desk connect "$connect_code"
 }
 
 unbuffered_sed() {
@@ -397,6 +423,12 @@ if [ -n "$binary_path" ]; then
     install_from_binary
 else
     check_version
+    if [ "$already_installed" = "true" ]; then
+        # Nothing to install; a connect line still connects.
+        if [ -z "$connect_code" ]; then exit 0; fi
+        run_connect
+        exit $?
+    fi
     download_and_install
 fi
 
@@ -497,3 +529,5 @@ echo -e ""
 echo -e "${MUTED}For more information visit ${NC}https://github.com/redrob-labs/redrob-code#readme"
 echo -e ""
 echo -e ""
+
+run_connect

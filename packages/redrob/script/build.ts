@@ -137,7 +137,8 @@ for (const item of targets) {
     conditions: ["bun", "node"],
     tsconfig: "./tsconfig.json",
     plugins: [plugin],
-    external: ["node-gyp"],
+    // chromium-bidi is playwright-core's Firefox/BiDi path; the browser tool drives Chromium over CDP only.
+    external: ["node-gyp", "chromium-bidi", "chromium-bidi/*"],
     format: "esm",
     minify: true,
     sourcemap: sourcemapsFlag ? "linked" : "none",

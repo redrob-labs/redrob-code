@@ -16,6 +16,7 @@ import { FSUtil } from "../fs-util"
 import { LocationMutation } from "../location-mutation"
 import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
+import { ReadStamps } from "./stamps"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -195,6 +196,7 @@ const layer = Layer.effectDiscard(
                     content: joinBom(next.text, source.bom || next.bom),
                   }),
                 )
+                yield* ReadStamps.record(context.sessionID, target.canonical)
                 return {
                   files: [
                     {

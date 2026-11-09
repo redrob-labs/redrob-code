@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ReadStamps } from "@redrob-code/core/tool/stamps"
 import * as path from "path"
 import { Effect } from "effect"
 import * as Tool from "./tool"
@@ -16,6 +17,10 @@ import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
+
+/** The refusal when the file changed after the agent last read it. */
+export const changedMessage = (file: string) =>
+  `${file} changed since you last read it (someone else edited it). Read it again, then write your change on top of the current content.`
 
 export const Parameters = Schema.Struct({
   content: Schema.String.annotate({ description: "The content to write to the file" }),
@@ -61,10 +66,14 @@ export const WriteTool = Tool.define(
             },
           })
 
+          // Someone changed the file since the agent read it: do not overwrite their change.
+          if (!(yield* ReadStamps.unchanged(ctx.sessionID, filepath)))
+            return yield* Effect.fail(new Error(changedMessage(path.relative(instance.worktree, filepath))))
           yield* fs.writeWithDirs(filepath, Bom.join(contentNew, desiredBom))
           if (yield* format.file(filepath)) {
             yield* Bom.syncFile(fs, filepath, desiredBom)
           }
+          yield* ReadStamps.record(ctx.sessionID, filepath)
           yield* events.publish(FileSystem.Event.Edited, { file: filepath })
           yield* events.publish(Watcher.Event.Updated, {
             file: filepath,

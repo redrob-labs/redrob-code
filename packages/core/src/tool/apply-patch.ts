@@ -11,6 +11,7 @@ import { LocationMutation } from "../location-mutation"
 import { Patch } from "../patch"
 import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
+import { ReadStamps } from "./stamps"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -185,6 +186,9 @@ const layer = Layer.effectDiscard(
                     }).pipe(Effect.mapError(() => fail(change.path))),
                   { discard: true },
                 )
+                yield* Effect.forEach(applied, (change) => ReadStamps.record(context.sessionID, change.target), {
+                  discard: true,
+                })
                 return { applied, files: patchFiles }
               }).pipe(Effect.mapError((error) => (error instanceof ToolFailure ? error : fail("patch"))))
             },

@@ -1,4 +1,5 @@
 import * as path from "path"
+import { ReadStamps } from "@redrob-code/core/tool/stamps"
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -225,11 +226,13 @@ export const ApplyPatchTool = Tool.define(
 
             yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
             updates.push({ file: change.filePath, event: "add" })
+            yield* ReadStamps.record(ctx.sessionID, change.filePath)
             break
 
           case "update":
             yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
             updates.push({ file: change.filePath, event: "change" })
+            yield* ReadStamps.record(ctx.sessionID, change.filePath)
             break
 
           case "move":
@@ -240,6 +243,7 @@ export const ApplyPatchTool = Tool.define(
               yield* afs.remove(change.filePath)
               updates.push({ file: change.filePath, event: "unlink" })
               updates.push({ file: change.movePath, event: "add" })
+              yield* ReadStamps.record(ctx.sessionID, change.movePath)
             }
             break
 

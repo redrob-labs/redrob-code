@@ -68,6 +68,11 @@ describe("ConfigSkillPlugin.Plugin", () => {
           type: "directory",
           path: AbsolutePath.make(path.join("/repo/.redrob", "skills")),
         }),
+        // The skills an app (the desk) put for this directory, outside the project tree.
+        SkillV2.DirectorySource.make({
+          type: "directory",
+          path: AbsolutePath.make(path.join(ConfigSkillPlugin.appDirectory(Global.make().state, directory), "skills")),
+        }),
         // The Console's library comes first, before anything the user configured.
         SkillV2.UrlSource.make({ type: "url", url: CONSOLE_SKILLS_URL }),
         SkillV2.DirectorySource.make({ type: "directory", path: AbsolutePath.make(path.join(directory, "skills")) }),

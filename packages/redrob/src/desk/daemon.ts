@@ -41,7 +41,12 @@ export class DaemonApi {
   }
 
   /** One call, whatever the status: the forwarder hands the status and body to the phone as is. */
-  async raw(method: "GET" | "POST" | "PUT", path: string, body?: unknown, timeoutMs = 30_000): Promise<{ status: number; body?: unknown }> {
+  async raw(
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    path: string,
+    body?: unknown,
+    timeoutMs = 30_000,
+  ): Promise<{ status: number; body?: unknown }> {
     const response = await fetch(this.url(path), {
       method,
       headers: {
@@ -59,6 +64,12 @@ export class DaemonApi {
     } catch {
       return { status: response.status }
     }
+  }
+
+  /** A websocket to the daemon (the PTY connect route), with the daemon's Basic header (Bun's `headers` option). */
+  socket(path: string): WebSocket {
+    const url = this.url(path).replace(/^http/, "ws")
+    return new WebSocket(url, { headers: { ...this.daemon.headers } } as unknown as string[])
   }
 
   private async call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
