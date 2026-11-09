@@ -13,6 +13,7 @@ import { PermissionV2 } from "../permission"
 import { AbsolutePath } from "../schema"
 import { ReadToolFileSystem } from "./read-filesystem"
 import { ToolRegistry } from "./registry"
+import { ReadStamps } from "./stamps"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -87,6 +88,7 @@ const layer = Layer.effectDiscard(
                 offset: input.offset,
                 limit: input.limit,
               })
+              yield* ReadStamps.record(context.sessionID, target.canonical)
               if ("encoding" in content && content.encoding === "base64" && SUPPORTED_IMAGE_MIMES.has(content.mime)) {
                 // The user sees the image in the chat too (the desk forwarder serves its bytes), so
                 // the model never has to describe or OCR it to show it.
