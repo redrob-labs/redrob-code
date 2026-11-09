@@ -42,9 +42,11 @@
 import { open } from "node:fs/promises"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
+import { RunnerBrowser } from "../browser"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { filesRequest } from "./files"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
+import { bodies as screenBodies, forget as forgetScreen, screenRequest, type ScreenCall } from "./screen"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
 
 /** Room for the frame header and the seal on top of the JSON. */
@@ -68,9 +70,11 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models" | "files"
+  readonly local?: "capabilities" | "attachment" | "models" | "files" | "screen"
   /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
   readonly files?: "find" | "list" | "read"
+  /** Which `/desk/browser*` call (screen.ts), for `local: "screen"`. */
+  readonly screen?: ScreenCall
 }
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
@@ -116,6 +120,42 @@ export const ROUTES: readonly Route[] = [
   { method: "GET", path: /^\/desk\/files\/find$/, query: true, local: "files", files: "find" },
   { method: "GET", path: /^\/desk\/files\/list$/, query: true, local: "files", files: "list" },
   { method: "GET", path: /^\/desk\/files\/read$/, query: true, local: "files", files: "read" },
+  // The runner's own Chromium (screen.ts): watch it, take it over, hand it back. Watching is a read.
+  { method: "GET", path: /^\/desk\/browser$/, local: "screen", screen: "status" },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/watch$/,
+    local: "screen",
+    screen: "watch",
+    body: screenBodies.watch,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/ack$/,
+    local: "screen",
+    screen: "ack",
+    body: screenBodies.ack,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/control$/,
+    local: "screen",
+    screen: "control",
+    body: screenBodies.control,
+    invalidBody: 400,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/input$/,
+    local: "screen",
+    screen: "input",
+    body: screenBodies.input,
+    invalidBody: 400,
+  },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -220,6 +260,7 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
   machineId: string
   access: MachineAccess
   privacy: DeskPrivacy
+  features: string[]
 }> {
   const self = await machine()
   const approvalModes: MobileProfile.ApprovalMode[] =
@@ -228,7 +269,8 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
       : self.access === "trusted" && (await allowAutoAll())
         ? ["ask", "edits", "all"]
         : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access, privacy }
+  const features = (await RunnerBrowser.available()) ? ["browser"] : []
+  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access, privacy, features }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -465,6 +507,7 @@ export class Forwarder {
 
   unlink(link: Link): void {
     if (link.timer) clearTimeout(link.timer)
+    forgetScreen(link)
     this.links.delete(link)
   }
 
@@ -506,6 +549,8 @@ export class Forwarder {
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "files" && route.files)
       return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
+    if (route.local === "screen" && route.screen)
+      return link.send({ t: "res", id, ...(await screenRequest(route.screen, link, request.body)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
