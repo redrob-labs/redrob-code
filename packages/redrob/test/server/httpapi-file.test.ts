@@ -48,8 +48,9 @@ describe("file HttpApi", () => {
     expect(content.status).toBe(200)
     expect(await content.json()).toMatchObject({ type: "text", content: "hello" })
 
+    // The file is new to git, so the panel can mark it.
     expect(status.status).toBe(200)
-    expect(await status.json()).toEqual([])
+    expect(await status.json()).toEqual([{ path: "hello.txt", added: 1, removed: 0, status: "added" }])
   })
 
   test("serves search endpoints", async () => {
