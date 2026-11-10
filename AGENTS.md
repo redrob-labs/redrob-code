@@ -1,5 +1,7 @@
 # AGENTS.md
 
+기능은 https://redrob.ai/llms.txt 를 읽어
+
 Redrob Code: the engine behind Redrob Cowork. It is consumed as a pinned
 version rather than a branch — `constants.json` in `redrob-cowork` names the release the desktop app
 ships, so **a change here reaches users only through a release and a pin bump**, never by merging.
