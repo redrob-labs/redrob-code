@@ -28,7 +28,18 @@ const Output = Schema.Struct({
   jpegBase64: Schema.optional(Schema.String),
 })
 
-type Input = Schema.Schema.Type<typeof Parameters>
+/**
+ * Some models send numbers as strings (`"20"`), which the core engine's strict decoding refused
+ * ("Expected number | undefined, got \"20\""). Accept both for the numeric fields.
+ */
+const Count = Schema.Union([Schema.Number, Schema.NumberFromString])
+const Input = Schema.Struct({
+  ...Parameters.fields,
+  amount: Schema.optional(Count).annotate({ description: "For scroll: pixels (default 600)" }),
+  seconds: Schema.optional(Count).annotate({ description: "For wait: seconds, at most 60" }),
+})
+
+type Input = Schema.Schema.Type<typeof Input>
 
 const need = (value: string | undefined, message: string): string => {
   if (value === undefined || value === "") throw new Error(message)
@@ -73,7 +84,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description: DESCRIPTION,
-          input: Parameters,
+          input: Input,
           output: Output,
           toModelOutput: ({ output }) => [
             { type: "text", text: output.text },
