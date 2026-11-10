@@ -13,6 +13,8 @@ import { TaskTool } from "./task"
 import { Database } from "@redrob-code/core/database/database"
 import { TodoWriteTool } from "./todo"
 import { RoutineTool } from "./routine"
+import { BrowserTool } from "./browser"
+import { RunnerBrowser } from "@/browser"
 import { MemoryTool } from "./memory"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -110,6 +112,7 @@ const layer = Layer.effect(
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
     const routine = yield* RoutineTool
+    const browser = yield* BrowserTool
     const memorytool = yield* MemoryTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
@@ -215,6 +218,7 @@ const layer = Layer.effect(
         }
 
         yield* config.get()
+        const hasBrowser = yield* Effect.promise(() => RunnerBrowser.available())
         const questionEnabled = ["app", "cli", "desktop"].includes(flags.client) || flags.enableQuestionTool
 
         const tool = yield* Effect.all({
@@ -229,6 +233,7 @@ const layer = Layer.effect(
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
           routine: Tool.init(routine),
+          browser: Tool.init(browser),
           memory: Tool.init(memorytool),
           search: Tool.init(websearch),
           image: Tool.init(imageGenerate),
@@ -256,6 +261,8 @@ const layer = Layer.effect(
             tool.fetch,
             tool.todo,
             tool.routine,
+            // Only where a Chromium is installed (RunnerBrowser.executable).
+            ...(hasBrowser ? [tool.browser] : []),
             tool.memory,
             tool.search,
             tool.image,

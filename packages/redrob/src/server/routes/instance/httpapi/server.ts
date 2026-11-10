@@ -106,6 +106,8 @@ import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
 import { handlers } from "@redrob-code/server/handlers"
 import { buildLocationServiceMap, LocationServiceMap } from "@redrob-code/core/location-services"
+import { BuiltInTools } from "@redrob-code/core/tool/builtins"
+import { BrowserTools } from "@/browser/tool"
 import { layer as locationLayer } from "@redrob-code/server/location"
 import { sessionLocationLayer } from "@redrob-code/server/middleware/session-location"
 import { PtyEnvironment } from "@redrob-code/server/pty-environment"
@@ -276,7 +278,8 @@ const app = LayerNode.group([
 export function createRoutes(
   corsOptions?: CorsOptions,
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
-  const locationServiceMapV2 = buildLocationServiceMap()
+  // Session-engine sessions (the desk's) get the runner browser tool too (browser/tool.ts).
+  const locationServiceMapV2 = buildLocationServiceMap([[BuiltInTools.node, BrowserTools.node]])
 
   return Layer.mergeAll(
     rootApiRoutes,

@@ -146,6 +146,7 @@
     "opentui-spinner": "catalog:",
     "partial-json": "0.1.7",
     "pdf-lib": "1.17.1",
+    "playwright-core": "1.62.1",
     "pptxgenjs": "4.0.1",
     "remeda": "catalog:",
     "semver": "^7.6.3",

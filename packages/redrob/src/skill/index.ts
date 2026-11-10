@@ -14,6 +14,7 @@ import { FSUtil } from "@redrob-code/core/fs-util"
 import { Config } from "@/config/config"
 import { FrontmatterError } from "@redrob-code/core/v1/config/error"
 import { ConfigMarkdown } from "@/config/markdown"
+import { ConfigPaths } from "@/config/paths"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Glob } from "@redrob-code/core/util/glob"
 import { Discovery } from "./discovery"
@@ -240,6 +241,11 @@ const discoverSkills = Effect.fnUntraced(function* (
   for (const dir of configDirs) {
     yield* scan(state, dir, REDROB_SKILL_PATTERN)
   }
+
+  // Skills an app put for this directory, outside the project tree (the desk writes the chat's
+  // skills for a session here and removes them when the session ends).
+  const appSkills = path.join(ConfigPaths.directoryConfigDir(directory), "skills")
+  if (yield* fsys.isDir(appSkills)) yield* scan(state, appSkills, SKILL_PATTERN, { dot: true, scope: "app" })
 
   const cfg = yield* config.get()
   for (const item of cfg.skills?.paths ?? []) {

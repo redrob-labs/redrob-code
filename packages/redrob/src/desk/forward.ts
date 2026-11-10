@@ -38,25 +38,47 @@
  * Files (Redrob Chat's PC folder tools): `GET /desk/files/find?name=`, `/desk/files/list?path=` and
  * `/desk/files/read?path=&offset=&limit=` are answered here from the folders the person allowed in
  * Redrob Desktop; a folder outside them is asked about at the PC first (files.ts).
+ *
+ * Code work (redrob-chat docs code-work contract 2): the engine's `/file*`, `/find*`, `/command`
+ * and `/pty*` routes pass for a session's work folder only (`?directory=`, roots.ts); `/pty*` is
+ * refused on a `read_only` machine, and the PTY websocket rides `{ t: "stream" }` messages
+ * (stream.ts). `/desk/file/content|write|rename|delete` are the editor's (write.ts). Session create
+ * may carry `branch` / `repo` (a worktree, worktree.ts) and `skills` (skills.ts). A device that
+ * opened a work folder gets that folder's `file.watcher.updated` events. `GET /desk/capabilities`
+ * lists `features`.
  */
-import { open } from "node:fs/promises"
+import { open, realpath } from "node:fs/promises"
+import path from "node:path"
 import { MobileProfile } from "@redrob-code/core/permission/mobile"
 import { consoleModelID } from "@redrob-code/core/plugin/provider/redrob-constants"
+import { SessionID } from "@redrob-code/schema/session-id"
+import { RunnerBrowser } from "../browser"
 import type { BusEvent, DaemonApi } from "./daemon"
 import { filesRequest } from "./files"
+import { isRevertBody, listRoutines, revertWork, routineEvent, stopRoutine, unrevertWork } from "./routine"
 import { MAX_RELAY_FRAME_BYTES } from "./frames"
+import { Roots, absolute, queryOf, within } from "./roots"
+import { bodies as screenBodies, forget as forgetScreen, screenRequest, type ScreenCall } from "./screen"
 import { allowAutoAll, appendEvent, machine, type MachineAccess } from "./settings"
+import { SessionSkills, SkillsError, parseSkills, type PushedSkill } from "./skills"
+import { Streams } from "./stream"
+import { WorktreeError, prepare } from "./worktree"
+import { fileRequest, type WriteOp } from "./write"
 
 /** Room for the frame header and the seal on top of the JSON. */
 const MAX_BODY_BYTES = MAX_RELAY_FRAME_BYTES - 64 * 1024
 
-export type Method = "GET" | "POST" | "PUT"
+export type Method = "GET" | "POST" | "PUT" | "DELETE"
 
 type Route = {
   readonly method: Method
   readonly path: RegExp
   /** A POST that changes nothing on the PC, so a `read_only` machine answers it too. */
   readonly readOnly?: true
+  /** Refused on a `read_only` machine even as a GET (a terminal can change anything). */
+  readonly writes?: true
+  /** `?directory=` must be a session's work folder (roots.ts); `?workspace=` is refused. */
+  readonly root?: true
   /** Whether a query string is passed through. */
   readonly query?: boolean
   /** Extra body rule; false answers 403, or `invalidBody` when set. */
@@ -68,10 +90,58 @@ type Route = {
   /** A phone prompt: watch the turn so its end can be pushed. */
   readonly prompt?: boolean
   /** Answered by the forwarder itself; never reaches the daemon. */
-  readonly local?: "capabilities" | "attachment" | "models" | "files"
+  readonly local?: "capabilities" | "attachment" | "models" | "files" | "file" | "skills" | "routine" | "screen"
   /** Which `/desk/files/*` call (files.ts), for `local: "files"`. */
   readonly files?: "find" | "list" | "read"
+  /** Which `/desk/file/*` call (write.ts), for `local: "file"`. */
+  readonly file?: WriteOp
+  /** Which routine or snapshot call (routine.ts), for `local: "routine"`. */
+  readonly routine?: "list" | "stop" | "revert" | "unrevert"
+  /** Which `/desk/browser*` call (screen.ts), for `local: "screen"`. */
+  readonly screen?: ScreenCall
 }
+
+/** What this desk adds for code work (code-work contract 2.1); the web shows a feature only when listed. */
+export const FEATURES = [
+  "files",
+  "files.write",
+  "pty",
+  "commands",
+  "worktree",
+  "skills.push",
+  "routine",
+  "snapshot",
+] as const
+
+/** `POST /pty`: a terminal in the work folder, `{ command?, args?, cwd?, title? }`, nothing else. */
+function isPtyCreate(body: unknown): boolean {
+  if (body === undefined) return true
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false
+  const { command, args, cwd, title, ...rest } = body as Record<string, unknown>
+  if (Object.keys(rest).length > 0) return false
+  const short = (value: unknown, max = 4096) => value === undefined || (typeof value === "string" && value.length <= max)
+  return (
+    short(command) &&
+    short(cwd) &&
+    short(title, 200) &&
+    (args === undefined || (Array.isArray(args) && args.length <= 64 && args.every((arg) => short(arg))))
+  )
+}
+
+/** `PUT /pty/:id`: `{ title?, size?: { rows, cols } }`. */
+function isPtyUpdate(body: unknown): boolean {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false
+  const { title, size, ...rest } = body as Record<string, unknown>
+  if (Object.keys(rest).length > 0) return false
+  if (title !== undefined && (typeof title !== "string" || title.length > 200)) return false
+  if (size === undefined) return true
+  const { rows, cols } = (size ?? {}) as { rows?: unknown; cols?: unknown }
+  const dimension = (value: unknown) => Number.isInteger(value) && (value as number) > 0 && (value as number) <= 2000
+  return dimension(rows) && dimension(cols)
+}
+
+/** The websocket paths a device may open as a relay stream (stream.ts). */
+const STREAMS: readonly RegExp[] = [/^\/pty\/([A-Za-z0-9_-]{1,128})\/connect$/]
 
 /** One path segment of an id. Nothing that can climb or re-encode a path. */
 const ID = "([A-Za-z0-9_-]{1,128})"
@@ -116,6 +186,78 @@ export const ROUTES: readonly Route[] = [
   { method: "GET", path: /^\/desk\/files\/find$/, query: true, local: "files", files: "find" },
   { method: "GET", path: /^\/desk\/files\/list$/, query: true, local: "files", files: "list" },
   { method: "GET", path: /^\/desk\/files\/read$/, query: true, local: "files", files: "read" },
+  // Code work (code-work design 10): a session's work folder, by `?directory=`. Its files, search
+  // and commands are the engine's own routes; a read-only machine answers them too.
+  { method: "GET", path: /^\/file$/, query: true, root: true },
+  { method: "GET", path: /^\/file\/content$/, query: true, root: true },
+  { method: "GET", path: /^\/file\/status$/, query: true, root: true },
+  { method: "GET", path: /^\/find$/, query: true, root: true },
+  { method: "GET", path: /^\/find\/file$/, query: true, root: true },
+  { method: "GET", path: /^\/find\/symbol$/, query: true, root: true },
+  { method: "GET", path: /^\/command$/, query: true, root: true },
+  // The person's terminal in it (the websocket rides relay streams, stream.ts). No read-only terminal.
+  { method: "GET", path: /^\/pty\/shells$/, query: true, root: true, writes: true },
+  { method: "GET", path: /^\/pty$/, query: true, root: true, writes: true },
+  { method: "POST", path: /^\/pty$/, query: true, root: true, writes: true, body: isPtyCreate, invalidBody: 400 },
+  { method: "GET", path: new RegExp(`^/pty/${ID}$`), query: true, root: true, writes: true },
+  {
+    method: "PUT",
+    path: new RegExp(`^/pty/${ID}$`),
+    query: true,
+    root: true,
+    writes: true,
+    body: isPtyUpdate,
+    invalidBody: 400,
+  },
+  { method: "DELETE", path: new RegExp(`^/pty/${ID}$`), query: true, root: true, writes: true },
+  // The panel's editor: content with its hash, and saving, renaming, deleting (write.ts).
+  { method: "GET", path: /^\/desk\/file\/content$/, query: true, local: "file", file: "content" },
+  { method: "POST", path: /^\/desk\/file\/write$/, local: "file", file: "write" },
+  { method: "POST", path: /^\/desk\/file\/rename$/, local: "file", file: "rename" },
+  { method: "POST", path: /^\/desk\/file\/delete$/, local: "file", file: "delete" },
+  // The chat's skills this desk holds, so it sends a skill's files only once (skills.ts).
+  { method: "GET", path: /^\/desk\/skills$/, local: "skills" },
+  // Routines (schedules and watches) on this machine, and work snapshots (routine.ts).
+  { method: "GET", path: /^\/desk\/routine$/, query: true, local: "routine", routine: "list" },
+  { method: "POST", path: new RegExp(`^/desk/routine/${ID}/stop$`), local: "routine", routine: "stop" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/revert$`), body: isRevertBody, invalidBody: 400, local: "routine", routine: "revert" },
+  { method: "POST", path: new RegExp(`^/desk/snapshot/${ID}/unrevert$`), local: "routine", routine: "unrevert" },
+  // The runner's own Chromium (screen.ts): watch it, take it over, hand it back. Watching is a read.
+  { method: "GET", path: /^\/desk\/browser$/, local: "screen", screen: "status" },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/watch$/,
+    local: "screen",
+    screen: "watch",
+    body: screenBodies.watch,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/ack$/,
+    local: "screen",
+    screen: "ack",
+    body: screenBodies.ack,
+    invalidBody: 400,
+    readOnly: true,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/control$/,
+    local: "screen",
+    screen: "control",
+    body: screenBodies.control,
+    invalidBody: 400,
+  },
+  {
+    method: "POST",
+    path: /^\/desk\/browser\/input$/,
+    local: "screen",
+    screen: "input",
+    body: screenBodies.input,
+    invalidBody: 400,
+  },
 ]
 
 /** `PUT /api/privacy` body: `{ mode, model? }`, nothing else. */
@@ -220,6 +362,7 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
   machineId: string
   access: MachineAccess
   privacy: DeskPrivacy
+  features: string[]
 }> {
   const self = await machine()
   const approvalModes: MobileProfile.ApprovalMode[] =
@@ -228,7 +371,17 @@ export async function capabilities(privacy: DeskPrivacy = NO_PRIVACY): Promise<{
       : self.access === "trusted" && (await allowAutoAll())
         ? ["ask", "edits", "all"]
         : ["ask", "edits"]
-  return { v: 1, approvalModes, defaultApproval: "edits", machineId: self.id, access: self.access, privacy }
+  const features: string[] = [...FEATURES]
+  if (await RunnerBrowser.available()) features.push("browser")
+  return {
+    v: 1,
+    approvalModes,
+    defaultApproval: "edits",
+    machineId: self.id,
+    access: self.access,
+    privacy,
+    features,
+  }
 }
 
 /** The mode a request asks for (`X-Redrob-Approval`, any case); `ask` when missing or unknown. */
@@ -354,7 +507,7 @@ function sessionModel(body: unknown): string {
 }
 
 /** Session list events, forwarded for every session so the phone's list stays current. */
-const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted"])
+const LIST_EVENTS = new Set(["session.created", "session.updated", "session.deleted", "routine.wait"])
 /** Events after which the machine's running-session or approval count may differ. */
 const ACTIVITY_EVENTS = new Set([
   "permission.v2.asked",
@@ -365,6 +518,18 @@ const ACTIVITY_EVENTS = new Set([
   "session.deleted",
 ])
 const COALESCE_MS = 100
+
+/** The engine's file watcher event (`{ file, event: "add" | "change" | "unlink" }`), passed on as is. */
+const WATCHER_EVENT = "file.watcher.updated"
+
+/** The absolute file a watcher event names; undefined when it names none. */
+function watchedFile(event: BusEvent): string | undefined {
+  const file = event.data?.file
+  if (typeof file !== "string" || file.length === 0) return undefined
+  if (path.isAbsolute(file)) return path.resolve(file)
+  const directory = (event as { location?: { directory?: unknown } }).location?.directory
+  return typeof directory === "string" ? path.resolve(directory, file) : undefined
+}
 /**
  * A device connecting warms the daemon's default location (`GET /api/model`), at most this often.
  * A cold location loads its model catalog, console `/models` included, on the first prompt and
@@ -384,18 +549,19 @@ export type Request = { readonly method: Method; readonly path: string; readonly
 /** The status for a request `match` refused: 400 when only its body broke a route's `invalidBody` rule. */
 export function refusal(request: Request): 400 | 403 {
   if (typeof request.path !== "string") return 403
-  const bad = ROUTES.some(
-    (route) => route.invalidBody && route.method === request.method && route.path.test(request.path),
-  )
+  const mark = request.path.indexOf("?")
+  const pathname = mark >= 0 ? request.path.slice(0, mark) : request.path
+  const bad = ROUTES.some((route) => route.invalidBody && route.method === request.method && route.path.test(pathname))
   return bad ? 400 : 403
 }
 
 export function match(request: Request): { route: Route; sessionID?: string; params: string[] } | undefined {
-  if (request.method !== "GET" && request.method !== "POST" && request.method !== "PUT") return undefined
+  if (request.method !== "GET" && request.method !== "POST" && request.method !== "PUT" && request.method !== "DELETE")
+    return undefined
   if (typeof request.path !== "string" || request.path.length > 2048 || !request.path.startsWith("/")) return undefined
   const mark = request.path.indexOf("?")
   const pathname = mark >= 0 ? request.path.slice(0, mark) : request.path
-  if (request.method === "GET" && request.body !== undefined) return undefined
+  if ((request.method === "GET" || request.method === "DELETE") && request.body !== undefined) return undefined
   for (const route of ROUTES) {
     if (route.method !== request.method) continue
     const found = route.path.exec(pathname)
@@ -418,7 +584,14 @@ export type Link = {
   timer?: ReturnType<typeof setTimeout>
   /** When the last `evts` went out; an event after a quiet spell is sent at once. */
   flushed?: number
+  /** Work folders the device opened files, search or a terminal in: their `file.watcher.updated` events go to it. */
+  watching?: Set<string>
+  /** Its open terminal streams (stream.ts). */
+  streams?: Streams
 }
+
+/** A work folder a device watches at most this many of; the oldest is dropped. */
+const MAX_WATCHING = 32
 
 export type Notify = (kind: "done" | "approval", sessionId: string) => Promise<void>
 
@@ -431,6 +604,10 @@ export class Forwarder {
   private readonly attachments = new Map<string, Map<string, Attachment>>()
   /** Permission requests asked on the bus and not answered yet, for `desk.machine`. */
   private readonly asked = new Set<string>()
+  /** The work folders of sessions here: the only folders the file, find, command and terminal routes reach. */
+  readonly roots: Roots
+  /** The chat's skills, written per session (skills.ts). */
+  readonly skills = new SessionSkills()
   private abort?: AbortController
 
   constructor(
@@ -439,7 +616,9 @@ export class Forwarder {
     private readonly log: (message: string) => void,
     /** Called when a turn or a permission request may have started or ended (`desk.machine`). */
     private readonly onActivity: () => void = () => {},
-  ) {}
+  ) {
+    this.roots = new Roots(daemon)
+  }
 
   /** Permission requests waiting for an answer, as far as the bus has said since the forwarder started. */
   approvals(): number {
@@ -465,7 +644,144 @@ export class Forwarder {
 
   unlink(link: Link): void {
     if (link.timer) clearTimeout(link.timer)
+    link.streams?.closeAll()
+    forgetScreen(link)
     this.links.delete(link)
+  }
+
+  /** The device now works in this folder: send it the folder's file changes. */
+  private watch(link: Link, root: string): void {
+    link.watching ??= new Set()
+    link.watching.delete(root)
+    link.watching.add(root)
+    if (link.watching.size > MAX_WATCHING) link.watching.delete(link.watching.values().next().value!)
+  }
+
+  /**
+   * A route with `root`: `?directory=` must be a session's work folder and `?workspace=` is not
+   * passed (it would route elsewhere). The folder, or undefined to refuse with 403.
+   */
+  private async root(request: Request): Promise<string | undefined> {
+    const query = queryOf(request.path)
+    if (query.has("workspace") || query.getAll("directory").length !== 1) return undefined
+    const root = await this.roots.root(query.get("directory"))
+    if (!root) return undefined
+    // A terminal's start folder must be inside it too.
+    const cwd = (request.body as { cwd?: unknown } | undefined)?.cwd
+    if (request.method === "POST" && cwd !== undefined) {
+      const inside = absolute(cwd)
+      if (!inside || !within(root, inside)) return undefined
+      const [realRoot, realCwd] = await Promise.all([
+        realpath(root).catch(() => root),
+        realpath(inside).catch(() => undefined),
+      ])
+      if (!realCwd || !within(realRoot, realCwd)) return undefined
+    }
+    return root
+  }
+
+  /** `{ t: "stream", ... }` from a device (stream.ts). */
+  private async stream(link: Link, value: Record<string, unknown>): Promise<void> {
+    const sid = value.sid
+    if (typeof sid !== "number" || !Number.isInteger(sid) || sid < 0) return
+    if (value.op !== "open") return link.streams?.input(sid, value.op, value.data)
+    const refuse = (status: number) => link.send({ t: "stream", op: "open", sid, status })
+    const self = await machine()
+    if (value.machineId !== undefined && value.machineId !== self.id) return refuse(421)
+    if (self.access === "read_only") return refuse(403)
+    const path = typeof value.path === "string" && value.path.length <= 2048 ? value.path : ""
+    const mark = path.indexOf("?")
+    const pathname = mark >= 0 ? path.slice(0, mark) : path
+    if (!STREAMS.some((pattern) => pattern.test(pathname))) return refuse(403)
+    const root = await this.root({ method: "GET", path })
+    if (!root) return refuse(403)
+    // Only what the PTY route reads: the folder and the replay cursor.
+    const query = queryOf(path)
+    const cursor = query.get("cursor")
+    if ([...query.keys()].some((key) => key !== "directory" && key !== "cursor")) return refuse(403)
+    if (cursor !== null && !/^-?\d{1,15}$/.test(cursor)) return refuse(400)
+    this.watch(link, root)
+    link.streams ??= new Streams(this.daemon, (message) => link.send(message))
+    const status = await link.streams.start(sid, path)
+    await refuse(status)
+  }
+
+  /**
+   * Session create with code-work fields (contract 2.2): `branch` / `repo` put the session in a
+   * worktree (worktree.ts), `skills` in its own skill folder (skills.ts). Both are taken out of the
+   * body the daemon gets. Returns the body, extra response headers, a status to answer instead, and
+   * what to do once the daemon answered.
+   */
+  private async codeWork(body: unknown): Promise<{
+    body: unknown
+    headers: Record<string, string>
+    refuse?: { status: number; body?: unknown }
+    after?: (ok: boolean, created: string | undefined) => Promise<void>
+  }> {
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return { body, headers: {} }
+    const { branch, repo, skills: rawSkills, ...rest } = body as Record<string, unknown>
+    if (branch === undefined && repo === undefined && rawSkills === undefined) return { body, headers: {} }
+    let skills: PushedSkill[]
+    try {
+      skills = parseSkills(rawSkills)
+    } catch (error) {
+      if (error instanceof SkillsError) return { body, headers: {}, refuse: { status: error.status, body: error.body } }
+      throw error
+    }
+    const missing = this.skills.missing(skills)
+    if (missing.length > 0) return { body, headers: {}, refuse: { status: 409, body: { missingSkills: missing } } }
+
+    const location = (rest.location ?? {}) as { directory?: unknown; workspaceID?: unknown }
+    const headers: Record<string, string> = {}
+    let directory = typeof location.directory === "string" ? location.directory : undefined
+    let fresh = false
+    if (branch !== undefined || repo !== undefined) {
+      try {
+        const worktree = await prepare({ branch, repo, directory })
+        directory = worktree.directory
+        fresh = worktree.created
+        this.roots.add(worktree.directory)
+        headers["X-Redrob-Worktree"] = worktree.directory
+        headers["X-Redrob-Branch"] = worktree.branch
+      } catch (error) {
+        if (error instanceof WorktreeError)
+          return { body, headers: {}, refuse: { status: error.status, body: { reason: error.message } } }
+        throw error
+      }
+      rest.location = { ...location, directory }
+    }
+    if (skills.length === 0) return { body: rest, headers }
+    if (!directory) return { body, headers: {}, refuse: { status: 400, body: { reason: "skills need a location directory" } } }
+    // The folder is per session, so the id is known before the daemon makes the session.
+    const sessionID = typeof rest.id === "string" ? rest.id : SessionID.create()
+    rest.id = sessionID
+    await this.skills.write(directory, sessionID, skills)
+    headers["X-Redrob-Skills"] = String(skills.length)
+    const work = directory
+    return {
+      body: rest,
+      headers,
+      after: async (ok) => {
+        if (!ok) {
+          await this.skills.remove(sessionID)
+          return
+        }
+        // A folder whose location was open already keeps the skills it read; reopen it when idle.
+        if (!fresh) await this.reopen(work).catch(() => undefined)
+      },
+    }
+  }
+
+  /** Reopen a folder's location so it reads its skills again, unless a turn runs there. */
+  private async reopen(directory: string): Promise<void> {
+    const active = await this.daemon.raw("GET", "/api/session/active")
+    const running = Object.keys(((active.body as { data?: unknown } | undefined)?.data ?? {}) as object)
+    for (const id of running) {
+      const session = await this.daemon.raw("GET", `/api/session/${encodeURIComponent(id)}`).catch(() => undefined)
+      const where = (session?.body as { data?: { location?: { directory?: unknown } } } | undefined)?.data?.location
+      if (where?.directory === directory) return
+    }
+    await this.daemon.raw("POST", `/instance/dispose?${new URLSearchParams({ directory })}`)
   }
 
   /** Whether any connected phone is watching this session right now. */
@@ -485,6 +801,7 @@ export class Forwarder {
       link.subscriptions = new Set(sessions.slice(0, 200))
       return
     }
+    if (value.t === "stream") return this.stream(link, value)
     if (value.t !== "req" || typeof value.id !== "number" || !Number.isInteger(value.id)) return
     const id = value.id
     const self = await machine()
@@ -495,30 +812,56 @@ export class Forwarder {
     const allowed = match(request)
     if (!allowed) return link.send({ t: "res", id, status: refusal(request) })
     // A read-only machine answers reads only (and POSTs that change nothing, like masking a text).
-    if (self.access === "read_only" && request.method !== "GET" && !allowed.route.readOnly) {
+    if (
+      self.access === "read_only" &&
+      ((request.method !== "GET" && !allowed.route.readOnly) || allowed.route.writes)
+    ) {
       return link.send({ t: "res", id, status: 403, headers: { "X-Redrob-Machine-Access": self.access } })
     }
 
     const { route, sessionID } = allowed
+    if (route.root) {
+      const root = await this.root(request)
+      if (!root) return link.send({ t: "res", id, status: 403 })
+      this.watch(link, root)
+    }
+    if (route.local === "file" && route.file) {
+      const result = await fileRequest(this.roots, route.file, request.path, request.body)
+      const folder = (request.body as { directory?: unknown } | undefined)?.directory ?? queryOf(request.path).get("directory")
+      const root = result.status < 300 && folder ? await this.roots.root(folder) : undefined
+      if (root) this.watch(link, root)
+      return link.send({ t: "res", id, ...result })
+    }
+    if (route.local === "skills") return link.send({ t: "res", id, status: 200, body: { v: 1, skills: this.skills.list() } })
     if (route.local === "capabilities")
       return link.send({ t: "res", id, status: 200, body: await capabilities(await this.privacy()) })
     if (route.local === "attachment")
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
     if (route.local === "files" && route.files)
       return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
+    if (route.local === "routine" && route.routine)
+      return link.send({ t: "res", id, ...(await this.routine(route.routine, allowed.params, request)) })
+    if (route.local === "screen" && route.screen)
+      return link.send({ t: "res", id, ...(await screenRequest(route.screen, link, request.body)) })
     if (route.local === "models") {
       const models = await this.models()
       return link.send({ t: "res", id, ...(models ? { status: 200, body: { v: 1, models } } : { status: 503 }) })
     }
+    // Session create may ask for a worktree and the chat's skills; the daemon gets the body without them.
+    const work = route.mark === "created" ? await this.codeWork(request.body) : undefined
+    if (work?.refuse) return link.send({ t: "res", id, ...work.refuse })
+    const forwarded = work ? { ...request, body: work.body } : request
     const requested = route.mark ? requestedMode(value.headers) : undefined
     const mode = requested ? await appliedMode(requested, self.access) : "ask"
     const wantedModel = route.mark ? requestedModel(value.headers) : undefined
-    const model = wantedModel !== undefined ? await this.applyModel(route, sessionID, request, wantedModel) : undefined
+    const model =
+      wantedModel !== undefined ? await this.applyModel(route, sessionID, forwarded, wantedModel) : undefined
     const headers = {
       ...(requested && requested !== mode ? { "X-Redrob-Approval-Applied": mode } : {}),
       ...(model ? { "X-Redrob-Model-Applied": model.applied } : {}),
+      ...work?.headers,
     }
-    const body = model?.body !== undefined ? model.body : request.body
+    const body = model?.body !== undefined ? model.body : forwarded.body
     const extra = Object.keys(headers).length > 0 ? { headers } : {}
     if (route.mark === "named" && sessionID) this.mark(link, sessionID, mode)
     const result = await this.daemon.raw(request.method, request.path, body).catch((error: unknown) => {
@@ -529,6 +872,14 @@ export class Forwarder {
     if (ok && route.mark === "created") {
       const created = (result.body as { data?: { id?: unknown } } | undefined)?.data?.id
       if (typeof created === "string") this.mark(link, created, mode)
+      const where = (result.body as { data?: { location?: { directory?: unknown } } } | undefined)?.data?.location
+      if (typeof where?.directory === "string") this.roots.add(where.directory)
+    }
+    if (work?.after) {
+      const created = (result.body as { data?: { id?: unknown } } | undefined)?.data?.id
+      await work.after(ok, typeof created === "string" ? created : undefined).catch((error: unknown) =>
+        this.log(`code work setup failed: ${error instanceof Error ? error.message : String(error)}`),
+      )
     }
     if (ok && route.prompt && sessionID) this.watchTurn(sessionID)
     // A stop may leave no step.ended behind; the phone's stop must still end the turn.
@@ -619,6 +970,27 @@ export class Forwarder {
     return { applied: sessionModel(current?.body) }
   }
 
+  /** `/desk/routine*` and `/desk/snapshot/*` (routine.ts). */
+  private async routine(
+    action: NonNullable<Route["routine"]>,
+    params: string[],
+    request: Request,
+  ): Promise<{ status: number; body?: unknown }> {
+    const [target = ""] = params
+    const run =
+      action === "list"
+        ? listRoutines(this.daemon, request.path)
+        : action === "stop"
+          ? stopRoutine(this.daemon, target)
+          : action === "revert"
+            ? revertWork(this.daemon, target, request.body)
+            : unrevertWork(this.daemon, target)
+    return run.catch((error: unknown) => {
+      this.log(`desk ${action} failed: ${error instanceof Error ? error.message : String(error)}`)
+      return { status: 502 }
+    })
+  }
+
   /** `GET /desk/attachment/:sessionID/:id`: a piece of an announced attachment, 404 for anything else. */
   async attachment(params: string[], path: string): Promise<{ status: number; body?: unknown }> {
     const [sessionID, attachmentID] = params
@@ -687,6 +1059,13 @@ export class Forwarder {
     if (this.abort) return
     const abort = new AbortController()
     this.abort = abort
+    // Skill folders of sessions deleted while the desk was off.
+    void this.skills
+      .sweep(async (id) => {
+        const result = await this.daemon.raw("GET", `/api/session/${encodeURIComponent(id)}`)
+        return result.status !== 404
+      })
+      .catch(() => undefined)
     void (async () => {
       let delay = 1_000
       while (!abort.signal.aborted) {
@@ -707,6 +1086,12 @@ export class Forwarder {
   }
 
   private onEvent(event: BusEvent): void {
+    // A routine change reaches every device as `routine.wait`: the wait block and the schedule list follow it.
+    if (event.type === "routine.updated") {
+      const wait = routineEvent(event.data)
+      if (wait) this.onEvent(wait)
+      return
+    }
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
     const permission = event.type.startsWith("permission.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
@@ -722,9 +1107,18 @@ export class Forwarder {
     ) {
       void this.notify("approval", sessionID).catch(() => undefined)
     }
+    if (event.type === "session.deleted" && sessionID)
+      void this.skills.remove(sessionID).catch((error: unknown) =>
+        this.log(`skill folder cleanup failed: ${error instanceof Error ? error.message : String(error)}`),
+      )
+    // A file changed in a work folder: to the devices working in that folder (the file panel).
+    const changed = event.type === WATCHER_EVENT ? watchedFile(event) : undefined
     for (const link of this.links) {
       const wanted =
-        permission || LIST_EVENTS.has(event.type) || (sessionID !== undefined && link.subscriptions.has(sessionID))
+        permission ||
+        LIST_EVENTS.has(event.type) ||
+        (sessionID !== undefined && link.subscriptions.has(sessionID)) ||
+        (changed !== undefined && [...(link.watching ?? [])].some((root) => within(root, changed)))
       if (!wanted) continue
       link.queue.push(event)
       if (link.timer) continue

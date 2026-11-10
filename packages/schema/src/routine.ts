@@ -32,11 +32,23 @@ export const ScheduleTrigger = Schema.Struct({
   timezone: optional(Schema.String).annotate({ description: "IANA time zone the cron expression is read in" }),
 }).annotate({ identifier: "RoutineTriggerSchedule" })
 
-/** Poll a subject and wake only when it changes. Only GitHub pull requests for now. */
+/** What a watch polls. */
+export const WatchKind = Schema.Literals(["github_pr", "ci_run", "url", "command"]).annotate({
+  identifier: "RoutineWatchKind",
+})
+export type WatchKind = typeof WatchKind.Type
+
+/**
+ * Poll a subject and wake only when it changes: a GitHub pull request (`github_pr`), a GitHub
+ * Actions run (`ci_run`), an HTTP URL's status (`url`), or a shell command's result (`command`).
+ */
 export const WatchTrigger = Schema.Struct({
   type: Schema.Literal("watch"),
-  kind: Schema.Literal("github_pr"),
-  url: Schema.String.annotate({ description: "Full pull request URL" }),
+  kind: WatchKind,
+  url: optional(Schema.String).annotate({
+    description: "github_pr: pull request URL; ci_run: Actions run URL; url: the http(s) URL to poll",
+  }),
+  command: optional(Schema.String).annotate({ description: "command: the shell command to run each poll" }),
   interval: optional(PositiveInt).annotate({ description: "Seconds between polls (default 300, min 60)" }),
 }).annotate({ identifier: "RoutineTriggerWatch" })
 

@@ -1,5 +1,10 @@
 import { LayerNode } from "@redrob-code/core/effect/layer-node"
 import path from "path"
+import { stat } from "node:fs/promises"
+import { Global } from "@redrob-code/core/global"
+import { Glob } from "@redrob-code/core/util/glob"
+import { ConfigMarkdown } from "@/config/markdown"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
 import type { InstanceContext } from "@/project/instance-context"
@@ -53,6 +58,66 @@ export interface Interface {
   readonly list: () => Effect.Effect<Info[]>
 }
 
+const CLAUDE_COMMANDS = path.join(".claude", "commands")
+
+/** The `.claude/commands` folders that apply here: the home folder's, then each one from the project root down. */
+async function claudeCommandDirs(directory: string, worktree: string): Promise<string[]> {
+  const dirs: string[] = []
+  const isDir = (dir: string) =>
+    stat(dir)
+      .then((info) => info.isDirectory())
+      .catch(() => false)
+  const home = path.join(Global.Path.home, CLAUDE_COMMANDS)
+  if (await isDir(home)) dirs.push(home)
+  const project: string[] = []
+  let current = path.resolve(directory)
+  const stop = path.resolve(worktree)
+  for (;;) {
+    const dir = path.join(current, CLAUDE_COMMANDS)
+    if (dir !== home && (await isDir(dir))) project.unshift(dir)
+    if (current === stop) break
+    const parent = path.dirname(current)
+    // Not inside the worktree (or no worktree): only the directory itself.
+    if (parent === current || !stop || !current.startsWith(stop)) break
+    current = parent
+  }
+  return [...dirs, ...project]
+}
+
+/**
+ * Claude Code command files: `<name>.md` (in subfolders too; the folder only groups them), the body
+ * is the prompt with `$ARGUMENTS` / `$1`.., the frontmatter may give `description`. Without one the
+ * first line of the body describes it. A later folder (closer to the directory) wins.
+ */
+export async function claudeCommands(directory: string, worktree: string): Promise<Info[]> {
+  const found = new Map<string, Info>()
+  for (const dir of await claudeCommandDirs(directory, worktree)) {
+    const files = await Glob.scan("**/*.md", { cwd: dir, absolute: true, include: "file", symlink: true }).catch(
+      () => [] as string[],
+    )
+    for (const file of files.toSorted()) {
+      const md = await ConfigMarkdown.parse(file).catch(() => undefined)
+      if (!md) continue
+      const name = path.basename(file, path.extname(file))
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(name)) continue
+      const template = md.content.trim()
+      const data = (md.data ?? {}) as { description?: unknown }
+      const description =
+        typeof data.description === "string" && data.description.trim()
+          ? data.description.trim()
+          : template.split("\n")[0]?.replace(/^#+\s*/, "").trim().slice(0, 200) || undefined
+      found.set(name, {
+        name,
+        ...(description ? { description } : {}),
+        source: "command",
+        template,
+        hints: hints(template),
+      })
+    }
+  }
+  return [...found.values()]
+}
+
 export class Service extends Context.Service<Service, Interface>()("@redrob/Command") {}
 
 const layer = Layer.effect(
@@ -61,6 +126,7 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const mcp = yield* MCP.Service
     const skill = yield* Skill.Service
+    const flags = yield* RuntimeFlags.Service
 
     const init = Effect.fn("Command.state")(function* (ctx: InstanceContext) {
       const cfg = yield* config.get()
@@ -99,6 +165,15 @@ const layer = Layer.effect(
           },
           subtask: command.subtask,
           hints: hints(command.template),
+        }
+      }
+
+      // Claude Code command files (`.claude/commands/*.md`), under the home folder and the project.
+      // A command redrob's own config defines keeps its definition.
+      if (!flags.disableClaudeCodeCommands) {
+        for (const command of yield* Effect.promise(() => claudeCommands(ctx.directory, ctx.worktree))) {
+          if (commands[command.name]) continue
+          commands[command.name] = command
         }
       }
 
@@ -172,6 +247,10 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: () => [Config.node, MCP.node, Skill.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: () => [Config.node, MCP.node, Skill.node, RuntimeFlags.node],
+})
 
 export * as Command from "."

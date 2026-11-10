@@ -11,6 +11,9 @@ import { FSUtil } from "@redrob-code/core/fs-util"
 import { ModelV2 } from "@redrob-code/core/model"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { AbsolutePath } from "@redrob-code/core/schema"
+import { Global } from "@redrob-code/core/global"
+import { Location } from "@redrob-code/core/location"
+import { location } from "../fixture/location"
 import { tmpdir } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
 import { host } from "../plugin/host"
@@ -76,6 +79,59 @@ Review files`,
             CommandV2.Info.make({ name: "empty", template: "" }),
             CommandV2.Info.make({ name: "nested/docs", template: "Write docs" }),
           ])
+        }),
+      ),
+    ),
+  )
+
+  it.live("reads Claude Code .claude/commands, with redrob config winning a shared name", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "repo")
+          const home = path.join(tmp.path, "home")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.join(project, ".claude", "commands", "frontend"), { recursive: true })
+            await fs.mkdir(path.join(home, ".claude", "commands"), { recursive: true })
+            await fs.writeFile(
+              path.join(project, ".claude", "commands", "fix-issue.md"),
+              "---\ndescription: Fix a GitHub issue\nargument-hint: <number>\n---\nFix issue #$ARGUMENTS.",
+            )
+            await fs.writeFile(path.join(project, ".claude", "commands", "frontend", "component.md"), "# Make one\nMake $1.")
+            await fs.writeFile(path.join(project, ".claude", "commands", "review.md"), "Claude review")
+            await fs.writeFile(path.join(home, ".claude", "commands", "standup.md"), "Write my standup.")
+          })
+
+          const command = yield* CommandV2.Service
+          yield* ConfigCommandPlugin.Plugin.effect(host({ command: { ...command, reload: command.reload } })).pipe(
+            Effect.provideService(
+              Config.Service,
+              Config.Service.of({
+                entries: () =>
+                  Effect.succeed([
+                    new Config.Document({
+                      type: "document",
+                      info: decode({ commands: { review: { template: "Inline review" } } }),
+                    }),
+                  ]),
+              }),
+            ),
+            Effect.provideService(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(project) }))),
+            Effect.provideService(Global.Service, Global.Service.of({ ...Global.Path, home })),
+          )
+
+          const list = yield* command.list()
+          expect(list.find((item) => item.name === "fix-issue")).toEqual(
+            CommandV2.Info.make({ name: "fix-issue", template: "Fix issue #$ARGUMENTS.", description: "Fix a GitHub issue" }),
+          )
+          expect(list.find((item) => item.name === "component")).toEqual(
+            CommandV2.Info.make({ name: "component", template: "# Make one\nMake $1.", description: "Make one" }),
+          )
+          expect(list.find((item) => item.name === "standup")?.template).toBe("Write my standup.")
+          expect(list.find((item) => item.name === "review")?.template).toBe("Inline review")
         }),
       ),
     ),

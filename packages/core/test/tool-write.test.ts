@@ -15,6 +15,7 @@ import { SessionV2 } from "@redrob-code/core/session"
 import { ToolRegistry } from "@redrob-code/core/tool/registry"
 import { ToolOutputStore } from "@redrob-code/core/tool-output-store"
 import { WriteTool } from "@redrob-code/core/tool/write"
+import { ReadStamps } from "@redrob-code/core/tool/stamps"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
@@ -278,6 +279,63 @@ describe("WriteTool", () => {
         Effect.promise(() =>
           Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()]).then(() => undefined),
         ),
+    ),
+  )
+
+  it.live("refuses to overwrite a file someone changed after the agent read it", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        ReadStamps.forget()
+        const file = path.join(tmp.path, "shared.txt")
+        return Effect.gen(function* () {
+          yield* Effect.promise(() => fs.writeFile(file, "agent saw this"))
+          const canonical = yield* Effect.promise(() => fs.realpath(file))
+          yield* ReadStamps.record(sessionID, canonical)
+          // The person saves the file in the editor after the agent read it.
+          yield* Effect.promise(() => Bun.sleep(5))
+          yield* Effect.promise(() => fs.writeFile(file, "the person's edit, longer"))
+          const refused = yield* withTool(tmp.path, (registry) =>
+            executeTool(registry, call({ path: "shared.txt", content: "agent overwrite" })),
+          )
+          expect(refused).toEqual({ type: "error", value: WriteTool.changedMessage("shared.txt") })
+          expect(yield* Effect.promise(() => fs.readFile(file, "utf8"))).toBe("the person's edit, longer")
+
+          // After reading it again the write goes through, and a second write needs no new read.
+          yield* ReadStamps.record(sessionID, canonical)
+          for (const [id, content] of [
+            ["call-1", "agent v1"],
+            ["call-2", "agent v2"],
+          ] as const) {
+            const wrote = yield* withTool(tmp.path, (registry) =>
+              executeTool(registry, call({ path: "shared.txt", content }, id)),
+            )
+            expect(wrote).toEqual({ type: "text", value: "Wrote file successfully: shared.txt" })
+          }
+          expect(yield* Effect.promise(() => fs.readFile(file, "utf8"))).toBe("agent v2")
+        })
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("writes a file the agent never read, as before", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        ReadStamps.forget()
+        return Effect.promise(() => fs.writeFile(path.join(tmp.path, "unread.txt"), "before")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) => executeTool(registry, call({ path: "unread.txt", content: "after" }))),
+          ),
+          Effect.tap((result) =>
+            Effect.sync(() => expect(result).toEqual({ type: "text", value: "Wrote file successfully: unread.txt" })),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )
 })

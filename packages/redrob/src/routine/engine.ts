@@ -87,37 +87,41 @@ const layer = Layer.effect(
       }
 
       const interval = Duration.seconds(trigger.interval ?? Routine.DEFAULT_WATCH_INTERVAL)
-      let before = RoutineWatch.parseFingerprint(routine.fingerprint)
+      const target = RoutineWatch.subject(trigger)
+      if (typeof target === "string") {
+        yield* store.record(routine.info.id, { status: "stopped", reason: target })
+        return undefined
+      }
+      let before = routine.fingerprint
       let first = before === undefined
       while (true) {
         // The first read only records where the subject stands; it is not a change.
         if (!first) yield* Effect.sleep(interval)
-        const read = yield* RoutineWatch.readPullRequest(trigger.url, routine.directory).pipe(Effect.option)
+        const read = yield* RoutineWatch.observe(target, routine.directory).pipe(Effect.option)
         if (Option.isNone(read)) {
-          yield* Effect.logWarning("routine watch read failed", { id: routine.info.id, url: trigger.url })
+          yield* Effect.logWarning("routine watch read failed", { id: routine.info.id, kind: target.kind })
           first = false
           continue
         }
         const after = read.value
-        const fingerprint = RoutineWatch.fingerprint(after)
         if (first) {
           first = false
-          before = after
-          yield* store.record(routine.info.id, { fingerprint })
-          if (RoutineWatch.isFinished(after)) {
+          before = after.fingerprint
+          yield* store.record(routine.info.id, { fingerprint: after.fingerprint })
+          if (after.finished) {
             yield* store.record(routine.info.id, {
               status: "done",
-              reason: `The pull request is already ${after.state}.`,
+              reason: `${RoutineWatch.label(target)} is already ${after.state}.`,
             })
             return undefined
           }
           continue
         }
-        if (before && fingerprint === RoutineWatch.fingerprint(before)) continue
-        const change = RoutineWatch.describeChange(before, after)
-        before = after
-        yield* store.record(routine.info.id, { fingerprint })
-        return { wake: { type: "watch", change } as const, finished: RoutineWatch.isFinished(after) }
+        if (after.fingerprint === before) continue
+        const change = RoutineWatch.describe(target, before, after)
+        before = after.fingerprint
+        yield* store.record(routine.info.id, { fingerprint: after.fingerprint })
+        return { wake: { type: "watch", change } as const, finished: after.finished }
       }
     })
 
@@ -189,7 +193,7 @@ const layer = Layer.effect(
                 : verdict.type === "exhausted"
                   ? { status: "stopped", reason: `Reached the limit of ${routine.info.maxCycles} cycles.` }
                   : woke.finished
-                    ? { status: "done", reason: "The watched pull request is merged or closed." }
+                    ? { status: "done", reason: "The watched subject finished (merged, closed or completed)." }
                     : {}
 
         // Written before the next wait, not only at the end: the cycle that crashes is the one worth remembering.

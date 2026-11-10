@@ -1,6 +1,7 @@
 export * as Snapshot from "./snapshot"
 
 import { makeLocationNode } from "./effect/app-node"
+import os from "os"
 import path from "path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Config } from "./config"
@@ -92,9 +93,11 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const location = yield* Location.Service
     const source = yield* git.repo.discover(location.project.directory)
+    // A folder with no git repository (documents, downloads) is snapshotted as the opened folder
+    // itself. Its project directory is the file system root, which must never be tracked.
     const worktree = source
       ? AbsolutePath.make(yield* fs.realPath(source.worktree).pipe(Effect.orDie))
-      : location.project.directory
+      : location.directory
     const gitDirectory = AbsolutePath.make(path.join(global.data, "snapshot", location.project.id, Hash.fast(worktree)))
 
     const scope = Effect.fnUntraced(function* () {
@@ -105,7 +108,8 @@ const layer = Layer.effect(
     })
 
     const repository = Effect.fnUntraced(function* () {
-      if (!source) return yield* new Error({ operation: "capture", message: "Project is not a Git repository" })
+      if (!source && !trackableFolder(worktree))
+        return yield* new Error({ operation: "capture", message: "This folder is too broad to snapshot" })
       if (yield* fs.existsSafe(path.join(gitDirectory, "HEAD")))
         return new Git.Repository({
           worktree,
@@ -116,13 +120,13 @@ const layer = Layer.effect(
         .create({
           worktree,
           gitDirectory,
-          seed: source,
+          ...(source ? { seed: source } : {}),
         })
         .pipe(Effect.mapError((cause) => failure("capture", cause)))
     })
 
     const enabled = Effect.fnUntraced(function* () {
-      if (location.vcs?.type !== "git") return false
+      if (location.vcs?.type !== "git" && (source || !trackableFolder(worktree))) return false
       return Config.latest(yield* config.entries(), "snapshots") !== false
     })
 
@@ -226,6 +230,17 @@ const layer = Layer.effect(
     return Service.of({ capture, files, diff, preview, restore, checkout })
   }),
 )
+
+/**
+ * PURE. Whether a folder with no git repository may be snapshotted: anything but a file system
+ * root, the home folder, or a folder that holds it. Those would copy a whole disk on every step.
+ */
+export function trackableFolder(folder: string, home = os.homedir()): boolean {
+  const resolved = path.resolve(folder)
+  if (path.parse(resolved).root === resolved) return false
+  const relative = path.relative(resolved, path.resolve(home))
+  return relative !== "" && (relative.startsWith("..") || path.isAbsolute(relative))
+}
 
 export const locationLayer = layer.pipe(Layer.provideMerge(Config.locationLayer))
 

@@ -425,8 +425,10 @@ export class DeskRelay {
 
   async approve(code: string): Promise<Device> {
     const { request, device } = await this.pairing.approve(code)
-    const peer = this.peers.get(request.peerId)
-    if (peer && peer.deviceId === request.deviceId && !peer.channel) await this.accept(peer)
+    // A browser tab can say hello from two relay sockets with one device key; the request keeps only
+    // the last peer, so accept every waiting peer of this device, not just that one.
+    for (const peer of [...this.peers.values()])
+      if (peer.deviceId === request.deviceId && !peer.channel) await this.accept(peer)
     return device
   }
 

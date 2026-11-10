@@ -13,6 +13,7 @@ import { FileMutation } from "../file-mutation"
 import { LocationMutation } from "../location-mutation"
 import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
+import { ReadStamps } from "./stamps"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
@@ -34,6 +35,10 @@ export const Output = Schema.Struct({
   existed: Schema.Boolean,
 })
 export type Output = typeof Output.Type
+
+/** The refusal when the file changed after the agent last read it. */
+export const changedMessage = (file: string) =>
+  `${file} changed since you last read it (someone else edited it). Read it again, then write your change on top of the current content.`
 
 export const toModelOutput = (output: Output) =>
   `${output.existed ? "Wrote" : "Created"} file successfully: ${output.resource}`
@@ -84,8 +89,17 @@ const layer = Layer.effectDiscard(
                   agent: context.agent,
                   source,
                 })
-                return yield* files.writeTextPreservingBom({ target, content: input.content })
-              }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to write ${input.path}` }))),
+                // Someone changed the file since the agent read it: do not overwrite their change.
+                if (!(yield* ReadStamps.unchanged(context.sessionID, target.canonical)))
+                  return yield* new ToolFailure({ message: changedMessage(input.path) })
+                const result = yield* files.writeTextPreservingBom({ target, content: input.content })
+                yield* ReadStamps.record(context.sessionID, target.canonical)
+                return result
+              }).pipe(
+                Effect.mapError((error) =>
+                  error instanceof ToolFailure ? error : new ToolFailure({ message: `Unable to write ${input.path}` }),
+                ),
+              ),
           }),
           "edit",
         ),

@@ -414,6 +414,9 @@ export type AssistantMessage = {
   cost: number
   routedModel?: string
   upstreamProvider?: string
+  masked?: {
+    [key: string]: number
+  }
   tokens: {
     total?: number
     input: number
@@ -722,13 +725,13 @@ export type RoutineTriggerSchedule = {
   timezone?: string
 }
 
+export type RoutineWatchKind = "github_pr" | "ci_run" | "url" | "command"
+
 export type RoutineTriggerWatch = {
   type: "watch"
-  kind: "github_pr"
-  /**
-   * Full pull request URL
-   */
-  url: string
+  kind: RoutineWatchKind
+  url?: string
+  command?: string
   interval?: number
 }
 
@@ -2184,6 +2187,7 @@ export type Config = {
   memory?: {
     budget?: number
   }
+  privacy?: ConfigV2Privacy
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -4321,6 +4325,11 @@ export type ConfigV2ReferenceLocal = {
   path: string
   description?: string
   hidden?: boolean
+}
+
+export type ConfigV2Privacy = {
+  mask_pii?: "off" | "regex" | "model"
+  model?: string
 }
 
 export type PolicyEffect = "allow" | "deny"
