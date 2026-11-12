@@ -106,11 +106,13 @@ export async function startDeviceLogin(issuer: string): Promise<DeviceAuthorizat
   const deviceCode = typeof b.device_code === "string" ? b.device_code : ""
   const userCode = typeof b.user_code === "string" ? b.user_code : ""
   const verificationUri = typeof b.verification_uri === "string" ? b.verification_uri : ""
-  if (!deviceCode || !userCode || !verificationUri) throw new AuthError("invalid_response", "incomplete device authorization")
+  if (!deviceCode || !userCode || !verificationUri)
+    throw new AuthError("invalid_response", "incomplete device authorization")
   return {
     deviceCode,
     userCode,
-    verificationUriComplete: typeof b.verification_uri_complete === "string" ? b.verification_uri_complete : verificationUri,
+    verificationUriComplete:
+      typeof b.verification_uri_complete === "string" ? b.verification_uri_complete : verificationUri,
     expiresAt: Date.now() + (typeof b.expires_in === "number" ? b.expires_in : 600) * 1000,
     intervalMs: (typeof b.interval === "number" && b.interval > 0 ? b.interval : 5) * 1000,
   }
@@ -256,6 +258,31 @@ export type RelayTicket = {
   readonly room: string
 }
 
+/** A schedule firing for this machine (redrob-chat `HiveRunJson`). `prompt` already ends with the new-chat guide. */
+export type HiveRun = {
+  readonly id: string
+  readonly scheduleId: string
+  readonly chatId: string
+  readonly name: string
+  readonly prompt: string
+  readonly dueAt: string
+  readonly status: string
+}
+
+/** redrob-chat `FinishHiveRunDto`. */
+export type HiveFinish = {
+  readonly machineId: string
+  readonly status: "done" | "failed"
+  readonly error?: string
+  readonly text?: string
+}
+
+function isHiveRun(value: unknown): value is HiveRun {
+  if (typeof value !== "object" || value === null) return false
+  const run = value as Record<string, unknown>
+  return typeof run.id === "string" && typeof run.prompt === "string" && typeof run.scheduleId === "string"
+}
+
 export class ChatError extends Error {
   constructor(
     readonly status: number,
@@ -265,25 +292,25 @@ export class ChatError extends Error {
   }
 }
 
-/** The chat API calls the daemon makes, with the redrob-auth bearer. */
+/** The chat API calls the daemon makes, with the redrob-auth bearer (the `/schedules` hive routes take it too). */
 export class ChatApi {
   constructor(
     private readonly base: string,
     private readonly tokens: AccessTokens,
   ) {}
 
-  private async post(path: string, body: unknown): Promise<Response> {
+  private async call(path: string, body?: unknown, method: "GET" | "POST" = "POST"): Promise<Response> {
     let token = ""
     const send = async () => {
       token = await this.tokens.get()
       return fetch(`${this.base}${path}`, {
-        method: "POST",
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
           Accept: "application/json",
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
-        body: JSON.stringify(body),
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(20_000),
       })
     }
@@ -297,11 +324,32 @@ export class ChatApi {
   }
 
   async relayTicket(): Promise<RelayTicket> {
-    return (await (await this.post("/mobile/relay-ticket", { as: "desk" })).json()) as RelayTicket
+    return (await (await this.call("/mobile/relay-ticket", { as: "desk" })).json()) as RelayTicket
+  }
+
+  /** Schedule firings due on this machine, oldest first (`GET /schedules/hive/due`, hive.ts). */
+  async hiveDue(machineId: string): Promise<HiveRun[]> {
+    const response = await this.call(`/schedules/hive/due?machineId=${encodeURIComponent(machineId)}`, undefined, "GET")
+    const body = (await response.json()) as { items?: unknown }
+    return Array.isArray(body.items) ? body.items.filter(isHiveRun) : []
+  }
+
+  /** Take one firing; a `ChatError` 409 when another claim won or it is no longer due. */
+  async hiveClaim(runId: string, machineId: string): Promise<HiveRun> {
+    const body = (await (
+      await this.call(`/schedules/runs/${encodeURIComponent(runId)}/claim`, { machineId })
+    ).json()) as unknown
+    if (!isHiveRun(body)) throw new ChatError(502, "claim: malformed answer")
+    return body
+  }
+
+  /** Report how a claimed firing ended; `text` becomes the answer in the schedule's chat. */
+  async hiveFinish(runId: string, finish: HiveFinish): Promise<void> {
+    await this.call(`/schedules/runs/${encodeURIComponent(runId)}/finish`, finish)
   }
 
   async notify(kind: "done" | "approval", sessionId: string, title?: string, machineId?: string): Promise<void> {
-    await this.post("/mobile/notify", {
+    await this.call("/mobile/notify", {
       kind,
       sessionId,
       ...(title ? { title: title.slice(0, 120) } : {}),
