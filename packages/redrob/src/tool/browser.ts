@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import DESCRIPTION from "./browser.txt"
 import { RunnerBrowser } from "@/browser"
+import { UserBrowser } from "@/browser/extension"
 
 export const Parameters = Schema.Struct({
   action: Schema.Literals(["open", "read", "click", "type", "scroll", "wait", "screenshot"]).annotate({
@@ -20,7 +21,7 @@ export const Parameters = Schema.Struct({
 
 type Params = Schema.Schema.Type<typeof Parameters>
 
-type Metadata = { action: Params["action"]; url?: string; handedBack?: string }
+type Metadata = { action: Params["action"]; url?: string; handedBack?: string; browser?: "extension" | "chromium" }
 
 const need = <A>(value: A | undefined, message: string): A => {
   if (value === undefined || value === "") throw new Error(message)
@@ -64,9 +65,22 @@ export const BrowserTool = Tool.define<typeof Parameters, Metadata, never>(
               always: ["*"],
               metadata: { url: params.url },
             })
+          if (params.action === "open" && !/^https?:\/\//i.test(params.url ?? ""))
+            throw new Error("open takes an http:// or https:// URL.")
+          // The person's own Chrome through the Redrob extension when it is linked; else our Chromium.
+          const user = yield* Effect.promise(() =>
+            UserBrowser.act(params, { sessionID: ctx.sessionID, signal: ctx.abort }),
+          )
+          if (user.kind === "extension")
+            return {
+              title: `${params.action} ${user.url} (your Chrome)`,
+              output: `${UserBrowser.line(user)}\n${user.text}`,
+              metadata: { action: params.action, url: user.url, browser: "extension" as const },
+            }
+          const browserLine = UserBrowser.line(user)
           const handedBack = yield* Effect.promise(() => RunnerBrowser.turn(ctx.abort))
-          const lead = handedBack ? `${handedBack}\n\n` : ""
-          const meta = { action: params.action, ...(handedBack ? { handedBack } : {}) }
+          const lead = `${browserLine}\n${handedBack ? `${handedBack}\n\n` : ""}`
+          const meta = { action: params.action, browser: "chromium" as const, ...(handedBack ? { handedBack } : {}) }
 
           if (params.action === "screenshot") {
             const shot = yield* Effect.promise(() => RunnerBrowser.screenshot())

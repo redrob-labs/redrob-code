@@ -42,6 +42,18 @@ export const DeskLogin = Schema.Struct({
   expiresAt: Schema.Number,
 }).annotate({ identifier: "DeskLogin" })
 
+/**
+ * Where this engine stands with the person's browser extension (redrob-extension, docs/remote-control.md):
+ * `off` no relay connection, `none` no browser with the extension in this account, `found` one is
+ * online, `pairing` waiting for Allow in that browser (`code`), `ready`, `denied` (`reason`).
+ */
+export const DeskBrowserState = Schema.Struct({
+  state: Schema.Literals(["off", "none", "found", "pairing", "ready", "denied"]),
+  name: Schema.optional(Schema.String),
+  code: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
+}).annotate({ identifier: "DeskBrowserState" })
+
 export const DeskStatus = Schema.Struct({
   /** The switch (`channels.json` entry `desk`); on unless turned off. */
   enabled: Schema.Boolean,
@@ -66,7 +78,26 @@ export const DeskStatus = Schema.Struct({
       online: Schema.Boolean,
     }),
   ),
+  /** The person's Chrome with the Redrob extension, as the `browser` tool reaches it over the relay. */
+  browser: Schema.optional(DeskBrowserState),
 }).annotate({ identifier: "DeskStatus" })
+
+/** One request of the extension's route set (its `src/remote/forward.ts`); anything else it answers 403. */
+export const DeskBrowserRequest = Schema.Struct({
+  method: Schema.Literals(["GET", "POST"]),
+  path: Schema.String,
+  body: Schema.optional(Schema.Unknown),
+  /** How long to wait for Allow in the browser the first time, in ms (default two minutes). */
+  pairMs: Schema.optional(Schema.Number),
+}).annotate({ identifier: "DeskBrowserRequest" })
+
+export const DeskBrowserResponse = Schema.Struct({
+  /** The extension's status; 0 when the request did not reach it (`error` says why). */
+  status: Schema.Number,
+  body: Schema.optional(Schema.Unknown),
+  browser: DeskBrowserState,
+  error: Schema.optional(Schema.String),
+}).annotate({ identifier: "DeskBrowserResponse" })
 
 /** Redrob Desktop's own redrob-auth access token (client `redrob-desktop`), for `PUT /desk/token`. */
 export const DeskToken = Schema.Struct({
@@ -264,6 +295,20 @@ export const ChannelsGroup = HttpApiGroup.make("server.channels")
         summary: "Rename this machine or change its access",
         description:
           "Fields left out keep their value; an empty name keeps the old one. The relay is told at once. 503 on a server that is not the registered daemon.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("desk.browser", "/desk/browser", {
+      payload: DeskBrowserRequest,
+      success: DeskBrowserResponse,
+      error: ServiceUnavailableError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.desk.browser",
+        summary: "Ask the person's browser extension",
+        description:
+          "Sends one request of the Redrob extension's route set to the person's Chrome over the desk relay, as a paired device (the first time the person allows this engine in Chrome). Used by the browser tool of every engine on this machine. status 0 when it did not reach the extension. 503 on a server that is not the registered daemon.",
       }),
     ),
   )

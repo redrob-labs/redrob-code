@@ -15,6 +15,7 @@ import { TodoWriteTool } from "./todo"
 import { RoutineTool } from "./routine"
 import { BrowserTool } from "./browser"
 import { RunnerBrowser } from "@/browser"
+import { UserBrowser } from "@/browser/extension"
 import { MemoryTool } from "./memory"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -218,7 +219,10 @@ const layer = Layer.effect(
         }
 
         yield* config.get()
-        const hasBrowser = yield* Effect.promise(() => RunnerBrowser.available())
+        // Our own Chromium, or the person's Chrome through the Redrob extension (browser/extension.ts).
+        const hasBrowser = yield* Effect.promise(
+          async () => (await RunnerBrowser.available()) || (await UserBrowser.reachable()),
+        )
         const questionEnabled = ["app", "cli", "desktop"].includes(flags.client) || flags.enableQuestionTool
 
         const tool = yield* Effect.all({
@@ -261,7 +265,7 @@ const layer = Layer.effect(
             tool.fetch,
             tool.todo,
             tool.routine,
-            // Only where a Chromium is installed (RunnerBrowser.executable).
+            // Where a Chromium is installed (RunnerBrowser.executable) or the engine service may reach the person's Chrome.
             ...(hasBrowser ? [tool.browser] : []),
             tool.memory,
             tool.search,

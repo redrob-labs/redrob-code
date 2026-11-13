@@ -18,6 +18,7 @@ import { Tools } from "@redrob-code/core/tool/tools"
 import DESCRIPTION from "../tool/browser.txt"
 import { Parameters } from "../tool/browser"
 import { RunnerBrowser } from "."
+import { UserBrowser } from "./extension"
 
 export const name = "browser"
 
@@ -46,9 +47,13 @@ const need = (value: string | undefined, message: string): string => {
   return value
 }
 
-async function act(input: Input): Promise<Schema.Schema.Type<typeof Output>> {
+async function act(input: Input, sessionID: string): Promise<Schema.Schema.Type<typeof Output>> {
+  if (input.action === "open" && !/^https?:\/\//i.test(input.url ?? "")) throw new Error("open takes an http:// or https:// URL.")
+  // The person's own Chrome through the Redrob extension when it is linked; else our Chromium.
+  const user = await UserBrowser.act(input, { sessionID })
+  if (user.kind === "extension") return { url: user.url, text: `${UserBrowser.line(user)}\n${user.text}` }
   const handedBack = await RunnerBrowser.turn()
-  const lead = handedBack ? `${handedBack}\n\n` : ""
+  const lead = `${UserBrowser.line(user)}\n${handedBack ? `${handedBack}\n\n` : ""}`
   if (input.action === "screenshot") {
     const shot = await RunnerBrowser.screenshot()
     return { url: shot.url, text: `${lead}Screenshot of ${shot.url} attached.`, jpegBase64: shot.jpegBase64 }
@@ -77,7 +82,8 @@ async function act(input: Input): Promise<Schema.Schema.Type<typeof Output>> {
 
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
-    if (!(yield* Effect.promise(() => RunnerBrowser.available()))) return
+    if (!(yield* Effect.promise(async () => (await RunnerBrowser.available()) || (await UserBrowser.reachable()))))
+      return
     const tools = yield* Tools.Service
     const permission = yield* PermissionV2.Service
     yield* tools
@@ -103,7 +109,7 @@ const layer = Layer.effectDiscard(
                   source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
                 })
               return yield* Effect.tryPromise({
-                try: () => act(input),
+                try: () => act(input, context.sessionID),
                 catch: (error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error) }),
               })
             }).pipe(

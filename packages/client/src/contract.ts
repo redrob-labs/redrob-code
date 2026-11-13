@@ -65,6 +65,7 @@ export const endpointNames = {
   "desk.revoke": "deskRevoke",
   "desk.machine.get": "deskMachine",
   "desk.machine.update": "deskMachineUpdate",
+  "desk.browser": "deskBrowser",
 } as const
 
 export const omitEndpoints = new Set(["fs.read", "pty.connect", "pty.connectToken"])
