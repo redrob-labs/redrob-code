@@ -90,6 +90,27 @@ export class UpgradeFailedError extends Schema.TaggedErrorClass<UpgradeFailedErr
  */
 export const CONSOLE_INSTALL_SCRIPT_URL = "https://console.redrob.ai/code/install.sh"
 
+/**
+ * The Windows installer `redrob upgrade` re-runs: this repository's `install.ps1`, served from
+ * `main`, which is what a release promotes. It reads the same `REDROB_CODE_*` variables as
+ * install.sh and moves a running `redrob.exe` aside instead of overwriting it, which is what lets
+ * the binary that is upgrading replace itself. install.sh refuses to run on Windows (and Windows
+ * usually has no `bash` or `sh` at all), so a `curl` install there upgrades through this one.
+ * Not Console's `/code/install.ps1`: under Windows PowerShell 5.1 with -NonInteractive it cannot
+ * read SHA256SUMS.txt (Invoke-WebRequest without -UseBasicParsing) and refuses every upgrade.
+ */
+export const INSTALL_PS1_URL = "https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1"
+
+/** Which installer `redrob upgrade` re-runs for a `curl` install on this platform. */
+export function upgradeScriptUrl(platform: NodeJS.Platform = process.platform) {
+  return platform === "win32" ? INSTALL_PS1_URL : CONSOLE_INSTALL_SCRIPT_URL
+}
+
+/** The one-line install for this platform, for messages that tell the reader to reinstall. */
+export function reinstallCommand(platform: NodeJS.Platform = process.platform) {
+  return platform === "win32" ? `irm ${INSTALL_PS1_URL} | iex` : `curl -fsSL ${CONSOLE_INSTALL_SCRIPT_URL} | sh`
+}
+
 /** Where the releases live. `REDROB_CODE_DOWNLOAD_BASE` overrides it so a test can point at loopback. */
 export const RELEASE_DOWNLOAD_BASE = "https://github.com/redrob-labs/redrob-code/releases"
 
@@ -191,17 +212,39 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
-        const response = yield* httpOk.execute(HttpClientRequest.get(CONSOLE_INSTALL_SCRIPT_URL))
+        const windows = process.platform === "win32"
+        const response = yield* httpOk.execute(HttpClientRequest.get(upgradeScriptUrl()))
         const body = yield* response.text
+        // The directory rather than the default, so the binary that is running is the one
+        // replaced when it was installed somewhere other than `$HOME/.redrob/bin`. Anything else
+        // the user set, `REDROB_CODE_DOWNLOAD_BASE` included, arrives through the inherited env.
+        const env = { REDROB_CODE_VERSION: target, REDROB_CODE_INSTALL_DIR: path.dirname(process.execPath) }
+        if (windows) {
+          // PowerShell will not take a script on stdin the way sh does, so it runs from a file.
+          // The BOM makes Windows PowerShell 5.1 read it as UTF-8 rather than the ANSI code page.
+          const file = path.join(os.tmpdir(), `redrob-install-${process.pid}-${Date.now()}.ps1`)
+          yield* Effect.promise(() => fs.writeFile(file, "\uFEFF" + body, "utf8"))
+          const result = yield* appProcess
+            .run(
+              ChildProcess.make(
+                "powershell.exe",
+                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file],
+                { env, extendEnv: true },
+              ),
+            )
+            .pipe(Effect.ensuring(Effect.promise(() => fs.rm(file, { force: true }))))
+          return {
+            code: result.exitCode,
+            stdout: result.stdout.toString("utf8"),
+            stderr: result.stderr.toString("utf8"),
+          }
+        }
         const bodyBytes = new TextEncoder().encode(body)
         const shell = yield* upgradeScriptShell()
         const result = yield* appProcess.run(
           ChildProcess.make(shell, [], {
             stdin: Stream.make(bodyBytes),
-            // The directory rather than the default, so the binary that is running is the one
-            // replaced when it was installed somewhere other than `$HOME/.redrob/bin`. Anything else
-            // the user set, `REDROB_CODE_DOWNLOAD_BASE` included, arrives through the inherited env.
-            env: { REDROB_CODE_VERSION: target, REDROB_CODE_INSTALL_DIR: path.dirname(process.execPath) },
+            env,
             extendEnv: true,
           }),
         )
@@ -292,7 +335,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             // whatever directory it happens to sit in, so this refuses and the CLI tells the
             // reader to install with the published command instead.
             return yield* new UpgradeFailedError({
-              stderr: `redrob at ${process.execPath} was not installed by install.sh, so it cannot be upgraded in place. Reinstall with: curl -fsSL ${CONSOLE_INSTALL_SCRIPT_URL} | sh`,
+              stderr: `redrob at ${process.execPath} was not installed by install.sh, so it cannot be upgraded in place. Reinstall with: ${reinstallCommand()}`,
             })
         }
         if (!upgradeResult || upgradeResult.code !== 0) {

@@ -18,6 +18,7 @@ import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { ModelV2 } from "@redrob-code/core/model"
+import { Balance } from "@redrob-code/core/balance"
 
 const ConsoleStateResponse = Schema.Struct({
   consoleManagedProviders: Schema.mutable(Schema.Array(Schema.String)),
@@ -99,6 +100,11 @@ export class WorktreeApiError extends Schema.ErrorClass<WorktreeApiError>("Workt
   },
   { httpApiStatus: 400 },
 ) {}
+/** The caller's IANA zone, so "today" and "this month" are the user's own. */
+export const ConsoleUsageQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  tz: Schema.String,
+})
 export const SessionListQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
   roots: Schema.optional(QueryBoolean),
@@ -109,17 +115,26 @@ export const SessionListQuery = Schema.Struct({
   archived: Schema.optional(QueryBoolean),
 })
 
+/** Where "today" and "this month" start, as epoch ms in the caller's time zone. */
+export const UsageQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  day: Schema.NumberFromString,
+  month: Schema.NumberFromString,
+})
+
 export const ExperimentalPaths = {
   capabilities: "/experimental/capabilities",
   console: "/experimental/console",
   consoleOrgs: "/experimental/console/orgs",
   consoleSwitch: "/experimental/console/switch",
+  consoleUsage: "/experimental/console/usage",
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
   worktreeReset: "/experimental/worktree/reset",
   session: "/experimental/session",
   sessionBackground: "/experimental/session/:sessionID/background",
+  usage: "/experimental/usage",
   resource: "/experimental/resource",
 } as const
 
@@ -157,6 +172,17 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.console.listOrgs",
             summary: "List switchable Console orgs",
             description: "Get the available Console orgs across logged-in accounts, including the current active org.",
+          }),
+        ),
+        HttpApiEndpoint.get("consoleUsage", ExperimentalPaths.consoleUsage, {
+          query: ConsoleUsageQuery,
+          success: described(Schema.NullOr(Balance.Summary), "Console balance and spend, or null"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.usage",
+            summary: "Get Console balance and spend",
+            description:
+              "The Redrob workspace's balance and today's and this month's spend across every device, read from the Console with the Redrob provider's key. Null when there is no key or the Console does not answer.",
           }),
         ),
         HttpApiEndpoint.post("consoleSwitch", ExperimentalPaths.consoleSwitch, {
@@ -265,6 +291,17 @@ export const ExperimentalApi = HttpApi.make("experimental")
             summary: "Background subagents",
             description:
               "Detach any synchronous subagents currently blocking the session and continue them in the background.",
+          }),
+        ),
+        HttpApiEndpoint.get("usage", ExperimentalPaths.usage, {
+          query: UsageQuery,
+          success: described(Session.UsageSummary, "Usage on this machine"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.usage.get",
+            summary: "Get usage",
+            description:
+              "Cost and tokens across every session on this machine: today, this month and all time. Archived and subagent sessions are included.",
           }),
         ),
         HttpApiEndpoint.get("resource", ExperimentalPaths.resource, {

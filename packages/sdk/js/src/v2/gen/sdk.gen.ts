@@ -42,6 +42,8 @@ import type {
   ExperimentalConsoleListOrgsErrors,
   ExperimentalConsoleListOrgsResponses,
   ExperimentalConsoleSwitchOrgResponses,
+  ExperimentalConsoleUsageErrors,
+  ExperimentalConsoleUsageResponses,
   ExperimentalControlPlaneMoveSessionErrors,
   ExperimentalControlPlaneMoveSessionResponses,
   ExperimentalExtensionsCallErrors,
@@ -54,6 +56,8 @@ import type {
   ExperimentalSessionBackgroundResponses,
   ExperimentalSessionListErrors,
   ExperimentalSessionListResponses,
+  ExperimentalUsageGetErrors,
+  ExperimentalUsageGetResponses,
   ExperimentalWorkspaceAdapterListErrors,
   ExperimentalWorkspaceAdapterListResponses,
   ExperimentalWorkspaceCreateErrors,
@@ -944,6 +948,42 @@ export class Console extends HeyApiClient {
   }
 
   /**
+   * Get Console balance and spend
+   *
+   * The Redrob workspace's balance and today's and this month's spend across every device, read from the Console with the Redrob provider's key. Null when there is no key or the Console does not answer.
+   */
+  public usage<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      tz: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "tz" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalConsoleUsageResponses,
+      ExperimentalConsoleUsageErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/console/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Switch active Console org
    *
    * Persist a new active Console account/org selection for the current local RedrobCode state.
@@ -1061,6 +1101,46 @@ export class Session extends HeyApiClient {
       ThrowOnError
     >({
       url: "/experimental/session/{sessionID}/background",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Usage extends HeyApiClient {
+  /**
+   * Get usage
+   *
+   * Cost and tokens across every session on this machine: today, this month and all time. Archived and subagent sessions are included.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      day: number
+      month: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "day" },
+            { in: "query", key: "month" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalUsageGetResponses,
+      ExperimentalUsageGetErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/usage",
       ...options,
       ...params,
     })
@@ -1489,6 +1569,11 @@ export class Experimental extends HeyApiClient {
   private _session?: Session
   get session(): Session {
     return (this._session ??= new Session({ client: this.client }))
+  }
+
+  private _usage?: Usage
+  get usage(): Usage {
+    return (this._usage ??= new Usage({ client: this.client }))
   }
 
   private _resource?: Resource

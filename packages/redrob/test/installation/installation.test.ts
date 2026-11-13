@@ -9,6 +9,7 @@ import { Installation } from "../../src/installation"
 import { CrossSpawnSpawner } from "@redrob-code/core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
 import path from "path"
+import fs from "fs"
 
 const encoder = new TextEncoder()
 
@@ -210,6 +211,49 @@ describe("installation", () => {
     ).effect("falls back to sh when bash is unavailable during curl upgrade", () =>
       Effect.gen(function* () {
         yield* Installation.use.upgrade("curl", "9.9.9")
+      }),
+    )
+
+    test("picks the installer for the platform", () => {
+      expect(Installation.upgradeScriptUrl("linux")).toBe(Installation.CONSOLE_INSTALL_SCRIPT_URL)
+      expect(Installation.upgradeScriptUrl("darwin")).toBe(Installation.CONSOLE_INSTALL_SCRIPT_URL)
+      expect(Installation.upgradeScriptUrl("win32")).toBe(
+        "https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1",
+      )
+      expect(Installation.reinstallCommand("win32")).toBe(`irm ${Installation.INSTALL_PS1_URL} | iex`)
+      expect(Installation.reinstallCommand("linux")).toBe(`curl -fsSL ${Installation.CONSOLE_INSTALL_SCRIPT_URL} | sh`)
+    })
+
+    const winCalls: string[] = []
+    const winRuns: Array<{ cmd: string; args: readonly string[]; env: Record<string, string | undefined> }> = []
+    testEffect(
+      testLayer(
+        (request) => {
+          winCalls.push(request.url)
+          return new Response("Write-Host install", { status: 200 })
+        },
+        (cmd, args, env) => {
+          winRuns.push({ cmd, args, env })
+          return "installed"
+        },
+      ),
+    ).effect("upgrades a Windows curl install through install.ps1, not sh", () =>
+      Effect.gen(function* () {
+        const platform = process.platform
+        Object.defineProperty(process, "platform", { value: "win32" })
+        yield* Installation.use
+          .upgrade("curl", "9.9.9")
+          .pipe(Effect.ensuring(Effect.sync(() => Object.defineProperty(process, "platform", { value: platform }))))
+        expect(winCalls).toEqual([Installation.INSTALL_PS1_URL])
+        // Windows has no bash or sh to pipe install.sh into, and install.sh refuses Windows anyway.
+        expect(winRuns.some((run) => run.cmd === "bash" || run.cmd === "sh")).toBe(false)
+        const run = winRuns.find((r) => r.cmd === "powershell.exe")
+        expect(run?.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        expect(run?.args[5]).toEndWith(".ps1")
+        expect(run?.env["REDROB_CODE_VERSION"]).toBe("9.9.9")
+        expect(run?.env["REDROB_CODE_INSTALL_DIR"]).toBe(path.dirname(process.execPath))
+        // The script file is removed once it has run.
+        expect(fs.existsSync(run!.args[5]!)).toBe(false)
       }),
     )
   })

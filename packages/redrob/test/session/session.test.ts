@@ -205,6 +205,61 @@ describe("step-finish token propagation via event", () => {
   )
 })
 
+describe("Session.usage", () => {
+  it.instance(
+    "sums step-finish cost and tokens by when they were written",
+    () =>
+      Effect.gen(function* () {
+        const session = yield* SessionNs.Service
+        const before = yield* session.usage({ day: 0, month: 0 })
+        const info = yield* session.create({})
+        const messageID = MessageID.ascending()
+        yield* session.updateMessage({
+          id: messageID,
+          sessionID: info.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "user",
+          model: { providerID: "test", modelID: "test" },
+          tools: {},
+          mode: "",
+        } as unknown as SessionV1.Info)
+        const finish = (cost: number, input: number) =>
+          session.updatePart({
+            id: PartID.ascending(),
+            messageID,
+            sessionID: info.id,
+            type: "step-finish" as const,
+            reason: "stop",
+            cost,
+            tokens: { total: input + 10, input, output: 10, reasoning: 0, cache: { read: 3, write: 1 } },
+          })
+        yield* finish(0.25, 100)
+        yield* finish(0.5, 200)
+
+        const after = yield* session.usage({ day: 0, month: 0 })
+        expect(after.day.cost - before.day.cost).toBeCloseTo(0.75)
+        expect(after.month.tokens.input - before.month.tokens.input).toBe(300)
+        expect(after.total.cost - before.total.cost).toBeCloseTo(0.75)
+        expect(after.total.tokens.output - before.total.tokens.output).toBe(20)
+        expect(after.total.tokens.cache.read - before.total.tokens.cache.read).toBe(6)
+        expect(after.total.tokens.cache.write - before.total.tokens.cache.write).toBe(2)
+
+        // A day that starts after the parts were written leaves them in the month and out of today.
+        const later = Date.now() + 60_000
+        const split = yield* session.usage({ day: later, month: 0 })
+        expect(split.day.cost).toBe(0)
+        expect(split.day.tokens.input).toBe(0)
+        expect(split.month.cost).toBeCloseTo(after.month.cost)
+
+        yield* session.remove(info.id)
+        const removed = yield* session.usage({ day: 0, month: 0 })
+        expect(removed.total.cost).toBeCloseTo(before.total.cost)
+      }),
+    { timeout: 30000 },
+  )
+})
+
 describe("Session", () => {
   it.live("remove works without an instance", () =>
     Effect.gen(function* () {

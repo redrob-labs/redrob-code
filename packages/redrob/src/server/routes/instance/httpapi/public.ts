@@ -62,6 +62,8 @@ const QueryParameterSchemas: Record<string, OpenApiSchema> = {
   "GET /find/file limit": { type: "integer", minimum: 1, maximum: 200 },
   "GET /experimental/session cursor": { type: "number" },
   "GET /experimental/session limit": { type: "number" },
+  "GET /experimental/usage day": { type: "number" },
+  "GET /experimental/usage month": { type: "number" },
   "GET /session start": { type: "number" },
   "GET /session roots": QueryBooleanOpenApi,
   "GET /session limit": { type: "number" },

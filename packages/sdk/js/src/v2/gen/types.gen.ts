@@ -2322,6 +2322,22 @@ export type EffectHttpApiErrorInternalServerError = {
   _tag: "InternalServerError"
 }
 
+export type ConsoleUsagePeriod = {
+  since: string
+  spend: number
+  requestCount: number
+}
+
+export type ConsoleUsageSummary = {
+  currency: string
+  balance: number
+  complimentary: boolean
+  plan?: string
+  tz: string
+  today: ConsoleUsagePeriod
+  month: ConsoleUsagePeriod
+}
+
 export type ToolListItem = {
   id: string
   description: string
@@ -2426,6 +2442,25 @@ export type GlobalSession = {
     diff?: string
   }
   project: ProjectSummary | null
+}
+
+export type UsageTotal = {
+  cost: number
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
+}
+
+export type UsageSummary = {
+  day: UsageTotal
+  month: UsageTotal
+  total: UsageTotal
 }
 
 export type McpResource = {
@@ -8491,6 +8526,36 @@ export type ExperimentalConsoleListOrgsResponses = {
 export type ExperimentalConsoleListOrgsResponse =
   ExperimentalConsoleListOrgsResponses[keyof ExperimentalConsoleListOrgsResponses]
 
+export type ExperimentalConsoleUsageData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    tz: string
+  }
+  url: "/experimental/console/usage"
+}
+
+export type ExperimentalConsoleUsageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalConsoleUsageError = ExperimentalConsoleUsageErrors[keyof ExperimentalConsoleUsageErrors]
+
+export type ExperimentalConsoleUsageResponses = {
+  /**
+   * Console balance and spend, or null
+   */
+  200: ConsoleUsageSummary
+}
+
+export type ExperimentalConsoleUsageResponse =
+  ExperimentalConsoleUsageResponses[keyof ExperimentalConsoleUsageResponses]
+
 export type ExperimentalConsoleSwitchOrgData = {
   body?: {
     accountID: string
@@ -8749,6 +8814,36 @@ export type ExperimentalSessionBackgroundResponses = {
 
 export type ExperimentalSessionBackgroundResponse =
   ExperimentalSessionBackgroundResponses[keyof ExperimentalSessionBackgroundResponses]
+
+export type ExperimentalUsageGetData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    day: number
+    month: number
+  }
+  url: "/experimental/usage"
+}
+
+export type ExperimentalUsageGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalUsageGetError = ExperimentalUsageGetErrors[keyof ExperimentalUsageGetErrors]
+
+export type ExperimentalUsageGetResponses = {
+  /**
+   * Usage on this machine
+   */
+  200: UsageSummary
+}
+
+export type ExperimentalUsageGetResponse = ExperimentalUsageGetResponses[keyof ExperimentalUsageGetResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

@@ -282,6 +282,25 @@ export const dict = {
 
   // Status
   "status.title": "Status",
+  "status.usage": "Usage",
+  "status.usage.session": "This session",
+  "status.usage.day": "Today",
+  "status.usage.month": "This month",
+  "status.usage.total": "All time",
+  "status.usage.line": "in {{input}} · out {{output}} · cache {{cache}} · {{cost}}",
+  "status.usage.loading": "Loading usage…",
+  "status.usage.failed": "Could not load usage on this machine",
+  "status.usage.note": "Today, this month and all time add up every session on this machine.",
+  "status.usage.console": "Console balance: {{url}}",
+  "status.console": "Console",
+  "status.console.balance": "Balance",
+  "status.console.today": "Today",
+  "status.console.month": "This month",
+  "status.console.spend": "{{spend}} · {{count}} requests",
+  "status.console.complimentary": "Complimentary, nothing is charged",
+  "status.console.low": "{{balance}} · running low, top up below",
+  "status.console.note": "Workspace totals across every device.",
+  "status.console.billing": "Billing: {{url}}",
   "status.mcp.empty": "No MCP Servers",
   "status.mcp.count.one": "{{count}} MCP Server",
   "status.mcp.count.other": "{{count}} MCP Servers",
@@ -312,6 +331,7 @@ export const dict = {
   "sidebar.context.spent": "{{cost}} spent",
   "sidebar.modified_files": "Modified Files",
   "sidebar.todo": "Todo",
+  "sidebar.hide_hint": "{{shortcut}} hide panel",
 
   // Help
   "help.title": "Help",
