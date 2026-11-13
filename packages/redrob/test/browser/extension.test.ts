@@ -89,7 +89,7 @@ describe("UserBrowser.act", () => {
 
   test("not reaching the extension falls back with the reason, and the session stays on Chromium", async () => {
     const { ask, calls } = fake({
-      create: { status: 0, browser: { state: "none" }, error: "no Chrome with the Redrob extension is connected" },
+      create: { status: 0, browser: { state: "found", name: "Chrome" }, error: "no Chrome with the Redrob extension is connected" },
     })
     const result = await UserBrowser.act({ action: "open", url: "https://example.com" }, { sessionID: "ses_2", ask })
     expect(result).toEqual({ kind: "fallback", reason: "no Chrome with the Redrob extension is connected" })
@@ -137,4 +137,61 @@ describe("UserBrowser.act", () => {
 test("chat ids keep the extension's id shape", () => {
   expect(UserBrowser.chatId("ses_abc.1")).toBe("code-ses_abc_1")
   expect(/^[A-Za-z0-9_-]{1,128}$/.test(UserBrowser.chatId("x".repeat(300)))).toBe(true)
+})
+
+describe("the person's side while a call waits", () => {
+  test("shows the pairing code while the request waits for Allow, and clears it once it is over", async () => {
+    const seen: Array<string | undefined> = []
+    let state: { state: "pairing" | "ready"; name: string; code?: string } = {
+      state: "pairing",
+      name: "Chrome on Windows",
+      code: "197159",
+    }
+    const { ask: base } = fake()
+    // The first request blocks like the daemon's while it waits for Allow, then Allow comes.
+    const ask = async (request: DeskBrowserRequest) => {
+      if (request.path.startsWith("/browser/task?chatId=")) {
+        await Bun.sleep(1_300)
+        state = { state: "ready", name: "Chrome on Windows" }
+      }
+      return base(request)
+    }
+    const result = await UserBrowser.act(
+      { action: "open", url: "https://example.com" },
+      { sessionID: "ses_p1", ask, observe: async () => state, onPairing: (p) => seen.push(p?.code) },
+    )
+    expect(result.kind).toBe("extension")
+    expect(seen).toEqual(["197159", undefined])
+  })
+
+  test("clears the notice when the call falls back (expired, denied or not reached)", async () => {
+    const seen: Array<string | undefined> = []
+    const ask = async (): Promise<DeskBrowserResponse> => {
+      await Bun.sleep(200)
+      return { status: 0, browser: { state: "pairing", name: "Chrome", code: "111111" }, error: "waiting" }
+    }
+    const result = await UserBrowser.act(
+      { action: "open", url: "https://example.com" },
+      {
+        sessionID: "ses_p2",
+        ask,
+        observe: async () => ({ state: "pairing", name: "Chrome", code: "111111" }),
+        onPairing: (p) => seen.push(p?.code),
+      },
+    )
+    expect(result.kind).toBe("fallback")
+    expect(seen).toEqual(["111111", undefined])
+  })
+
+  test("says how to connect once per session when no Chrome with the extension is found", async () => {
+    const none = { status: 0, browser: { state: "none" as const }, error: "no Chrome with the Redrob extension is connected" }
+    const ask = async (): Promise<DeskBrowserResponse> => none
+    const first = await UserBrowser.act({ action: "open", url: "https://example.com" }, { sessionID: "ses_c", ask })
+    expect(first).toMatchObject({ kind: "fallback", connect: true })
+    expect(UserBrowser.line(first)).toContain("install the Redrob extension in Chrome")
+    const again = await UserBrowser.act({ action: "open", url: "https://example.org" }, { sessionID: "ses_c", ask })
+    expect(again.kind).toBe("fallback")
+    expect("connect" in again && again.connect).toBeFalsy()
+    expect(UserBrowser.line(again)).not.toContain("install the Redrob extension")
+  })
 })

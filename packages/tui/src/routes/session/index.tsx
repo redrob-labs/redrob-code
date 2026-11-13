@@ -39,7 +39,7 @@ import type {
 } from "@redrob-labs/sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { webSearchProviderLabel } from "../../util/tool-display"
+import { browserLabel, browserNotice, webSearchProviderLabel } from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -1896,6 +1896,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={display() === "websearch"}>
           <WebSearch {...toolprops} />
         </Match>
+        <Match when={display() === "browser"}>
+          <Browser {...toolprops} />
+        </Match>
         <Match when={display() === "write"}>
           <Write {...toolprops} />
         </Match>
@@ -2382,6 +2385,29 @@ function WebFetch(props: ToolProps) {
   )
 }
 
+function Browser(props: ToolProps) {
+  const language = useLanguage()
+  const { theme } = useTheme()
+  const notice = createMemo(() => browserNotice(language.t, props.part.state.status, props.metadata))
+  return (
+    <box flexDirection="column">
+      <InlineTool
+        icon="◎"
+        pending={language.t("session.tool.browsing")}
+        complete={stringValue(props.input.action)}
+        part={props.part}
+      >
+        {browserLabel(language.t, props.input, props.metadata)}
+      </InlineTool>
+      <Show when={notice()}>
+        <box paddingLeft={3 + INLINE_TOOL_ICON_WIDTH}>
+          <text fg={props.part.state.status === "running" ? theme.warning : theme.textMuted}>{notice()}</text>
+        </box>
+      </Show>
+    </box>
+  )
+}
+
 function WebSearch(props: ToolProps) {
   const language = useLanguage()
   return (
@@ -2857,6 +2883,7 @@ const toolDisplays = new Set([
   "grep",
   "webfetch",
   "websearch",
+  "browser",
   "write",
   "edit",
   "task",
