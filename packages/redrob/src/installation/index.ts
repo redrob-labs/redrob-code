@@ -91,21 +91,24 @@ export class UpgradeFailedError extends Schema.TaggedErrorClass<UpgradeFailedErr
 export const CONSOLE_INSTALL_SCRIPT_URL = "https://console.redrob.ai/code/install.sh"
 
 /**
- * The Windows counterpart Console serves beside install.sh. It reads the same `REDROB_CODE_*`
- * variables, and it moves a running `redrob.exe` aside instead of overwriting it, which is what lets
+ * The Windows installer `redrob upgrade` re-runs: this repository's `install.ps1`, served from
+ * `main`, which is what a release promotes. It reads the same `REDROB_CODE_*` variables as
+ * install.sh and moves a running `redrob.exe` aside instead of overwriting it, which is what lets
  * the binary that is upgrading replace itself. install.sh refuses to run on Windows (and Windows
  * usually has no `bash` or `sh` at all), so a `curl` install there upgrades through this one.
+ * Not Console's `/code/install.ps1`: under Windows PowerShell 5.1 with -NonInteractive it cannot
+ * read SHA256SUMS.txt (Invoke-WebRequest without -UseBasicParsing) and refuses every upgrade.
  */
-export const CONSOLE_INSTALL_PS1_URL = "https://console.redrob.ai/code/install.ps1"
+export const INSTALL_PS1_URL = "https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1"
 
 /** Which installer `redrob upgrade` re-runs for a `curl` install on this platform. */
 export function upgradeScriptUrl(platform: NodeJS.Platform = process.platform) {
-  return platform === "win32" ? CONSOLE_INSTALL_PS1_URL : CONSOLE_INSTALL_SCRIPT_URL
+  return platform === "win32" ? INSTALL_PS1_URL : CONSOLE_INSTALL_SCRIPT_URL
 }
 
 /** The one-line install for this platform, for messages that tell the reader to reinstall. */
 export function reinstallCommand(platform: NodeJS.Platform = process.platform) {
-  return platform === "win32" ? `irm ${CONSOLE_INSTALL_PS1_URL} | iex` : `curl -fsSL ${CONSOLE_INSTALL_SCRIPT_URL} | sh`
+  return platform === "win32" ? `irm ${INSTALL_PS1_URL} | iex` : `curl -fsSL ${CONSOLE_INSTALL_SCRIPT_URL} | sh`
 }
 
 /** Where the releases live. `REDROB_CODE_DOWNLOAD_BASE` overrides it so a test can point at loopback. */

@@ -217,8 +217,10 @@ describe("installation", () => {
     test("picks the installer for the platform", () => {
       expect(Installation.upgradeScriptUrl("linux")).toBe(Installation.CONSOLE_INSTALL_SCRIPT_URL)
       expect(Installation.upgradeScriptUrl("darwin")).toBe(Installation.CONSOLE_INSTALL_SCRIPT_URL)
-      expect(Installation.upgradeScriptUrl("win32")).toBe("https://console.redrob.ai/code/install.ps1")
-      expect(Installation.reinstallCommand("win32")).toBe("irm https://console.redrob.ai/code/install.ps1 | iex")
+      expect(Installation.upgradeScriptUrl("win32")).toBe(
+        "https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1",
+      )
+      expect(Installation.reinstallCommand("win32")).toBe(`irm ${Installation.INSTALL_PS1_URL} | iex`)
       expect(Installation.reinstallCommand("linux")).toBe(`curl -fsSL ${Installation.CONSOLE_INSTALL_SCRIPT_URL} | sh`)
     })
 
@@ -242,7 +244,7 @@ describe("installation", () => {
         yield* Installation.use
           .upgrade("curl", "9.9.9")
           .pipe(Effect.ensuring(Effect.sync(() => Object.defineProperty(process, "platform", { value: platform }))))
-        expect(winCalls).toEqual([Installation.CONSOLE_INSTALL_PS1_URL])
+        expect(winCalls).toEqual([Installation.INSTALL_PS1_URL])
         // Windows has no bash or sh to pipe install.sh into, and install.sh refuses Windows anyway.
         expect(winRuns.some((run) => run.cmd === "bash" || run.cmd === "sh")).toBe(false)
         const run = winRuns.find((r) => r.cmd === "powershell.exe")
