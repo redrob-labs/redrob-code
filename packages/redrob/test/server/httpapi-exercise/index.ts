@@ -620,6 +620,18 @@ const scenarios: Scenario[] = [
     }),
   http.protected.get("/experimental/resource", "experimental.resource.list").json(),
   http.protected
+    .get("/experimental/usage", "experimental.usage.get")
+    .at((ctx) => ({
+      path: `/experimental/usage?${new URLSearchParams({ day: "0", month: "0" })}`,
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      const value = body as { day?: { cost?: unknown }; month?: { cost?: unknown }; total?: { cost?: unknown } }
+      check(typeof value.day?.cost === "number", "usage should report today's cost")
+      check(typeof value.month?.cost === "number", "usage should report this month's cost")
+      check(typeof value.total?.cost === "number", "usage should report the all-time cost")
+    }),
+  http.protected
     .post("/sync/history", "sync.history.list")
     .at((ctx) => ({ path: "/sync/history", headers: ctx.headers(), body: {} }))
     .json(200, array),

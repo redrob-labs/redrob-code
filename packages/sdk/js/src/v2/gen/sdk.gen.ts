@@ -54,6 +54,8 @@ import type {
   ExperimentalSessionBackgroundResponses,
   ExperimentalSessionListErrors,
   ExperimentalSessionListResponses,
+  ExperimentalUsageGetErrors,
+  ExperimentalUsageGetResponses,
   ExperimentalWorkspaceAdapterListErrors,
   ExperimentalWorkspaceAdapterListResponses,
   ExperimentalWorkspaceCreateErrors,
@@ -1067,6 +1069,46 @@ export class Session extends HeyApiClient {
   }
 }
 
+export class Usage extends HeyApiClient {
+  /**
+   * Get usage
+   *
+   * Cost and tokens across every session on this machine: today, this month and all time. Archived and subagent sessions are included.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      day: number
+      month: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "day" },
+            { in: "query", key: "month" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalUsageGetResponses,
+      ExperimentalUsageGetErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/usage",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Resource extends HeyApiClient {
   /**
    * Get MCP resources
@@ -1489,6 +1531,11 @@ export class Experimental extends HeyApiClient {
   private _session?: Session
   get session(): Session {
     return (this._session ??= new Session({ client: this.client }))
+  }
+
+  private _usage?: Usage
+  get usage(): Usage {
+    return (this._usage ??= new Usage({ client: this.client }))
   }
 
   private _resource?: Resource

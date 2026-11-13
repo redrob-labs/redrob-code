@@ -15,7 +15,13 @@ import { Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ConsoleSwitchPayload, SessionListQuery, ToolListQuery, WorktreeApiError } from "../groups/experimental"
+import {
+  ConsoleSwitchPayload,
+  SessionListQuery,
+  ToolListQuery,
+  UsageQuery,
+  WorktreeApiError,
+} from "../groups/experimental"
 
 function mapWorktreeError<A, R>(self: Effect.Effect<A, Worktree.Error, R>) {
   return self.pipe(
@@ -181,6 +187,10 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return promoted.some((job) => job !== undefined)
     })
 
+    const usage = Effect.fn("ExperimentalHttpApi.usage")(function* (ctx: { query: typeof UsageQuery.Type }) {
+      return yield* sessions.usage({ day: ctx.query.day, month: ctx.query.month })
+    })
+
     const resource = Effect.fn("ExperimentalHttpApi.resource")(function* () {
       return yield* mcp.resources()
     })
@@ -198,6 +208,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("worktreeReset", worktreeReset)
       .handle("session", session)
       .handle("sessionBackground", sessionBackground)
+      .handle("usage", usage)
       .handle("resource", resource)
   }),
 )

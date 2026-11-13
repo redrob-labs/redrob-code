@@ -109,6 +109,13 @@ export const SessionListQuery = Schema.Struct({
   archived: Schema.optional(QueryBoolean),
 })
 
+/** Where "today" and "this month" start, as epoch ms in the caller's time zone. */
+export const UsageQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  day: Schema.NumberFromString,
+  month: Schema.NumberFromString,
+})
+
 export const ExperimentalPaths = {
   capabilities: "/experimental/capabilities",
   console: "/experimental/console",
@@ -120,6 +127,7 @@ export const ExperimentalPaths = {
   worktreeReset: "/experimental/worktree/reset",
   session: "/experimental/session",
   sessionBackground: "/experimental/session/:sessionID/background",
+  usage: "/experimental/usage",
   resource: "/experimental/resource",
 } as const
 
@@ -265,6 +273,17 @@ export const ExperimentalApi = HttpApi.make("experimental")
             summary: "Background subagents",
             description:
               "Detach any synchronous subagents currently blocking the session and continue them in the background.",
+          }),
+        ),
+        HttpApiEndpoint.get("usage", ExperimentalPaths.usage, {
+          query: UsageQuery,
+          success: described(Session.UsageSummary, "Usage on this machine"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.usage.get",
+            summary: "Get usage",
+            description:
+              "Cost and tokens across every session on this machine: today, this month and all time. Archived and subagent sessions are included.",
           }),
         ),
         HttpApiEndpoint.get("resource", ExperimentalPaths.resource, {
