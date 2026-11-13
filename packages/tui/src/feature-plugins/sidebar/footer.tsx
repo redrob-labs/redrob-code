@@ -22,6 +22,13 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
   const version = createMemo(() =>
     props.api.app.version === "local" ? language.t("app.version.local") : props.api.app.version,
   )
+  // The user's own key for hiding this panel, or the slash command when it is unbound.
+  const hide = createMemo(() => {
+    const key = props.api.tuiConfig.keybinds.get("session.sidebar.toggle")[0]?.key
+    if (!key) return "/sidebar"
+    const keymap = props.api.keymap
+    return keymap ? props.api.keys.formatSequence(Array.from(keymap.parseKeySequence(key))) : String(key)
+  })
   const path = createMemo(() => {
     const session = props.api.state.session.get(props.sessionID)
     const dir = session?.directory || props.api.state.path.directory || paths.cwd
@@ -68,6 +75,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
           </box>
         </box>
       </Show>
+      <text fg={theme().textMuted}>{language.t("sidebar.hide_hint", { shortcut: hide() })}</text>
       <text>
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>

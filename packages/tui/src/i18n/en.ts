@@ -312,6 +312,7 @@ export const dict = {
   "sidebar.context.spent": "{{cost}} spent",
   "sidebar.modified_files": "Modified Files",
   "sidebar.todo": "Todo",
+  "sidebar.hide_hint": "{{shortcut}} hide panel",
 
   // Help
   "help.title": "Help",

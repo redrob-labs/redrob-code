@@ -297,6 +297,7 @@ export const dict: Record<TuiI18nKey, string> = {
   "sidebar.context.spent": "{{cost}} 씀",
   "sidebar.modified_files": "바뀐 파일",
   "sidebar.todo": "할 일",
+  "sidebar.hide_hint": "{{shortcut}} 옆 패널 숨기기",
 
   "help.title": "도움말",
   "help.body": "어디서든 {{shortcut}} 키를 누르면 할 수 있는 동작과 명령을 모두 볼 수 있어요.",
