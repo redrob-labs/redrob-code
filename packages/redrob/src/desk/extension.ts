@@ -106,6 +106,8 @@ export class ExtensionLink {
   private stopped = true
   private delay = 1_000
   private reconnect?: ReturnType<typeof setTimeout>
+  /** A ticket request is in flight. */
+  private connecting = false
   private connectedAt = 0
   private readonly browsers = new Map<string, Browser>()
   private readonly peers = new Map<string, string>()
@@ -145,6 +147,15 @@ export class ExtensionLink {
     this.socket = undefined
     socket?.close(1000, "stop")
     this.dropAll(new Error("the relay link stopped"))
+  }
+
+  /** A new token arrived (Redrob Desktop's `PUT /desk/token`): when not connected, try now instead of after the backoff. */
+  kick(): void {
+    if (this.stopped || this.socket) return
+    this.delay = 1_000
+    if (this.reconnect) clearTimeout(this.reconnect)
+    this.reconnect = undefined
+    void this.connect()
   }
 
   /** Where this engine stands with the person's browser, for `GET /desk/status`. */
@@ -321,13 +332,16 @@ export class ExtensionLink {
   }
 
   private async connect(): Promise<void> {
-    if (this.stopped || this.socket) return
+    if (this.stopped || this.socket || this.connecting) return
     let ticket: RelayTicket
+    this.connecting = true
     try {
       ticket = await this.chat.relayTicket()
     } catch (error) {
       this.options.log?.(`browser link: no relay ticket: ${error instanceof Error ? error.message : String(error)}`)
       return this.schedule()
+    } finally {
+      this.connecting = false
     }
     if (this.stopped || this.socket) return
     const url = new URL(ticket.url)

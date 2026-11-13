@@ -243,6 +243,7 @@ export class DeskService {
     this.app.set(token.accessToken, token.expiresAt, email || undefined)
     await this.reconcile()
     this.relay?.kick()
+    this.extension?.kick()
     return this.status()
   }
 
