@@ -15,6 +15,7 @@
  */
 import * as Channels from "@redrob-code/server/channels"
 import * as Registry from "@/daemon/registry"
+import { BlockedPage } from "./blocked"
 
 export type Action = "open" | "read" | "click" | "type" | "scroll" | "wait" | "screenshot"
 
@@ -33,7 +34,25 @@ export type Ask = (request: Channels.DeskBrowserRequest, signal?: AbortSignal) =
 
 export type Result =
   | { readonly kind: "extension"; readonly browser: string; readonly url: string; readonly text: string }
-  | { readonly kind: "fallback"; readonly reason: string }
+  | {
+      readonly kind: "fallback"
+      readonly reason: string
+      /** No Chrome with the Redrob extension in this account, said once per session: tell the person how to connect. */
+      readonly connect?: boolean
+    }
+
+/** A pairing request waiting for Allow in the person's Chrome while a tool call waits on it; undefined when none. */
+export type Pairing = { readonly code: string; readonly name: string } | undefined
+
+export type Context = {
+  readonly sessionID: string
+  readonly signal?: AbortSignal
+  readonly ask?: Ask
+  /** Where the daemon's link stands; polled while a call waits, for `onPairing`. */
+  readonly observe?: () => Promise<Channels.DeskBrowserState | undefined>
+  /** Called with the request while one waits for Allow, and with undefined once it is over. */
+  readonly onPairing?: (pairing: Pairing) => void
+}
 
 const POLL_MS = 1_000
 /** A task waits at most this long, as long as a hand-over to the person may last. */
@@ -61,6 +80,8 @@ type Session = {
   elements: Map<string, string>
   /** The browser this session last used; a session stays in it until the next `open`. */
   used?: "extension" | "chromium"
+  /** The how-to-connect line was given in this session. */
+  hinted?: boolean
 }
 
 const sessions = new Map<string, Session>()
@@ -138,19 +159,43 @@ const sleep = (ms: number, signal?: AbortSignal) =>
  * Runs one action in the person's Chrome. A `fallback` result means it never reached the extension
  * (the tool uses its own Chromium and says why); anything that went wrong after that throws.
  */
-export async function act(
-  input: Input,
-  context: { readonly sessionID: string; readonly signal?: AbortSignal; readonly ask?: Ask },
-): Promise<Result> {
+export async function act(input: Input, context: Context): Promise<Result> {
   const result = await attempt(input, context)
   if (result.kind === "fallback") session(context.sessionID).used = "chromium"
   return result
 }
 
-async function attempt(
-  input: Input,
-  context: { readonly sessionID: string; readonly signal?: AbortSignal; readonly ask?: Ask },
-): Promise<Result> {
+/**
+ * Polls the link while `run` waits and reports a pairing request waiting for Allow through
+ * `onPairing`; it is cleared when `run` settles (allowed, denied, expired or fallen back).
+ */
+async function watching<A>(context: Context, run: () => Promise<A>): Promise<A> {
+  const onPairing = context.onPairing
+  const observe = onPairing ? (context.observe ?? (await observer())) : undefined
+  if (!observe || !onPairing) return run()
+  let shown: string | undefined
+  let done = false
+  const tick = async () => {
+    const state = await observe().catch(() => undefined)
+    if (done) return
+    const code = state?.state === "pairing" && state.code ? state.code : undefined
+    if (code === shown) return
+    shown = code
+    onPairing(code ? { code, name: state?.name ?? "Chrome" } : undefined)
+  }
+  const timer = setInterval(() => void tick(), 1_000)
+  timer.unref?.()
+  void tick()
+  try {
+    return await run()
+  } finally {
+    done = true
+    clearInterval(timer)
+    if (shown) onPairing(undefined)
+  }
+}
+
+async function attempt(input: Input, context: Context): Promise<Result> {
   const state = session(context.sessionID)
   if (input.action !== "open" && state.used === "chromium") return { kind: "fallback", reason: "" }
   const ask = context.ask ?? (await asker())
@@ -166,24 +211,36 @@ async function attempt(
 
   // The same Code session goes on in the same conversation and tab, also after an engine restart.
   const chat = chatId(context.sessionID)
-  if (!state.task) {
-    const found = await ask({ method: "GET", path: `/browser/task?chatId=${chat}` }, context.signal).catch(() => undefined)
-    const id = (found?.body as { id?: unknown } | undefined)?.id
-    if (found?.status === 200 && typeof id === "string") state.task = id
+  const fallback = (response: Channels.DeskBrowserResponse): Result => {
+    const connect = response.browser.state === "none" && !state.hinted
+    if (connect) state.hinted = true
+    return {
+      kind: "fallback",
+      reason: response.error ?? `the extension is not ready (${response.browser.state})`,
+      ...(connect ? { connect } : {}),
+    }
   }
-  const created = await ask(
-    {
-      method: "POST",
-      path: "/browser/task",
-      body: { task: text, origin: "code", chatId: chat, ...(state.task ? { followUp: state.task } : {}) },
-    },
-    context.signal,
-  )
+  // The first request may wait for Allow in Chrome; the person sees the code while it does.
+  const created = await watching(context, async () => {
+    if (!state.task) {
+      const found = await ask({ method: "GET", path: `/browser/task?chatId=${chat}` }, context.signal).catch(() => undefined)
+      // Not reaching the extension: no second wait for the same answer.
+      if (found?.status === 0) return found
+      const id = (found?.body as { id?: unknown } | undefined)?.id
+      if (found?.status === 200 && typeof id === "string") state.task = id
+    }
+    return ask(
+      {
+        method: "POST",
+        path: "/browser/task",
+        body: { task: text, origin: "code", chatId: chat, ...(state.task ? { followUp: state.task } : {}) },
+      },
+      context.signal,
+    )
+  })
   const id = (created.body as { id?: unknown } | undefined)?.id
   if (created.status !== 200 || typeof id !== "string") {
-    if (created.status === 0 || created.status === 503) {
-      return { kind: "fallback", reason: created.error ?? `the extension is not ready (${created.browser.state})` }
-    }
+    if (created.status === 0 || created.status === 503) return fallback(created)
     throw new Error(`The Redrob extension refused the task (HTTP ${created.status}).`)
   }
   state.used = "extension"
@@ -253,6 +310,24 @@ export async function asker(env: NodeJS.ProcessEnv = process.env): Promise<Ask |
   }
 }
 
+/** The daemon link's state: in this process when it is the daemon, else from its `GET /desk/status`. */
+export async function observer(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<(() => Promise<Channels.DeskBrowserState | undefined>) | undefined> {
+  const local = Channels.current()?.desk
+  if (local) return async () => (await local.status()).browser
+  const record = await Registry.read(env).catch(() => undefined)
+  if (!record || !Registry.alive(record.pid)) return undefined
+  return async () => {
+    const response = await fetch(`${record.url}/desk/status`, {
+      headers: Registry.headers(record.secret),
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) return undefined
+    return ((await response.json()) as Channels.DeskStatus).browser
+  }
+}
+
 /** Whether the person's browser may be reachable at all, so the tool is offered without a Chromium. */
 export async function reachable(env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   if (Channels.current()?.desk?.browser) return true
@@ -260,10 +335,62 @@ export async function reachable(env: NodeJS.ProcessEnv = process.env): Promise<b
   return !!record && Registry.alive(record.pid)
 }
 
+/** Said once per session when no Chrome with the extension is connected, for the model to pass on. */
+export const CONNECT =
+  "Tell the person once, in their language: to let Redrob Code use their own Chrome with their sign-ins, they install the Redrob extension in Chrome and connect it with the same Redrob account (extension Settings → Redrob chat → Connect). The next browser step then asks them to press Allow in Chrome."
+
 /** The first line of every result: which browser the action ran in, and why not the person's own. */
+/**
+ * A reading from the built-in browser that turned out to be a block page: try the person's Chrome
+ * once when it is linked now (`retried`), else the note for the result (`blockedNote`). Undefined
+ * when the page is the site.
+ */
+export async function onBlocked(
+  reading: { readonly url: string; readonly title: string; readonly text: string },
+  context: Context,
+): Promise<{ retried: Result & { kind: "extension" } } | { note: string; connect: boolean } | undefined> {
+  const sign = BlockedPage.blocked(reading)
+  if (!sign) return undefined
+  if (await linked(context.observe)) {
+    const again = await act({ action: "open", url: reading.url }, context).catch(() => undefined)
+    if (again?.kind === "extension") return { retried: again }
+  }
+  const { text, connect } = blockedNote(context.sessionID, sign, reading.url)
+  return { note: text, connect }
+}
+
+/** The person's Chrome is linked to the engine service right now. */
+export async function linked(observe?: () => Promise<Channels.DeskBrowserState | undefined>): Promise<boolean> {
+  const read = observe ?? (await observer().catch(() => undefined))
+  return (await read?.().catch(() => undefined))?.state === "ready"
+}
+
+/**
+ * The lines a blocked page in the built-in browser gets (BlockedPage.blocked): nothing on it came
+ * from the site; the person is told their own Chrome is needed, with how to connect it once per
+ * session; and an answer from search results has to say so. `connect` is true when the
+ * how-to-connect line was given this time.
+ */
+export function blockedNote(sessionID: string, sign: string, url: string): { text: string; connect: boolean } {
+  const state = session(sessionID)
+  const connect = !state.hinted
+  state.hinted = true
+  let host = url
+  try {
+    host = new URL(url).hostname
+  } catch {}
+  const text = [
+    `Blocked: ${host} showed ${sign} to this headless browser, so nothing below is the site's content. Tell the person the site blocked the built-in browser and that their own Chrome is needed for it.`,
+    `If you answer from search results instead, say so plainly: the answer comes from search results, not from ${host}, and may be out of date.`,
+    ...(connect ? [CONNECT] : []),
+  ].join("\n")
+  return { text, connect }
+}
+
 export function line(result: Result): string {
   if (result.kind === "extension") return `Browser: the person's own Chrome (${result.browser}), through the Redrob extension.`
-  return `Browser: Redrob Code's own Chromium on this machine (headless).${result.reason ? ` The person's Chrome is not used: ${result.reason}.` : ""}`
+  const base = `Browser: Redrob Code's own Chromium on this machine (headless).${result.reason ? ` The person's Chrome is not used: ${result.reason}.` : ""}`
+  return result.connect ? `${base}\n${CONNECT}` : base
 }
 
 /** Forget a session's state (tests). */
