@@ -39,7 +39,7 @@ import type {
 } from "@redrob-labs/sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { browserLabel, webSearchProviderLabel } from "../../util/tool-display"
+import { browserLabel, browserNotice, webSearchProviderLabel } from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -2387,15 +2387,24 @@ function WebFetch(props: ToolProps) {
 
 function Browser(props: ToolProps) {
   const language = useLanguage()
+  const { theme } = useTheme()
+  const notice = createMemo(() => browserNotice(language.t, props.part.state.status, props.metadata))
   return (
-    <InlineTool
-      icon="◎"
-      pending={language.t("session.tool.browsing")}
-      complete={stringValue(props.input.action)}
-      part={props.part}
-    >
-      {browserLabel(language.t, props.input, props.metadata)}
-    </InlineTool>
+    <box flexDirection="column">
+      <InlineTool
+        icon="◎"
+        pending={language.t("session.tool.browsing")}
+        complete={stringValue(props.input.action)}
+        part={props.part}
+      >
+        {browserLabel(language.t, props.input, props.metadata)}
+      </InlineTool>
+      <Show when={notice()}>
+        <box paddingLeft={3 + INLINE_TOOL_ICON_WIDTH}>
+          <text fg={props.part.state.status === "running" ? theme.warning : theme.textMuted}>{notice()}</text>
+        </box>
+      </Show>
+    </box>
   )
 }
 

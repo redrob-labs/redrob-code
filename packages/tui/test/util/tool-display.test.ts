@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { browserLabel, toolDisplayMetadata, webSearchProviderLabel } from "../../src/util/tool-display"
+import { browserLabel, browserNotice, toolDisplayMetadata, webSearchProviderLabel } from "../../src/util/tool-display"
 import { createTranslator } from "../../src/i18n"
 
 describe("webSearchProviderLabel", () => {
@@ -66,5 +66,35 @@ describe("browserLabel", () => {
     for (const action of ["open", "read", "click", "type", "scroll", "wait", "screenshot"]) {
       expect(browserLabel(ko, { action }, {})).toMatch(/^브라우저 [\uAC00-\uD7A3]+$/)
     }
+  })
+})
+
+describe("browserNotice", () => {
+  const en = createTranslator("en").t
+  const ko = createTranslator("ko").t
+  const pairing = { pairing: { code: "197159", name: "Chrome on Windows" } }
+
+  test("while the call waits for Allow, names the code in both languages", () => {
+    expect(browserNotice(ko, "running", pairing)).toBe(
+      "크롬에서 허용을 눌러 주세요 (코드 197159). 컴퓨터 알림과 레드롭 확장 옆 패널에 떠요.",
+    )
+    expect(browserNotice(en, "running", pairing)).toBe(
+      "Press Allow in Chrome (code 197159). It shows in a system notification and in the Redrob extension's side panel.",
+    )
+  })
+
+  test("goes away once the call is over or the request is gone", () => {
+    expect(browserNotice(ko, "completed", pairing)).toBeUndefined()
+    expect(browserNotice(ko, "error", pairing)).toBeUndefined()
+    expect(browserNotice(ko, "running", { action: "open" })).toBeUndefined()
+    expect(browserNotice(ko, "running", { pairing: { code: "" } })).toBeUndefined()
+  })
+
+  test("says how to connect when no Chrome with the extension was found", () => {
+    expect(browserNotice(ko, "completed", { connect: true })).toBe(
+      "내 크롬을 쓰려면 크롬에 레드롭 확장을 설치하고, 확장 설정의 레드롭 챗에서 같은 레드롭 계정으로 연결해 주세요.",
+    )
+    expect(browserNotice(en, "completed", { connect: true })).toContain("install the Redrob extension in Chrome")
+    expect(browserNotice(en, "completed", { browser: "own" })).toBeUndefined()
   })
 })

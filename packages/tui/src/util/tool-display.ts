@@ -19,7 +19,28 @@ type BrowserKey =
   | "session.tool.browser"
   | "session.tool.browser.chrome"
   | "session.tool.browser.own"
+  | "session.tool.browser.pairing"
+  | "session.tool.browser.connect"
   | `session.tool.browser.action.${BrowserAction}`
+
+/**
+ * The line under a `browser` row for the person: while the call waits for Allow in their Chrome,
+ * which code to allow; once no Chrome with the extension was found (the engine says so once per
+ * session), how to connect one. Nothing otherwise, so it goes away on Allow, deny, expiry or fallback.
+ */
+export function browserNotice(
+  t: (key: BrowserKey, params?: Record<string, string>) => string,
+  status: string,
+  metadata: Record<string, unknown>,
+): string | undefined {
+  const pairing = metadata.pairing
+  if (status === "running" && pairing && typeof pairing === "object" && !Array.isArray(pairing)) {
+    const code = (pairing as Record<string, unknown>).code
+    if (typeof code === "string" && code) return t("session.tool.browser.pairing", { code })
+  }
+  if (status === "completed" && metadata.connect === true) return t("session.tool.browser.connect")
+  return undefined
+}
 
 /**
  * The row for a `browser` tool call: the action in the person's language, what it acted on

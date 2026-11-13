@@ -174,7 +174,7 @@ function link(room: Room, store = secrets()) {
   const created = new ExtensionLink(
     { relayTicket: async () => ({ url: "wss://relay.test/r", ticket: "t", expiresAt: "", role: "owner", peerId: "code-peer", room: "desk:u" }) },
     store,
-    { name: "Redrob Code on test", socket: () => new FakeSocket(room, "code-peer"), announceWaitMs: 200 },
+    { name: "Redrob Code on test", socket: () => new FakeSocket(room, "code-peer"), announceWaitMs: 200, repeatWaitMs: 100 },
   )
   links.push(created)
   created.start()
@@ -257,7 +257,7 @@ describe("ExtensionLink", () => {
     expect(extension.requests.at(-1)).toEqual({ method: "POST", path: "/browser/task", body: { task: "x" } })
   })
 
-  test("no Allow in time: unavailable as pairing, and the next request does not wait again", async () => {
+  test("no Allow in time: unavailable as pairing, and the next request only waits briefly", async () => {
     const room = new Room()
     await FakeExtension.create(room)
     const subject = link(room)
@@ -300,6 +300,33 @@ describe("ExtensionLink", () => {
     await Bun.sleep(50)
     expect(subject.status()).toEqual({ state: "ready", name: "Chrome on Windows" })
     expect((await subject.request("GET", "/desk/capabilities")).status).toBe(200)
+  })
+
+  test("a request the extension forgot is asked again with a fresh code, without a manual step", async () => {
+    const room = new Room()
+    const extension = await FakeExtension.create(room)
+    const created = new ExtensionLink(
+      { relayTicket: async () => ({ url: "wss://relay.test/r", ticket: "t", expiresAt: "", role: "owner", peerId: "code-peer", room: "desk:u" }) },
+      secrets(),
+      { name: "Redrob Code on test", socket: () => new FakeSocket(room, "code-peer"), announceWaitMs: 200, pairTtlMs: 400, repeatWaitMs: 100 },
+    )
+    links.push(created)
+    created.start()
+    await created.request("GET", "/desk/capabilities", undefined, { pairMs: 200 }).catch(() => undefined)
+    const first = created.status()
+    const firstPub = DeskCrypto.b64url(extension.lastHello!.pub)
+    // The same request still going: a later call does not ask again, it waits briefly.
+    await created.request("GET", "/desk/capabilities", undefined, { pairMs: 5_000 }).catch(() => undefined)
+    expect(DeskCrypto.b64url(extension.lastHello!.pub)).toBe(firstPub)
+    // Its ten minutes (here 400 ms) are over, and no `desk.denied expired` came.
+    await Bun.sleep(450)
+    const pending = created.request("GET", "/desk/capabilities", undefined, { pairMs: 5_000 })
+    await Bun.sleep(150)
+    expect(DeskCrypto.b64url(extension.lastHello!.pub)).not.toBe(firstPub)
+    const second = created.status()
+    expect(first.state === "pairing" && second.state === "pairing" && first.code !== second.code).toBe(true)
+    await extension.approve()
+    expect((await pending).status).toBe(200)
   })
 
   test("Deny in Chrome: unavailable as denied", async () => {

@@ -528,6 +528,10 @@ export const dict = {
   "session.tool.browser.action.scroll": "scroll",
   "session.tool.browser.action.wait": "wait",
   "session.tool.browser.action.screenshot": "screenshot",
+  "session.tool.browser.pairing":
+    "Press Allow in Chrome (code {{code}}). It shows in a system notification and in the Redrob extension's side panel.",
+  "session.tool.browser.connect":
+    "To use your own Chrome, install the Redrob extension in Chrome and connect it with the same Redrob account (extension Settings → Redrob chat → Connect).",
   "session.tool.questions_asked.one": "Asked {{count}} question",
   "session.tool.questions_asked.other": "Asked {{count}} questions",
   "session.patch.deleted": "# Deleted {{path}}",

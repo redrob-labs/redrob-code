@@ -26,6 +26,10 @@ const decoder = new TextDecoder()
 export const ANNOUNCE_WAIT_MS = 4_000
 /** How long a request waits for the person to press Allow in Chrome the first time. */
 export const PAIR_WAIT_MS = 2 * 60_000
+/** How long the extension keeps a pairing request (its `PENDING_MS`). */
+export const PAIR_TTL_MS = 10 * 60_000
+/** A later call while the same request still waits: long enough to show the code and catch an Allow. */
+export const REPEAT_WAIT_MS = 20_000
 const HANDSHAKE_WAIT_MS = 15_000
 const REQUEST_TIMEOUT_MS = 30_000
 
@@ -93,6 +97,8 @@ type Browser = {
   reason?: string
   /** A request already waited out the Allow for the current pairing request. */
   waited?: boolean
+  /** When the extension said the current pairing request is pending. */
+  askedAt?: number
   /** The key this engine said hello with. */
   device?: DeskCrypto.KeyPair
   /** It left in the middle of a handshake: say hello again when it is back. */
@@ -132,6 +138,8 @@ export class ExtensionLink {
       readonly name?: string
       readonly socket?: (url: string) => Socket
       readonly announceWaitMs?: number
+      readonly pairTtlMs?: number
+      readonly repeatWaitMs?: number
       readonly log?: (message: string) => void
     } = {},
   ) {}
@@ -222,9 +230,20 @@ export class ExtensionLink {
     let browser = this.pick()
     if (!browser?.peerId) throw new BrowserUnavailable(this.status())
     if (browser.link === "denied") throw new BrowserUnavailable(this.status())
-    // The person is asked to Allow once per request in Chrome: a request after one that already
-    // waited out the Allow does not wait again (the Allow still links this engine when it comes).
-    const wait = browser.waited ? 0 : pairMs
+    // A request the extension has forgotten by now (its pairing requests last ten minutes), even
+    // when its `desk.denied expired` never reached us: start a fresh one with a new key and code.
+    const ttl = this.options.pairTtlMs ?? PAIR_TTL_MS
+    if (browser.link === "pending" && browser.askedAt !== undefined && Date.now() - browser.askedAt >= ttl) {
+      this.log(`the request to ${browser.name} (code ${browser.code}) expired; asking again`)
+      if (browser.device === this.candidate) this.candidate = undefined
+      browser.link = "idle"
+      browser.waited = false
+      browser.code = undefined
+      browser.askedAt = undefined
+    }
+    // The person is asked to Allow once per request in Chrome: a call after one that already
+    // waited the full time waits only briefly (the Allow still links this engine when it comes).
+    const wait = browser.waited ? Math.min(pairMs, this.options.repeatWaitMs ?? REPEAT_WAIT_MS) : pairMs
     const deadline = Date.now() + wait
     if (browser.link === "idle") await this.hello(browser)
     await this.until(
@@ -510,6 +529,8 @@ export class ExtensionLink {
       return this.hello(browser)
     }
     browser.link = "pending"
+    // A hello again with the same key keeps the extension's first deadline, so keep ours too.
+    browser.askedAt ??= Date.now()
     this.log(`waiting for Allow in ${browser.name}: "${this.ownName}" asks, code ${browser.code}`)
     this.notify()
   }
@@ -541,6 +562,7 @@ export class ExtensionLink {
     browser.link = "ready"
     browser.code = undefined
     browser.waited = false
+    browser.askedAt = undefined
     this.log(`${browser.name} allowed "${this.ownName}"; linked`)
     // Keep the key only now that the extension knows it: the next start says hello without a code.
     if (this.candidate === device) {
@@ -566,6 +588,7 @@ export class ExtensionLink {
     browser.link = reason === "expired" ? "idle" : "denied"
     browser.reason = reason
     browser.waited = false
+    browser.askedAt = undefined
     browser.code = undefined
     this.log(`${browser.name} answered ${reason}`)
     // That pairing request is over: the next one gets a fresh key and code.

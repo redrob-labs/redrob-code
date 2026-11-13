@@ -21,7 +21,16 @@ export const Parameters = Schema.Struct({
 
 type Params = Schema.Schema.Type<typeof Parameters>
 
-type Metadata = { action: Params["action"]; url?: string; handedBack?: string; browser?: "chrome" | "own" }
+type Metadata = {
+  action: Params["action"]
+  url?: string
+  handedBack?: string
+  browser?: "chrome" | "own"
+  /** While the call waits for Allow in the person's Chrome. */
+  pairing?: { code: string; name: string }
+  /** No Chrome with the extension was found; the TUI says how to connect (once per session). */
+  connect?: boolean
+}
 
 const need = <A>(value: A | undefined, message: string): A => {
   if (value === undefined || value === "") throw new Error(message)
@@ -68,8 +77,16 @@ export const BrowserTool = Tool.define<typeof Parameters, Metadata, never>(
           if (params.action === "open" && !/^https?:\/\//i.test(params.url ?? ""))
             throw new Error("open takes an http:// or https:// URL.")
           // The person's own Chrome through the Redrob extension when it is linked; else our Chromium.
+          // While the first call waits for Allow in Chrome, the row shows the code (metadata.pairing).
           const user = yield* Effect.promise(() =>
-            UserBrowser.act(params, { sessionID: ctx.sessionID, signal: ctx.abort }),
+            UserBrowser.act(params, {
+              sessionID: ctx.sessionID,
+              signal: ctx.abort,
+              onPairing: (pairing) =>
+                void Effect.runPromise(
+                  ctx.metadata({ metadata: { action: params.action, ...(pairing ? { pairing } : {}) } }),
+                ).catch(() => undefined),
+            }),
           )
           if (user.kind === "extension")
             return {
@@ -80,7 +97,12 @@ export const BrowserTool = Tool.define<typeof Parameters, Metadata, never>(
           const browserLine = UserBrowser.line(user)
           const handedBack = yield* Effect.promise(() => RunnerBrowser.turn(ctx.abort))
           const lead = `${browserLine}\n${handedBack ? `${handedBack}\n\n` : ""}`
-          const meta = { action: params.action, browser: "own" as const, ...(handedBack ? { handedBack } : {}) }
+          const meta = {
+            action: params.action,
+            browser: "own" as const,
+            ...(handedBack ? { handedBack } : {}),
+            ...(user.connect ? { connect: true } : {}),
+          }
 
           if (params.action === "screenshot") {
             const shot = yield* Effect.promise(() => RunnerBrowser.screenshot())
