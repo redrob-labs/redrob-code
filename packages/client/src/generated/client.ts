@@ -26,6 +26,8 @@ import type {
   ServerChannelsDeskMachineOutput,
   ServerChannelsDeskMachineUpdateInput,
   ServerChannelsDeskMachineUpdateOutput,
+  ServerChannelsDeskBrowserInput,
+  ServerChannelsDeskBrowserOutput,
   ServerAppsListOutput,
   ServerAppsRegisterInput,
   ServerAppsRegisterOutput,
@@ -459,6 +461,18 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/desk/machine`,
             body: { name: input?.["name"], kind: input?.["kind"], access: input?.["access"] },
+            successStatus: 200,
+            declaredStatuses: [503, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deskBrowser: (input: ServerChannelsDeskBrowserInput, requestOptions?: RequestOptions) =>
+        request<ServerChannelsDeskBrowserOutput>(
+          {
+            method: "POST",
+            path: `/desk/browser`,
+            body: { method: input["method"], path: input["path"], body: input["body"], pairMs: input["pairMs"] },
             successStatus: 200,
             declaredStatuses: [503, 401, 400],
             empty: false,

@@ -109,6 +109,18 @@ const Endpoint2_12 = (raw: RawClient["server.channels"]) => (input?: Endpoint2_1
     payload: { name: input?.["name"], kind: input?.["kind"], access: input?.["access"] },
   }).pipe(Effect.mapError(mapClientError))
 
+type Endpoint2_13Request = Parameters<RawClient["server.channels"]["desk.browser"]>[0]
+type Endpoint2_13Input = {
+  readonly method: Endpoint2_13Request["payload"]["method"]
+  readonly path: Endpoint2_13Request["payload"]["path"]
+  readonly body?: Endpoint2_13Request["payload"]["body"]
+  readonly pairMs?: Endpoint2_13Request["payload"]["pairMs"]
+}
+const Endpoint2_13 = (raw: RawClient["server.channels"]) => (input: Endpoint2_13Input) =>
+  raw["desk.browser"]({
+    payload: { method: input["method"], path: input["path"], body: input["body"], pairMs: input["pairMs"] },
+  }).pipe(Effect.mapError(mapClientError))
+
 const adaptGroup2 = (raw: RawClient["server.channels"]) => ({
   status: Endpoint2_0(raw),
   reload: Endpoint2_1(raw),
@@ -123,6 +135,7 @@ const adaptGroup2 = (raw: RawClient["server.channels"]) => ({
   deskRevoke: Endpoint2_10(raw),
   deskMachine: Endpoint2_11(raw),
   deskMachineUpdate: Endpoint2_12(raw),
+  deskBrowser: Endpoint2_13(raw),
 })
 
 const Endpoint3_0 = (raw: RawClient["server.apps"]) => () => raw["apps.list"]({}).pipe(Effect.mapError(mapClientError))

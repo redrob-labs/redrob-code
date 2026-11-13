@@ -146,5 +146,14 @@ export const ChannelsHandler = HttpApiBuilder.group(Api, "server.channels", (han
         if (!update) return yield* Effect.fail(noDesk())
         return yield* Effect.promise(() => update.call(controller, ctx.payload))
       }),
+    )
+    .handle(
+      "desk.browser",
+      Effect.fn(function* (ctx) {
+        const controller = yield* desk()
+        const ask = controller.browser
+        if (!ask) return yield* Effect.fail(noDesk())
+        return yield* Effect.promise(() => ask.call(controller, ctx.payload))
+      }),
     ),
 )

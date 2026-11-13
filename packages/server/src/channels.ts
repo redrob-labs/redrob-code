@@ -45,6 +45,31 @@ export type DeskStatus = {
   readonly login?: DeskLogin
   readonly pending: readonly { code: string; name: string; kind: DeskKind; expiresAt: number }[]
   readonly devices: readonly { id: string; name: string; kind: DeskKind; addedAt: number; online: boolean }[]
+  /** The person's Chrome with the Redrob extension, as the `browser` tool reaches it. Absent from an older controller. */
+  readonly browser?: DeskBrowserState
+}
+
+export type DeskBrowserState = {
+  readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+  readonly name?: string
+  readonly code?: string
+  readonly reason?: string
+}
+
+/** `POST /desk/browser` body: one request of the extension's route set (redrob-extension `src/remote/forward.ts`). */
+export type DeskBrowserRequest = {
+  readonly method: "GET" | "POST"
+  readonly path: string
+  readonly body?: unknown
+  readonly pairMs?: number
+}
+
+/** `status` 0: the request did not reach the extension; `error` says why. */
+export type DeskBrowserResponse = {
+  readonly status: number
+  readonly body?: unknown
+  readonly browser: DeskBrowserState
+  readonly error?: string
 }
 
 /** `PUT /desk/token` body: the app's redrob-auth access token and its expiry (epoch ms). */
@@ -77,6 +102,8 @@ export type DeskController = {
   /** This machine; optional so an older controller still type-checks (the route answers 503 without it). */
   machine?(): Promise<DeskMachine>
   updateMachine?(update: DeskMachineUpdate): Promise<DeskMachine>
+  /** The person's browser extension over the relay; optional so an older controller still type-checks (503 without it). */
+  browser?(request: DeskBrowserRequest): Promise<DeskBrowserResponse>
 }
 
 export type DeskMachineKind = "desktop" | "server" | "cloud"
