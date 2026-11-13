@@ -2428,6 +2428,25 @@ export type GlobalSession = {
   project: ProjectSummary | null
 }
 
+export type UsageTotal = {
+  cost: number
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
+}
+
+export type UsageSummary = {
+  day: UsageTotal
+  month: UsageTotal
+  total: UsageTotal
+}
+
 export type McpResource = {
   name: string
   uri: string
@@ -8749,6 +8768,36 @@ export type ExperimentalSessionBackgroundResponses = {
 
 export type ExperimentalSessionBackgroundResponse =
   ExperimentalSessionBackgroundResponses[keyof ExperimentalSessionBackgroundResponses]
+
+export type ExperimentalUsageGetData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    day: number
+    month: number
+  }
+  url: "/experimental/usage"
+}
+
+export type ExperimentalUsageGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ExperimentalUsageGetError = ExperimentalUsageGetErrors[keyof ExperimentalUsageGetErrors]
+
+export type ExperimentalUsageGetResponses = {
+  /**
+   * Usage on this machine
+   */
+  200: UsageSummary
+}
+
+export type ExperimentalUsageGetResponse = ExperimentalUsageGetResponses[keyof ExperimentalUsageGetResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

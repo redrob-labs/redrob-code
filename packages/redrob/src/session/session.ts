@@ -310,6 +310,26 @@ export type ListInput = {
   limit?: number
 }
 
+/** What one period cost on this machine: the same step-finish figures that add up to `Session.cost`. */
+export const UsageTotal = Schema.Struct({
+  cost: Schema.Finite,
+  tokens: Tokens,
+}).annotate({ identifier: "UsageTotal" })
+export type UsageTotal = Types.DeepMutable<Schema.Schema.Type<typeof UsageTotal>>
+
+export const UsageSummary = Schema.Struct({
+  day: UsageTotal,
+  month: UsageTotal,
+  total: UsageTotal,
+}).annotate({ identifier: "UsageSummary" })
+export type UsageSummary = Types.DeepMutable<Schema.Schema.Type<typeof UsageSummary>>
+
+/** Epoch milliseconds where "today" and "this month" start, in the caller's own time zone. */
+export type UsageInput = {
+  day: number
+  month: number
+}
+
 export type GlobalListInput = {
   directory?: string
   roots?: boolean
@@ -451,6 +471,8 @@ export type NotFound = NotFoundError
 export interface Interface {
   readonly list: (input?: ListInput) => Effect.Effect<Info[]>
   readonly listGlobal: (input?: GlobalListInput) => Effect.Effect<GlobalInfo[]>
+  /** Spend across every session on this machine, archived and subagent sessions included. */
+  readonly usage: (input: UsageInput) => Effect.Effect<UsageSummary>
   readonly create: (input?: {
     parentID?: SessionID
     title?: string
@@ -629,6 +651,58 @@ const layer: Layer.Layer<
         }
       }
       return rows.map((row) => ({ ...fromRow(row), project: projects.get(row.project_id) ?? null }))
+    })
+
+    const usage = Effect.fn("Session.usage")(function* (input: UsageInput) {
+      // `Session.cost` and its token columns are the sum of the session's step-finish parts (see
+      // applyUsage in core's session projector), so the all-time figure reads those columns and the
+      // dated figures sum the same parts by when they were written. Nothing is re-priced here.
+      const total = yield* db
+        .select({
+          cost: sql<number>`coalesce(sum(${SessionTable.cost}), 0)`,
+          input: sql<number>`coalesce(sum(${SessionTable.tokens_input}), 0)`,
+          output: sql<number>`coalesce(sum(${SessionTable.tokens_output}), 0)`,
+          reasoning: sql<number>`coalesce(sum(${SessionTable.tokens_reasoning}), 0)`,
+          read: sql<number>`coalesce(sum(${SessionTable.tokens_cache_read}), 0)`,
+          write: sql<number>`coalesce(sum(${SessionTable.tokens_cache_write}), 0)`,
+        })
+        .from(SessionTable)
+        .get()
+        .pipe(Effect.orDie)
+      const since = Math.min(input.day, input.month)
+      const field = (path: string, from: number) =>
+        sql<number>`coalesce(sum(case when ${PartTable.time_created} >= ${from} then json_extract(${PartTable.data}, ${path}) else 0 end), 0)`
+      const period = (from: number) => ({
+        cost: field("$.cost", from),
+        input: field("$.tokens.input", from),
+        output: field("$.tokens.output", from),
+        reasoning: field("$.tokens.reasoning", from),
+        read: field("$.tokens.cache.read", from),
+        write: field("$.tokens.cache.write", from),
+      })
+      const dated = yield* db
+        .select({ day: period(input.day), month: period(input.month) })
+        .from(PartTable)
+        .where(and(gte(PartTable.time_created, since), sql`json_extract(${PartTable.data}, '$.type') = 'step-finish'`))
+        .get()
+        .pipe(Effect.orDie)
+      const shape = (row?: {
+        cost: number
+        input: number
+        output: number
+        reasoning: number
+        read: number
+        write: number
+      }) => ({
+        cost: Number(row?.cost ?? 0),
+        tokens: {
+          input: Number(row?.input ?? 0),
+          output: Number(row?.output ?? 0),
+          reasoning: Number(row?.reasoning ?? 0),
+          cache: { read: Number(row?.read ?? 0), write: Number(row?.write ?? 0) },
+        },
+      })
+      return { day: shape(dated?.day), month: shape(dated?.month), total: shape(total) }
     })
 
     const children = Effect.fn("Session.children")(function* (parentID: SessionID) {
@@ -944,6 +1018,7 @@ const layer: Layer.Layer<
     return Service.of({
       list,
       listGlobal,
+      usage,
       create,
       fork,
       touch,

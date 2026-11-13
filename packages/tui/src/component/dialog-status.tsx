@@ -3,8 +3,14 @@ import { fileURLToPath } from "bun"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
-import { For, Match, Switch, Show, createMemo } from "solid-js"
+import { For, Match, Switch, Show, createMemo, createResource } from "solid-js"
 import { useLanguage } from "../context/language"
+import { useRoute } from "../context/route"
+import { useSDK } from "../context/sdk"
+import { Usage } from "../util/usage"
+import { CONSOLE_HOME_URL } from "@redrob-code/core/links"
+
+const EMPTY: Usage.Total = { cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }
 
 export type DialogStatusProps = {}
 
@@ -13,6 +19,38 @@ export function DialogStatus() {
   const { theme } = useTheme()
   const dialog = useDialog()
   const language = useLanguage()
+  const route = useRoute()
+  const sdk = useSDK()
+
+  // The current session's running total is the footer's figure; the machine-wide periods come from
+  // the engine, which sums every session's step-finish parts. Console exposes no balance or spend
+  // route an API key may read, so the Console figure is a link rather than a number.
+  const session = createMemo((): Usage.Total | undefined => {
+    if (route.data.type !== "session") return
+    const info = sync.session.get(route.data.sessionID)
+    if (!info) return
+    return { cost: info.cost ?? 0, tokens: info.tokens ?? EMPTY.tokens }
+  })
+  const [machine] = createResource(async () => {
+    const result = await sdk.client.experimental.usage.get(Usage.bounds())
+    if (result.error || !result.data) throw new Error("usage unavailable")
+    return result.data
+  })
+  const rows = createMemo(() => {
+    const data = machine.error ? undefined : machine()
+    return [
+      ...(session() ? [{ label: language.t("status.usage.session"), total: session()! }] : []),
+      ...(data
+        ? [
+            { label: language.t("status.usage.day"), total: data.day },
+            { label: language.t("status.usage.month"), total: data.month },
+            { label: language.t("status.usage.total"), total: data.total },
+          ]
+        : []),
+    ]
+  })
+  const width = createMemo(() => Math.max(...rows().map((row) => Bun.stringWidth(row.label)), 0))
+  const redrob = createMemo(() => sync.data.provider.some((item) => item.id === "redrob"))
 
   const enabledFormatters = createMemo(() => sync.data.formatter.filter((f) => f.enabled))
 
@@ -51,6 +89,39 @@ export function DialogStatus() {
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
           {language.t("dialog.esc")}
         </text>
+      </box>
+      <box>
+        <text fg={theme.text}>{language.t("status.usage")}</text>
+        <For each={rows()}>
+          {(row) => (
+            <box flexDirection="row" gap={1}>
+              <text flexShrink={0} width={width()} fg={theme.textMuted}>
+                {row.label}
+              </text>
+              <text fg={theme.text} wrapMode="word">
+                {language.t("status.usage.line", Usage.format(row.total))}
+              </text>
+            </box>
+          )}
+        </For>
+        <Switch>
+          <Match when={machine.loading}>
+            <text fg={theme.textMuted}>{language.t("status.usage.loading")}</text>
+          </Match>
+          <Match when={machine.error}>
+            <text fg={theme.warning}>{language.t("status.usage.failed")}</text>
+          </Match>
+          <Match when={machine()}>
+            <text fg={theme.textMuted} wrapMode="word">
+              {language.t("status.usage.note")}
+            </text>
+          </Match>
+        </Switch>
+        <Show when={redrob()}>
+          <text fg={theme.textMuted} wrapMode="word">
+            {language.t("status.usage.console", { url: `${CONSOLE_HOME_URL}/billing` })}
+          </text>
+        </Show>
       </box>
       <Show
         when={Object.keys(sync.data.mcp).length > 0}

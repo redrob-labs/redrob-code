@@ -282,6 +282,16 @@ export const dict = {
 
   // Status
   "status.title": "Status",
+  "status.usage": "Usage",
+  "status.usage.session": "This session",
+  "status.usage.day": "Today",
+  "status.usage.month": "This month",
+  "status.usage.total": "All time",
+  "status.usage.line": "in {{input}} · out {{output}} · cache {{cache}} · {{cost}}",
+  "status.usage.loading": "Loading usage…",
+  "status.usage.failed": "Could not load usage on this machine",
+  "status.usage.note": "Today, this month and all time add up every session on this machine.",
+  "status.usage.console": "Console balance: {{url}}",
   "status.mcp.empty": "No MCP Servers",
   "status.mcp.count.one": "{{count}} MCP Server",
   "status.mcp.count.other": "{{count}} MCP Servers",
