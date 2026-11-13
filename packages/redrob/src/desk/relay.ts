@@ -16,6 +16,7 @@ import { AccessTokens, ChatApi, endpoints, type AppToken, type RelayTicket } fro
 import * as DeskCrypto from "./crypto"
 import { DaemonApi } from "./daemon"
 import { Forwarder, type Link } from "./forward"
+import { HiveRunner } from "./hive"
 import {
   MACHINE_NAMESPACE,
   decodeAction,
@@ -67,6 +68,8 @@ export class DeskRelay {
   private readonly chat: ChatApi
   private readonly forwarder: Forwarder
   private readonly tools: ToolCatalog
+  /** PC schedules: pulls this machine's due firings and runs them (hive.ts). */
+  private readonly hive: HiveRunner
   private readonly peers = new Map<string, Peer>()
   private socket?: WebSocket
   private ticket?: RelayTicket
@@ -101,6 +104,7 @@ export class DeskRelay {
       () => this.machineChanged(),
     )
     this.tools = new ToolCatalog(this.api, InstallationVersion)
+    this.hive = new HiveRunner(this.chat, this.api, this.log)
   }
 
   get connected(): boolean {
@@ -111,6 +115,7 @@ export class DeskRelay {
     if (!this.stopped) return
     this.stopped = false
     this.forwarder.start()
+    this.hive.start()
     const refreshTools = () => void this.tools.refresh().catch(() => undefined)
     refreshTools()
     this.timers.push(
@@ -134,6 +139,7 @@ export class DeskRelay {
     if (this.machineSent) this.sendRaw(MACHINE_NAMESPACE, encodeMachine({ ...this.machineSent, online: false }))
     this.machineSent = undefined
     this.forwarder.stop()
+    this.hive.stop()
     this.dropAll()
     this.socket?.close(1000, "stop")
     this.socket = undefined
