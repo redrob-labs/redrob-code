@@ -44,6 +44,28 @@ XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://raw.githubusercontent.com/redrob
 redrob
 ```
 
+#### Windows
+
+PowerShell(Windows PowerShell 5.1 또는 PowerShell 7)에서 실행합니다. 관리자 권한은 필요 없습니다.
+
+```powershell
+irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1 | iex
+```
+
+[`install.ps1`](./install.ps1) 은 CPU에 맞는 x64, x64-baseline, arm64 빌드를 골라 릴리스의
+`SHA256SUMS.txt` 로 검증한 뒤 `redrob.exe` 를 `%USERPROFILE%\.redrob\bin` 에 설치하고(Redrob
+Desktop 이 찾는 위치이고, `redrob upgrade` 로 업데이트됩니다) 그 폴더를 사용자 PATH 에 추가합니다.
+버전이나 설치 폴더를 지정하려면:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1))) -Version 0.18.16
+$env:REDROB_INSTALL_DIR = "D:\tools\redrob"; irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1 | iex
+```
+
+`REDROB_VERSION`, `REDROB_NO_MODIFY_PATH=1`, `REDROB_CONNECT=rc_...` 는 각각 `-Version`,
+`-NoModifyPath`, `-Connect` 와 같습니다. [릴리스 페이지](https://github.com/redrob-labs/redrob-code/releases)
+의 서명된 `.msi` 와 `setup.exe` 는 `%LOCALAPPDATA%\Redrob\bin` 에 설치합니다.
+
 ### 인증
 
 레드롭 코드는 <https://console.redrob.ai>의 레드롭 콘솔과 통신하며 워크스페이스 API 키로
