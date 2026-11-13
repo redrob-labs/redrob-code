@@ -93,6 +93,10 @@ type Browser = {
   reason?: string
   /** A request already waited out the Allow for the current pairing request. */
   waited?: boolean
+  /** The key this engine said hello with. */
+  device?: DeskCrypto.KeyPair
+  /** It left in the middle of a handshake: say hello again when it is back. */
+  rehello?: boolean
   sending: Promise<void>
 }
 
@@ -115,7 +119,9 @@ export class ExtensionLink {
   private nextId = 1
   private inbound: Promise<void> = Promise.resolve()
   private changed: Array<() => void> = []
-  private device?: Promise<DeskCrypto.KeyPair>
+  private allowed?: Promise<DeskCrypto.KeyPair | undefined>
+  /** The key of the pairing request going on, until it is allowed, denied or expires. */
+  private candidate?: DeskCrypto.KeyPair
   private chosen?: string
 
   constructor(
@@ -285,28 +291,48 @@ export class ExtensionLink {
     )
   }
 
-  private key(): Promise<DeskCrypto.KeyPair> {
-    if (!this.device) {
-      this.device = (async () => {
-        const stored = await this.secrets.get("browserKey")
-        if (stored) return DeskCrypto.importPrivate(stored)
-        const fresh = await DeskCrypto.generate()
-        await this.secrets.set("browserKey", await DeskCrypto.exportPrivate(fresh))
-        return fresh
-      })()
-      this.device.catch(() => {
-        this.device = undefined
-      })
+  /**
+   * The key the extension allowed before (`browserKey`, kept only once a `desk.accept` came), else
+   * undefined. A key that was never allowed is not kept: each pairing request uses a fresh key,
+   * so its six digits are new too, and an Allow left over from an earlier request cannot match.
+   */
+  private allowedKey(): Promise<DeskCrypto.KeyPair | undefined> {
+    if (!this.allowed) {
+      this.allowed = (async () => {
+        const [stored, desk] = await Promise.all([this.secrets.get("browserKey"), this.secrets.get("browserDesk")])
+        return stored && desk ? DeskCrypto.importPrivate(stored) : undefined
+      })().catch(() => undefined)
     }
-    return this.device
+    return this.allowed
+  }
+
+  /** The name the extension shows in its Allow prompt and its list of allowed devices. */
+  private get ownName(): string {
+    return this.options.name ?? `Redrob Code on ${os.hostname()}`
+  }
+
+  private log(message: string): void {
+    this.options.log?.(`${new Date().toISOString()} browser link: ${message}`)
   }
 
   private async hello(browser: Browser): Promise<void> {
     if (!browser.peerId) return
-    const [device, ephemeral] = await Promise.all([this.key(), DeskCrypto.generate()])
+    const allowed = await this.allowedKey()
+    // Not allowed yet: one key per pairing request, kept for as long as that request waits.
+    const device = allowed ?? (this.candidate ??= await DeskCrypto.generate())
+    const ephemeral = await DeskCrypto.generate()
+    browser.device = device
     browser.ephemeral = ephemeral
     browser.channel = undefined
     browser.link = "handshake"
+    browser.rehello = false
+    // The extension shows the same six digits (ECDH both ways); known before it answers.
+    browser.code = await DeskCrypto.devicePairingCode(device, browser.pub)
+    this.log(
+      allowed
+        ? `hello to ${browser.name} (${browser.id}) as "${this.ownName}", allowed before`
+        : `asking ${browser.name} (${browser.id}) to allow "${this.ownName}" (code ${browser.code})`,
+    )
     this.notify()
     this.sendJson(
       "desk.hello",
@@ -314,7 +340,7 @@ export class ExtensionLink {
         v: 1,
         phone: DeskCrypto.b64url(device.pub),
         eph: DeskCrypto.b64url(ephemeral.pub),
-        name: this.options.name ?? `Redrob Code on ${os.hostname()}`,
+        name: this.ownName,
         kind: "web",
       },
       browser.peerId,
@@ -338,7 +364,7 @@ export class ExtensionLink {
     try {
       ticket = await this.chat.relayTicket()
     } catch (error) {
-      this.options.log?.(`browser link: no relay ticket: ${error instanceof Error ? error.message : String(error)}`)
+      this.log(`no relay ticket: ${error instanceof Error ? error.message : String(error)}`)
       return this.schedule()
     } finally {
       this.connecting = false
@@ -457,12 +483,14 @@ export class ExtensionLink {
     }
     browser.name = name
     const samePeer = browser.peerId === peerId
+    if (!samePeer) this.log(`${name} (${browser.id}) is online`)
     if (browser.peerId && !samePeer) this.peers.delete(browser.peerId)
     browser.peerId = peerId
     this.peers.set(peerId, browser.id)
-    // A new connection of that browser (its worker restarted): the old session is gone. Say hello
-    // again only when this engine had already been talking to it.
-    if (!samePeer && browser.link !== "idle" && browser.link !== "denied") {
+    // A new connection of that browser (its worker restarted, or it left in the middle of the
+    // handshake): its old session and its pairing request are gone. Say hello again when this
+    // engine had been talking to it, with the same key, so the code on screen stays the same.
+    if (!samePeer && (browser.rehello || (browser.link !== "idle" && browser.link !== "denied"))) {
       this.fail(browser.id, new Error(`${browser.name} reconnected`))
       browser.channel = undefined
       browser.link = "idle"
@@ -474,20 +502,33 @@ export class ExtensionLink {
   private async onPending(peerId: string): Promise<void> {
     const browser = this.browserOf(peerId)
     if (!browser || browser.link !== "handshake") return
-    browser.code = await DeskCrypto.devicePairingCode(await this.key(), browser.pub)
+    if (browser.device && browser.device === (await this.allowedKey())) {
+      // The extension forgot this engine (removed in its Settings, or reinstalled): start a new
+      // pairing request with a fresh key instead of re-showing the old one's code.
+      this.log(`${browser.name} no longer knows this engine; asking again`)
+      await this.forgetAllowed()
+      return this.hello(browser)
+    }
     browser.link = "pending"
-    this.options.log?.(`browser link: allow "Redrob Code" in ${browser.name} (code ${browser.code})`)
+    this.log(`waiting for Allow in ${browser.name}: "${this.ownName}" asks, code ${browser.code}`)
     this.notify()
+  }
+
+  private async forgetAllowed(): Promise<void> {
+    this.allowed = Promise.resolve(undefined)
+    this.candidate = undefined
+    await this.secrets.set("browserDesk", "").catch(() => undefined)
   }
 
   private async onAccept(peerId: string, accept: Record<string, unknown> | undefined): Promise<void> {
     const browser = this.browserOf(peerId)
     const ephemeral = browser?.ephemeral
-    if (!browser || !ephemeral || !this.ticket || typeof accept?.eph !== "string") return
+    const device = browser?.device
+    if (!browser || !ephemeral || !device || !this.ticket || typeof accept?.eph !== "string") return
     const deskEph = DeskCrypto.fromB64url(accept.eph)
     try {
       browser.channel = await DeskCrypto.Channel.device({
-        device: await this.key(),
+        device,
         ephemeral,
         deskPub: browser.pub,
         deskEph,
@@ -500,6 +541,14 @@ export class ExtensionLink {
     browser.link = "ready"
     browser.code = undefined
     browser.waited = false
+    this.log(`${browser.name} allowed "${this.ownName}"; linked`)
+    // Keep the key only now that the extension knows it: the next start says hello without a code.
+    if (this.candidate === device) {
+      this.candidate = undefined
+      this.allowed = Promise.resolve(device)
+      await this.secrets.set("browserKey", await DeskCrypto.exportPrivate(device)).catch(() => undefined)
+      await this.secrets.set("browserDesk", browser.id).catch(() => undefined)
+    }
     if (this.chosen !== browser.id) {
       this.chosen = browser.id
       await this.secrets.set("browserDesk", browser.id).catch(() => undefined)
@@ -517,6 +566,11 @@ export class ExtensionLink {
     browser.link = reason === "expired" ? "idle" : "denied"
     browser.reason = reason
     browser.waited = false
+    browser.code = undefined
+    this.log(`${browser.name} answered ${reason}`)
+    // That pairing request is over: the next one gets a fresh key and code.
+    if (browser.device === this.candidate) this.candidate = undefined
+    else if (reason === "revoked") void this.forgetAllowed()
     this.fail(browser.id, new BrowserUnavailable(this.status()))
     this.notify()
   }
@@ -554,7 +608,9 @@ export class ExtensionLink {
     if (!browser) return
     browser.peerId = undefined
     browser.channel = undefined
+    if (browser.link === "handshake" || browser.link === "pending" || browser.link === "ready") browser.rehello = true
     if (browser.link !== "denied") browser.link = "idle"
+    this.log(`${browser.name} (${browser.id}) went offline`)
     this.fail(browser.id, new Error(`${browser.name} went offline`))
     this.notify()
   }

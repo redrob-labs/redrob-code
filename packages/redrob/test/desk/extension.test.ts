@@ -269,6 +269,39 @@ describe("ExtensionLink", () => {
     expect(Date.now() - started).toBeLessThan(2_000)
   })
 
+  test("each pairing request has its own code; a request nobody allowed leaves no key behind", async () => {
+    const room = new Room()
+    const extension = await FakeExtension.create(room)
+    const store = secrets()
+    const first = link(room, store)
+    await first.request("GET", "/desk/capabilities", undefined, { pairMs: 300 }).catch(() => undefined)
+    const one = first.status()
+    const firstPub = DeskCrypto.b64url(extension.lastHello!.pub)
+    first.stop()
+    expect(store.values.has("browserKey")).toBe(false)
+    const second = link(room, store)
+    await second.request("GET", "/desk/capabilities", undefined, { pairMs: 300 }).catch(() => undefined)
+    expect(DeskCrypto.b64url(extension.lastHello!.pub)).not.toBe(firstPub)
+    expect(one.state === "pairing" && second.status().state === "pairing").toBe(true)
+    // The code the engine shows is the one the extension computes for that request.
+    const shown = second.status()
+    expect(shown.state === "pairing" ? shown.code : "").toBe(
+      await DeskCrypto.pairingCode(extension.desk, extension.lastHello!.pub),
+    )
+  })
+
+  test("an Allow while no tool call waits still links, and the next request goes straight through", async () => {
+    const room = new Room()
+    const extension = await FakeExtension.create(room)
+    const subject = link(room)
+    await subject.request("GET", "/desk/capabilities", undefined, { pairMs: 200 }).catch(() => undefined)
+    expect(subject.status().state).toBe("pairing")
+    await extension.approve()
+    await Bun.sleep(50)
+    expect(subject.status()).toEqual({ state: "ready", name: "Chrome on Windows" })
+    expect((await subject.request("GET", "/desk/capabilities")).status).toBe(200)
+  })
+
   test("Deny in Chrome: unavailable as denied", async () => {
     const room = new Room()
     const extension = await FakeExtension.create(room)
