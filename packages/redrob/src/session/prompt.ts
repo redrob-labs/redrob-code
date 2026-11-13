@@ -574,7 +574,7 @@ const layer = Layer.effect(
 
           const cfg = yield* config.get()
           const sh = Shell.preferred(cfg.shell)
-          const args = Shell.args(sh, input.command, cwd)
+          const args = Shell.args(sh, Shell.utf8(sh, input.command), cwd)
           let output = ""
           let aborted = false
 
@@ -612,12 +612,12 @@ const layer = Layer.effect(
               const cmd = ChildProcess.make(sh, args, {
                 cwd,
                 extendEnv: true,
-                env: { ...shellEnv.env, TERM: "dumb" },
+                env: { ...Shell.env(), ...process.env, ...shellEnv.env, TERM: "dumb" },
                 stdin: "ignore",
                 forceKillAfter: "3 seconds",
               })
               const handle = yield* spawner.spawn(cmd)
-              yield* Stream.runForEach(Stream.decodeText(handle.all), (chunk) =>
+              yield* Stream.runForEach(Stream.map(handle.all, Shell.decoder()), (chunk) =>
                 Effect.gen(function* () {
                   output += chunk
                   if (part.state.status === "running") {

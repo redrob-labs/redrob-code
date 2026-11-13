@@ -1,7 +1,7 @@
 export * as Shell from "./shell"
 
 import path from "path"
-import { spawn, type ChildProcess } from "child_process"
+import { execFileSync, spawn, type ChildProcess } from "child_process"
 import { readFile } from "fs/promises"
 import { statSync } from "fs"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -223,4 +223,86 @@ acceptable.reset = () => {
 export async function list(): Promise<Item[]> {
   const shells = process.platform === "win32" ? win() : await unix()
   return shells.filter((s) => resolve(s)).map(info)
+}
+
+// Windows console programs write in the console or ANSI code page (949 on Korean Windows), and we
+// decode their output as UTF-8. Ask the shell and Python for UTF-8 up front, and decode whatever
+// still arrives as non-UTF-8 with the system code page instead of turning it into U+FFFD.
+
+/** Child env defaults that make Python write UTF-8 to a pipe. The caller's own values win. */
+export function env(platform = process.platform): Record<string, string> {
+  if (platform !== "win32") return {}
+  return { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" }
+}
+
+/** Prefix a Windows command so PowerShell and cmd write UTF-8. */
+export function utf8(file: string, command: string, platform = process.platform) {
+  if (platform !== "win32") return command
+  if (ps(file)) return `[Console]::OutputEncoding=$OutputEncoding=[Text.UTF8Encoding]::new($false);${command}`
+  if (name(file) === "cmd") return `chcp 65001>nul&${command}`
+  return command
+}
+
+let acp: number | undefined | null = null
+
+/** The system ANSI code page, read once from the registry. */
+function codepage() {
+  if (acp !== null) return acp
+  acp = undefined
+  try {
+    const text = execFileSync("reg", ["query", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage", "/v", "ACP"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 2000,
+    })
+    const match = /ACP\s+REG_SZ\s+(\d+)/.exec(text)
+    if (match) acp = Number(match[1])
+  } catch {}
+  return acp
+}
+
+const LABELS: Record<number, string> = { 866: "ibm866", 932: "shift_jis", 936: "gbk", 949: "euc-kr", 950: "big5" }
+
+function legacy(page: number | undefined) {
+  if (page && page !== 65001) {
+    try {
+      return new TextDecoder((LABELS[page] ?? `windows-${page}`) as ConstructorParameters<typeof TextDecoder>[0])
+    } catch {}
+  }
+  return new TextDecoder("utf-8")
+}
+
+// Trailing bytes that open a UTF-8 sequence the chunk does not finish; the decoder holds them back.
+function pending(bytes: Uint8Array) {
+  for (let i = 1; i <= Math.min(3, bytes.length); i++) {
+    const byte = bytes[bytes.length - i]
+    if ((byte & 0xc0) === 0x80) continue
+    const need = byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : byte >= 0xc0 ? 2 : 1
+    return need > i ? bytes.slice(bytes.length - i) : new Uint8Array()
+  }
+  return new Uint8Array()
+}
+
+/**
+ * A streaming decoder for shell output. UTF-8 everywhere; on Windows, once the output turns out not
+ * to be UTF-8, the rest of the stream is decoded with the system code page.
+ */
+export function decoder(platform = process.platform, page: () => number | undefined = codepage) {
+  const text = new TextDecoder("utf-8", { fatal: platform === "win32" })
+  let fallback: TextDecoder | undefined
+  let tail = new Uint8Array()
+  return (bytes: Uint8Array) => {
+    if (fallback) return fallback.decode(bytes, { stream: true })
+    try {
+      const out = text.decode(bytes, { stream: true })
+      tail = pending(bytes)
+      return out
+    } catch {
+      fallback = legacy(page())
+      const all = new Uint8Array(tail.length + bytes.length)
+      all.set(tail)
+      all.set(bytes, tail.length)
+      return fallback.decode(all, { stream: true })
+    }
+  }
 }
