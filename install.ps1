@@ -155,7 +155,8 @@
       $want = $Dir.TrimEnd('\')
       $present = $current -split ';' | Where-Object { $_ -and [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ieq $want }
       if ($present) { return $false }
-      $value = if ($current) { $current.TrimEnd(';') + ';' + $Dir } else { $Dir }
+      # First, as `install` does, so this copy wins over an older one (an .msi install appends).
+      $value = if ($current) { $Dir + ';' + $current.TrimStart(';') } else { $Dir }
       $key.SetValue('Path', $value, [Microsoft.Win32.RegistryValueKind]::ExpandString)
     } finally {
       $key.Close()
@@ -253,7 +254,7 @@
     } else {
       if (Add-UserPath $installDir) { Write-Host "Added $installDir to your user PATH" }
       # This session too, so `redrob` works right away after `irm ... | iex`.
-      $env:Path = "$env:Path;$installDir"
+      $env:Path = "$installDir;$env:Path"
     }
   }
 
