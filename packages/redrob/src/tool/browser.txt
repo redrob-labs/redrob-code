@@ -1,14 +1,14 @@
-Drive a real Chromium browser on this machine (headless, 1280x800). Use it to check a local dev server, click through a web app, or read a page that needs JavaScript. `localhost` here is this machine.
+Drive a web browser. When the person's own Chrome has the Redrob extension and is linked to this engine, actions run there, with their sign-ins; otherwise in a headless Chromium on this machine (1280x800), where `localhost` is this machine. The first line of every result says which browser was used.
 
 Actions:
 - open: go to `url` (http or https).
-- read: the page as a numbered accessibility tree. Each element has a number like [ref=e5].
+- read: the page as text with numbered elements like [ref=e5] or [e5].
 - click: click element `ref`.
 - type: replace the text in field `ref` with `text`; `submit: true` presses Enter after.
 - scroll: scroll `direction` (down/up) by `amount` pixels (default 600), or bring element `ref` into view.
 - wait: wait until `text` is visible, or for `seconds` (at most 60).
-- screenshot: a picture of the visible page.
+- screenshot: a picture of the visible page (headless Chromium only; in the person's Chrome use read).
 
 Every action except screenshot returns a fresh reading. Element numbers belong to the reading they came from: after the page changes (navigation, a new tab, the user taking over), read again before using a number.
 
-The user may watch the browser and take it over. While they hold it, your next browser action waits until they hand it back (up to 10 minutes), and the result starts with a line saying what they did. Password fields are hidden in pictures.
+The user may watch the browser and take it over. While they hold it, your next browser action waits until they hand it back (up to 10 minutes), and the result starts with a line saying what they did. Password fields are hidden in pictures. In the person's Chrome, sign-ins, payments and anything their approval setting asks about are their step there: the action waits for them.

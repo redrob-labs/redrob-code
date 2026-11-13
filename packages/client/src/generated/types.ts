@@ -203,6 +203,14 @@ export type ServerChannelsDeskStatusOutput = {
     readonly addedAt: number
     readonly online: boolean
   }>
+  readonly browser?:
+    | {
+        readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+        readonly name?: string | undefined
+        readonly code?: string | undefined
+        readonly reason?: string | undefined
+      }
+    | undefined
 }
 
 export type ServerChannelsDeskEnableInput = { readonly enabled: { readonly enabled: boolean }["enabled"] }
@@ -229,6 +237,14 @@ export type ServerChannelsDeskEnableOutput = {
     readonly addedAt: number
     readonly online: boolean
   }>
+  readonly browser?:
+    | {
+        readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+        readonly name?: string | undefined
+        readonly code?: string | undefined
+        readonly reason?: string | undefined
+      }
+    | undefined
 }
 
 export type ServerChannelsDeskLoginOutput = {
@@ -259,6 +275,14 @@ export type ServerChannelsDeskLogoutOutput = {
     readonly addedAt: number
     readonly online: boolean
   }>
+  readonly browser?:
+    | {
+        readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+        readonly name?: string | undefined
+        readonly code?: string | undefined
+        readonly reason?: string | undefined
+      }
+    | undefined
 }
 
 export type ServerChannelsDeskTokenSetInput = {
@@ -301,6 +325,14 @@ export type ServerChannelsDeskTokenSetOutput = {
     readonly addedAt: number
     readonly online: boolean
   }>
+  readonly browser?:
+    | {
+        readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+        readonly name?: string | undefined
+        readonly code?: string | undefined
+        readonly reason?: string | undefined
+      }
+    | undefined
 }
 
 export type ServerChannelsDeskTokenClearOutput = {
@@ -325,6 +357,14 @@ export type ServerChannelsDeskTokenClearOutput = {
     readonly addedAt: number
     readonly online: boolean
   }>
+  readonly browser?:
+    | {
+        readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+        readonly name?: string | undefined
+        readonly code?: string | undefined
+        readonly reason?: string | undefined
+      }
+    | undefined
 }
 
 export type ServerChannelsDeskApproveInput = { readonly code: { readonly code: string }["code"] }
@@ -383,6 +423,45 @@ export type ServerChannelsDeskMachineUpdateOutput = {
   readonly kind: "desktop" | "server" | "cloud"
   readonly os: string
   readonly access: "read_only" | "ask" | "trusted"
+}
+
+export type ServerChannelsDeskBrowserInput = {
+  readonly method: {
+    readonly method: "GET" | "POST"
+    readonly path: string
+    readonly body?: unknown | undefined
+    readonly pairMs?: number | undefined
+  }["method"]
+  readonly path: {
+    readonly method: "GET" | "POST"
+    readonly path: string
+    readonly body?: unknown | undefined
+    readonly pairMs?: number | undefined
+  }["path"]
+  readonly body?: {
+    readonly method: "GET" | "POST"
+    readonly path: string
+    readonly body?: unknown | undefined
+    readonly pairMs?: number | undefined
+  }["body"]
+  readonly pairMs?: {
+    readonly method: "GET" | "POST"
+    readonly path: string
+    readonly body?: unknown | undefined
+    readonly pairMs?: number | undefined
+  }["pairMs"]
+}
+
+export type ServerChannelsDeskBrowserOutput = {
+  readonly status: number
+  readonly body?: unknown | undefined
+  readonly browser: {
+    readonly state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+    readonly name?: string | undefined
+    readonly code?: string | undefined
+    readonly reason?: string | undefined
+  }
+  readonly error?: string | undefined
 }
 
 export type ServerAppsListOutput = {

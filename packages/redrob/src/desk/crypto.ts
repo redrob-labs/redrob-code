@@ -89,6 +89,16 @@ export async function pairingCode(desk: KeyPair, phonePub: Uint8Array): Promise<
   return String(value).padStart(6, "0")
 }
 
+/**
+ * The same six digits, device side: ECDH(P, D) equals ECDH(D, P). The engine is the device when it
+ * calls the Redrob browser extension, which takes the desk role (extension.ts).
+ */
+export async function devicePairingCode(device: KeyPair, deskPub: Uint8Array): Promise<string> {
+  const bytes = await hkdf(await ecdh(device.privateKey, deskPub), concat(device.pub, deskPub), "redrob-desk-pair", 4)
+  const value = new DataView(ab(bytes)).getUint32(0) % 1_000_000
+  return String(value).padStart(6, "0")
+}
+
 function nonce(counter: bigint): Uint8Array {
   const out = new Uint8Array(12)
   new DataView(out.buffer).setBigUint64(4, counter)
@@ -130,6 +140,28 @@ export class Channel {
     const phoneToDesk = await key(okm.subarray(0, 32), "decrypt")
     const deskToPhone = await key(okm.subarray(32, 64), "encrypt")
     return new Channel(deskToPhone, phoneToDesk, input.ownPeerId, input.phonePeerId)
+  }
+
+  /**
+   * Device side of the same handshake, for the engine calling a desk peer (the browser extension):
+   * `Pe` is this connection's ephemeral key, `De_pub` came in `desk.accept`, `D_pub` in `desk.announce`.
+   * The device sends with bytes 0..31 and receives with 32..63.
+   */
+  static async device(input: {
+    device: KeyPair
+    ephemeral: KeyPair
+    deskPub: Uint8Array
+    deskEph: Uint8Array
+    ownPeerId: string
+    deskPeerId: string
+  }): Promise<Channel> {
+    const ikm = concat(await ecdh(input.ephemeral.privateKey, input.deskEph), await ecdh(input.device.privateKey, input.deskPub))
+    const salt = await sha256(concat(input.ephemeral.pub, input.deskEph))
+    const okm = await hkdf(ikm, salt, "redrob-desk-v1", 64)
+    const key = (bytes: Uint8Array, usage: KeyUsage) => crypto.subtle.importKey("raw", ab(bytes), "AES-GCM", false, [usage])
+    const deviceToDesk = await key(okm.subarray(0, 32), "encrypt")
+    const deskToDevice = await key(okm.subarray(32, 64), "decrypt")
+    return new Channel(deviceToDesk, deskToDevice, input.ownPeerId, input.deskPeerId)
   }
 
   async seal(plaintext: Uint8Array): Promise<Uint8Array> {

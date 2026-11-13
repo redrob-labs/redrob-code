@@ -28,6 +28,7 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DeskBrowserRequest,
   DeskMachineUpdate,
   DeskToken,
   EventSubscribeResponses,
@@ -346,6 +347,8 @@ import type {
   V2CredentialUpdateResponses,
   V2DeskApproveErrors,
   V2DeskApproveResponses,
+  V2DeskBrowserErrors,
+  V2DeskBrowserResponses,
   V2DeskDenyErrors,
   V2DeskDenyResponses,
   V2DeskEnableErrors,
@@ -6113,6 +6116,30 @@ export class Desk extends HeyApiClient {
       url: "/desk/devices/{id}/revoke",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Ask the person's browser extension
+   *
+   * Sends one request of the Redrob extension's route set to the person's Chrome over the desk relay, as a paired device (the first time the person allows this engine in Chrome). Used by the browser tool of every engine on this machine. status 0 when it did not reach the extension. 503 on a server that is not the registered daemon.
+   */
+  public browser<ThrowOnError extends boolean = false>(
+    parameters?: {
+      deskBrowserRequest?: DeskBrowserRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "deskBrowserRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2DeskBrowserResponses, V2DeskBrowserErrors, ThrowOnError>({
+      url: "/desk/browser",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

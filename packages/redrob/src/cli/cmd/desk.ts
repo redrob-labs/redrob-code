@@ -12,6 +12,7 @@ import { Daemon } from "@/daemon/connect"
 import * as Autostart from "@/daemon/autostart"
 import { endpoints } from "@/desk/auth"
 import { chatConnectApi, connect, isToken, thisMachine, type DeskLocal } from "@/desk/connect"
+import { describe, type BrowserState } from "@/desk/extension"
 import { updateMachine } from "@/desk/settings"
 
 type Kind = "phone" | "web"
@@ -27,6 +28,8 @@ type Status = {
   login?: Login
   pending: { code: string; name: string; kind: Kind; expiresAt: number }[]
   devices: { id: string; name: string; kind: Kind; addedAt: number; online: boolean }[]
+  /** Absent from an older engine. */
+  browser?: BrowserState
 }
 
 type Device = { id: string; name: string; kind: Kind }
@@ -82,6 +85,7 @@ function printStatus(status: Status): void {
   if (status.autoAll !== undefined) UI.println(`auto all from phone: ${status.autoAll ? "on" : "off"}`)
   if (status.pending.length > 0) UI.println(`${status.pending.length} device(s) waiting; run: redrob desk pending`)
   UI.println(`${status.devices.length} approved device(s)`)
+  if (status.browser) UI.println(`your Chrome (Redrob extension): ${describe(status.browser)}`)
 }
 
 /** A local call that must succeed; `call` already printed why it did not. */

@@ -9,6 +9,7 @@
  */
 import { Config, type DaemonConnection } from "@redrob-code/channels-core"
 import { AppToken, endpoints, finishDeviceLogin, startDeviceLogin, type DeviceAuthorization } from "./auth"
+import { BrowserUnavailable, ExtensionLink, type BrowserResponse, type BrowserState } from "./extension"
 import { NotFound, Pairing, type DeviceKind } from "./pairing"
 import { DeskRelay, consoleLogger, type Logger } from "./relay"
 import { allowAutoAll, machine, updateMachine, type Machine, type MachineUpdate } from "./settings"
@@ -33,7 +34,21 @@ export type DeskStatus = {
   readonly login?: DeskLogin
   readonly pending: readonly { code: string; name: string; kind: DeviceKind; expiresAt: number }[]
   readonly devices: readonly { id: string; name: string; kind: DeviceKind; addedAt: number; online: boolean }[]
+  /** The person's Chrome with the Redrob extension, as the `browser` tool reaches it (extension.ts). */
+  readonly browser: BrowserState
 }
+
+/** `POST /desk/browser`: one request of the extension's route set, and what came back. */
+export type DeskBrowserRequest = {
+  readonly method: "GET" | "POST"
+  readonly path: string
+  readonly body?: unknown
+  /** How long to wait for Allow in Chrome the first time (default two minutes). */
+  readonly pairMs?: number
+}
+
+/** `status` 0: the request did not reach the extension; `error` says why and `browser` where it stands. */
+export type DeskBrowserResponse = BrowserResponse & { readonly browser: BrowserState; readonly error?: string }
 
 /** The device grant is already running (or this machine is already signed in). */
 export class AlreadySignedIn extends Error {}
@@ -41,6 +56,8 @@ export class AlreadySignedIn extends Error {}
 export class DeskService {
   readonly pairing: Pairing
   private relay?: DeskRelay
+  /** Runs beside the relay: this engine calling the person's browser extension. */
+  private extension?: ExtensionLink
   private login?: { readonly device: DeviceAuthorization; readonly abort: AbortController }
   private reconciling: Promise<void> = Promise.resolve()
   /** Redrob Desktop's access token (`PUT /desk/token`). Memory only, never logged. */
@@ -87,11 +104,15 @@ export class DeskService {
         if (wanted && !this.relay) {
           this.relay = new DeskRelay(this.daemon, this.pairing, this.log, undefined, this.app)
           this.relay.start()
+          this.extension = new ExtensionLink(this.relay.chat, this.tokens(), { log: (m) => this.log.info(m) })
+          this.extension.start()
           this.log.info("relay on")
           this.onChange()
         } else if (!wanted && this.relay) {
           this.relay.stop()
           this.relay = undefined
+          this.extension?.stop()
+          this.extension = undefined
           this.log.info("relay off")
           this.onChange()
         }
@@ -107,6 +128,25 @@ export class DeskService {
     this.login = undefined
     this.relay?.stop()
     this.relay = undefined
+    this.extension?.stop()
+    this.extension = undefined
+  }
+
+  /**
+   * `POST /desk/browser`: a request to the person's browser extension, for the `browser` tool of
+   * any engine on this machine (browser/extension.ts). A request that did not reach the extension
+   * comes back as status 0 with the reason, so the tool can fall back to its own Chromium.
+   */
+  async browser(request: DeskBrowserRequest): Promise<DeskBrowserResponse> {
+    const link = this.extension
+    if (!link) return { status: 0, browser: { state: "off" } }
+    try {
+      const response = await link.request(request.method, request.path, request.body, { pairMs: request.pairMs })
+      return { ...response, browser: link.status() }
+    } catch (error) {
+      const state = error instanceof BrowserUnavailable ? error.state : link.status()
+      return { status: 0, browser: state, error: error instanceof Error ? error.message : String(error) }
+    }
   }
 
   async status(): Promise<DeskStatus> {
@@ -137,6 +177,7 @@ export class DeskService {
         addedAt,
         online: online.has(id),
       })),
+      browser: this.extension?.status() ?? { state: "off" },
     }
   }
 

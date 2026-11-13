@@ -2975,6 +2975,13 @@ export type DeskLogin = {
   expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
 }
 
+export type DeskBrowserState = {
+  state: "off" | "none" | "found" | "pairing" | "ready" | "denied"
+  name?: string
+  code?: string
+  reason?: string
+}
+
 export type DeskStatus = {
   enabled: boolean
   signedIn: boolean
@@ -2997,6 +3004,7 @@ export type DeskStatus = {
     addedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     online: boolean
   }>
+  browser?: DeskBrowserState
 }
 
 export type ConflictError = {
@@ -3034,6 +3042,20 @@ export type DeskMachineUpdate = {
   name?: string
   kind?: "desktop" | "server" | "cloud"
   access?: "read_only" | "ask" | "trusted"
+}
+
+export type DeskBrowserRequest = {
+  method: "GET" | "POST"
+  path: string
+  body?: unknown
+  pairMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DeskBrowserResponse = {
+  status: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  body?: unknown
+  browser: DeskBrowserState
+  error?: string
 }
 
 export type BridgedApp = {
@@ -13227,6 +13249,35 @@ export type V2DeskMachineUpdateResponses = {
 }
 
 export type V2DeskMachineUpdateResponse = V2DeskMachineUpdateResponses[keyof V2DeskMachineUpdateResponses]
+
+export type V2DeskBrowserData = {
+  body?: DeskBrowserRequest
+  path?: never
+  query?: never
+  url: "/desk/browser"
+}
+
+export type V2DeskBrowserErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2DeskBrowserError = V2DeskBrowserErrors[keyof V2DeskBrowserErrors]
+
+export type V2DeskBrowserResponses = {
+  /**
+   * DeskBrowserResponse
+   */
+  200: DeskBrowserResponse
+}
+
+export type V2DeskBrowserResponse = V2DeskBrowserResponses[keyof V2DeskBrowserResponses]
 
 export type V1AppsListData = {
   body?: never

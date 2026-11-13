@@ -65,7 +65,8 @@ export type RelayStatus = {
 
 export class DeskRelay {
   private readonly api: DaemonApi
-  private readonly chat: ChatApi
+  /** Also the browser link's (extension.ts), so both share one token refresh. */
+  readonly chat: ChatApi
   private readonly forwarder: Forwarder
   private readonly tools: ToolCatalog
   /** PC schedules: pulls this machine's due firings and runs them (hive.ts). */
