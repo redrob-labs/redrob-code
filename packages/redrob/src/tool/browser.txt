@@ -11,4 +11,8 @@ Actions:
 
 Every action except screenshot returns a fresh reading. Element numbers belong to the reading they came from: after the page changes (navigation, a new tab, the user taking over), read again before using a number.
 
+Use this tool, not web search, when the answer has to come from a site itself: prices and stock in a shop, bookings, anything behind a sign-in, or a site with a bot check. It runs in the person's own Chrome whenever that is linked. A result starting with `Blocked:` means the site showed a bot check or access block to the headless browser: nothing on that page is the site's content. Tell the person, and pass on how to connect their Chrome when the result says it.
+
+If the site blocked you and you answer from search results instead, say so plainly: the answer comes from search results, not from the site, and may be out of date.
+
 The user may watch the browser and take it over. While they hold it, your next browser action waits until they hand it back (up to 10 minutes), and the result starts with a line saying what they did. Password fields are hidden in pictures. In the person's Chrome, sign-ins, payments and anything their approval setting asks about are their step there: the action waits for them.
