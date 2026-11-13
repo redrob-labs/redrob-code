@@ -42,6 +42,8 @@ import type {
   ExperimentalConsoleListOrgsErrors,
   ExperimentalConsoleListOrgsResponses,
   ExperimentalConsoleSwitchOrgResponses,
+  ExperimentalConsoleUsageErrors,
+  ExperimentalConsoleUsageResponses,
   ExperimentalControlPlaneMoveSessionErrors,
   ExperimentalControlPlaneMoveSessionResponses,
   ExperimentalExtensionsCallErrors,
@@ -940,6 +942,42 @@ export class Console extends HeyApiClient {
       ThrowOnError
     >({
       url: "/experimental/console/orgs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Console balance and spend
+   *
+   * The Redrob workspace's balance and today's and this month's spend across every device, read from the Console with the Redrob provider's key. Null when there is no key or the Console does not answer.
+   */
+  public usage<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      tz: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "tz" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalConsoleUsageResponses,
+      ExperimentalConsoleUsageErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/console/usage",
       ...options,
       ...params,
     })

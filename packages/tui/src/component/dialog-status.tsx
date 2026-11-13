@@ -23,8 +23,9 @@ export function DialogStatus() {
   const sdk = useSDK()
 
   // The current session's running total is the footer's figure; the machine-wide periods come from
-  // the engine, which sums every session's step-finish parts. Console exposes no balance or spend
-  // route an API key may read, so the Console figure is a link rather than a number.
+  // the engine, which sums every session's step-finish parts. The Console block is the workspace's
+  // balance and spend across every device, which the engine reads from the Console with the Redrob
+  // provider's key (the key never reaches the TUI). Any failure leaves the plain billing link.
   const session = createMemo((): Usage.Total | undefined => {
     if (route.data.type !== "session") return
     const info = sync.session.get(route.data.sessionID)
@@ -51,6 +52,21 @@ export function DialogStatus() {
   })
   const width = createMemo(() => Math.max(...rows().map((row) => Bun.stringWidth(row.label)), 0))
   const redrob = createMemo(() => sync.data.provider.some((item) => item.id === "redrob"))
+  // Read once when the dialog opens, never on a timer: the Console rate-limits this per workspace.
+  const [remote] = createResource(redrob, async () => {
+    const result = await sdk.client.experimental.console
+      .usage({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone })
+      .catch(() => undefined)
+    return result?.data ? Usage.workspace(result.data) : null
+  })
+  const workspace = createMemo(() => (remote.error ? null : remote()))
+  const billing = `${CONSOLE_HOME_URL}/billing`
+  const labels = createMemo(() => [
+    language.t("status.console.balance"),
+    language.t("status.console.today"),
+    language.t("status.console.month"),
+  ])
+  const consoleWidth = createMemo(() => Math.max(...labels().map((label) => Bun.stringWidth(label))))
 
   const enabledFormatters = createMemo(() => sync.data.formatter.filter((f) => f.enabled))
 
@@ -117,12 +133,57 @@ export function DialogStatus() {
             </text>
           </Match>
         </Switch>
-        <Show when={redrob()}>
+        <Show when={redrob() && !workspace()}>
           <text fg={theme.textMuted} wrapMode="word">
-            {language.t("status.usage.console", { url: `${CONSOLE_HOME_URL}/billing` })}
+            {language.t("status.usage.console", { url: billing })}
           </text>
         </Show>
       </box>
+      <Show when={redrob() && workspace()}>
+        {(value) => (
+          <box>
+            <text fg={theme.text}>{language.t("status.console")}</text>
+            <box flexDirection="row" gap={1}>
+              <text flexShrink={0} width={consoleWidth()} fg={theme.textMuted}>
+                {labels()[0]}
+              </text>
+              <Switch>
+                <Match when={value().complimentary}>
+                  <text fg={theme.text} wrapMode="word">
+                    {language.t("status.console.complimentary")}
+                  </text>
+                </Match>
+                <Match when={value().low}>
+                  <text fg={theme.warning} wrapMode="word">
+                    {language.t("status.console.low", { balance: value().balance })}
+                  </text>
+                </Match>
+                <Match when={true}>
+                  <text fg={theme.text}>{value().balance}</text>
+                </Match>
+              </Switch>
+            </box>
+            <box flexDirection="row" gap={1}>
+              <text flexShrink={0} width={consoleWidth()} fg={theme.textMuted}>
+                {labels()[1]}
+              </text>
+              <text fg={theme.text}>{language.t("status.console.spend", value().today)}</text>
+            </box>
+            <box flexDirection="row" gap={1}>
+              <text flexShrink={0} width={consoleWidth()} fg={theme.textMuted}>
+                {labels()[2]}
+              </text>
+              <text fg={theme.text}>{language.t("status.console.spend", value().month)}</text>
+            </box>
+            <text fg={theme.textMuted} wrapMode="word">
+              {language.t("status.console.note")}
+            </text>
+            <text fg={theme.textMuted} wrapMode="word">
+              {language.t("status.console.billing", { url: billing })}
+            </text>
+          </box>
+        )}
+      </Show>
       <Show
         when={Object.keys(sync.data.mcp).length > 0}
         fallback={<text fg={theme.text}>{language.t("status.mcp.empty")}</text>}
