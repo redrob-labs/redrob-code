@@ -46,6 +46,29 @@ Then start it in any project:
 redrob
 ```
 
+#### Windows
+
+In PowerShell (Windows PowerShell 5.1 or PowerShell 7), no administrator rights needed:
+
+```powershell
+irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1 | iex
+```
+
+[`install.ps1`](./install.ps1) picks the x64, x64-baseline or arm64 build for your CPU, checks it
+against the release's `SHA256SUMS.txt`, installs `redrob.exe` into `%USERPROFILE%\.redrob\bin`
+(where Redrob Desktop looks, and where `redrob upgrade` can replace it) and adds that folder to
+your user PATH. A specific version, or a different folder:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1))) -Version 0.18.16
+$env:REDROB_INSTALL_DIR = "D:\tools\redrob"; irm https://raw.githubusercontent.com/redrob-labs/redrob-code/main/install.ps1 | iex
+```
+
+`REDROB_VERSION`, `REDROB_NO_MODIFY_PATH=1` and `REDROB_CONNECT=rc_...` do the same as
+`-Version`, `-NoModifyPath` and `-Connect`. The signed `.msi` and `setup.exe` on the
+[releases page](https://github.com/redrob-labs/redrob-code/releases) install into
+`%LOCALAPPDATA%\Redrob\bin` instead.
+
 ### Authentication
 
 Redrob Code talks to the Redrob console at <https://console.redrob.ai> and authenticates
