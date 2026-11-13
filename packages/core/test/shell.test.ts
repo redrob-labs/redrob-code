@@ -106,3 +106,54 @@ describe("shell", () => {
     })
   }
 })
+
+describe("shell output encoding", () => {
+  // "한글" in UTF-8 and in code page 949
+  const utf8 = new TextEncoder().encode("한글 ok")
+  const cp949 = new Uint8Array([0xc7, 0xd1, 0xb1, 0xdb, 0x20, 0x6f, 0x6b])
+
+  test("env asks Python for UTF-8 on Windows only", () => {
+    expect(Shell.env("win32")).toEqual({ PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" })
+    expect(Shell.env("linux")).toEqual({})
+    expect(Shell.env("darwin")).toEqual({})
+  })
+
+  test("utf8 prefixes PowerShell and cmd on Windows only", () => {
+    expect(Shell.utf8("pwsh", "Write-Output hi", "win32")).toBe(
+      "[Console]::OutputEncoding=$OutputEncoding=[Text.UTF8Encoding]::new($false);Write-Output hi",
+    )
+    expect(Shell.utf8("powershell", "dir", "win32")).toStartWith("[Console]::OutputEncoding=")
+    expect(Shell.utf8("cmd", "echo hi", "win32")).toBe("chcp 65001>nul&echo hi")
+    expect(Shell.utf8("bash", "echo hi", "win32")).toBe("echo hi")
+    expect(Shell.utf8("pwsh", "echo hi", "linux")).toBe("echo hi")
+    expect(Shell.utf8("/bin/bash", "echo hi", "darwin")).toBe("echo hi")
+  })
+
+  test("decoder keeps UTF-8 output as is", () => {
+    const decode = Shell.decoder("win32", () => 949)
+    expect(decode(utf8.subarray(0, 2)) + decode(utf8.subarray(2))).toBe("한글 ok")
+  })
+
+  test("decoder falls back to the system code page on Windows", () => {
+    const decode = Shell.decoder("win32", () => 949)
+    expect(decode(cp949)).toBe("한글 ok")
+    expect(decode(cp949)).toBe("한글 ok")
+  })
+
+  test("decoder keeps a code page lead byte split across chunks", () => {
+    // 0xc7 alone looks like the start of a UTF-8 sequence; the next chunk proves it is not
+    const decode = Shell.decoder("win32", () => 949)
+    expect(decode(new Uint8Array([0x61, 0xc7])) + decode(cp949.subarray(1))).toBe("a한글 ok")
+  })
+
+  test("decoder without a known code page replaces invalid bytes", () => {
+    expect(Shell.decoder("win32", () => undefined)(cp949)).toBe(new TextDecoder().decode(cp949))
+    expect(Shell.decoder("win32", () => 65001)(cp949)).toBe(new TextDecoder().decode(cp949))
+  })
+
+  test("decoder never switches code page off Windows", () => {
+    const decode = Shell.decoder("linux", () => 949)
+    expect(decode(cp949)).toBe(new TextDecoder().decode(cp949))
+    expect(decode(utf8)).toBe("한글 ok")
+  })
+})

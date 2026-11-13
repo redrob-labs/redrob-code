@@ -327,7 +327,7 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
 
 function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv) {
   if (process.platform === "win32" && Shell.ps(shell)) {
-    return ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+    return ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", Shell.utf8(shell, command)], {
       cwd,
       env,
       stdin: "ignore",
@@ -335,7 +335,7 @@ function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv
     })
   }
 
-  return ChildProcess.make(command, [], {
+  return ChildProcess.make(Shell.utf8(shell, command), [], {
     shell,
     cwd,
     env,
@@ -455,6 +455,7 @@ export const ShellTool = Tool.define(
         { env: {} },
       )
       return {
+        ...Shell.env(),
         ...process.env,
         ...extra.env,
       }
@@ -519,7 +520,7 @@ export const ShellTool = Tool.define(
           const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
 
           yield* Effect.forkScoped(
-            Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
+            Stream.runForEach(Stream.map(handle.all, Shell.decoder()), (chunk) => {
               const size = Buffer.byteLength(chunk, "utf-8")
               list.push({ text: chunk, size })
               used += size
