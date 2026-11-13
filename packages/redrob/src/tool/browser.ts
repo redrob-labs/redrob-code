@@ -21,7 +21,7 @@ export const Parameters = Schema.Struct({
 
 type Params = Schema.Schema.Type<typeof Parameters>
 
-type Metadata = { action: Params["action"]; url?: string; handedBack?: string; browser?: "extension" | "chromium" }
+type Metadata = { action: Params["action"]; url?: string; handedBack?: string; browser?: "chrome" | "own" }
 
 const need = <A>(value: A | undefined, message: string): A => {
   if (value === undefined || value === "") throw new Error(message)
@@ -75,12 +75,12 @@ export const BrowserTool = Tool.define<typeof Parameters, Metadata, never>(
             return {
               title: `${params.action} ${user.url} (your Chrome)`,
               output: `${UserBrowser.line(user)}\n${user.text}`,
-              metadata: { action: params.action, url: user.url, browser: "extension" as const },
+              metadata: { action: params.action, url: user.url, browser: "chrome" as const },
             }
           const browserLine = UserBrowser.line(user)
           const handedBack = yield* Effect.promise(() => RunnerBrowser.turn(ctx.abort))
           const lead = `${browserLine}\n${handedBack ? `${handedBack}\n\n` : ""}`
-          const meta = { action: params.action, browser: "chromium" as const, ...(handedBack ? { handedBack } : {}) }
+          const meta = { action: params.action, browser: "own" as const, ...(handedBack ? { handedBack } : {}) }
 
           if (params.action === "screenshot") {
             const shot = yield* Effect.promise(() => RunnerBrowser.screenshot())
