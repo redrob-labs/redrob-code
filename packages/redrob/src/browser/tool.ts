@@ -77,7 +77,11 @@ async function act(input: Input, sessionID: string): Promise<Schema.Schema.Type<
         return RunnerBrowser.wait({ text: input.text, seconds: input.seconds })
     }
   })()
-  return { url: reading.url, text: `${lead}URL: ${reading.url}\nTitle: ${reading.title}\n\n${reading.text}` }
+  const block = await UserBrowser.onBlocked(reading, { sessionID })
+  if (block && "retried" in block)
+    return { url: block.retried.url, text: `${UserBrowser.line(block.retried)}\n${block.retried.text}` }
+  const note = block ? `${block.note}\n\n` : ""
+  return { url: reading.url, text: `${lead}${note}URL: ${reading.url}\nTitle: ${reading.title}\n\n${reading.text}` }
 }
 
 const layer = Layer.effectDiscard(

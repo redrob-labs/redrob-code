@@ -117,10 +117,21 @@ export const BrowserTool = Tool.define<typeof Parameters, Metadata, never>(
           }
 
           const reading = yield* Effect.promise(() => run(params))
+          // A bot check or block page: the person's Chrome when it is linked now, else say so plainly.
+          const block = yield* Effect.promise(() =>
+            UserBrowser.onBlocked(reading, { sessionID: ctx.sessionID, signal: ctx.abort }),
+          )
+          if (block && "retried" in block)
+            return {
+              title: `${params.action} ${block.retried.url} (your Chrome)`,
+              output: `${UserBrowser.line(block.retried)}\n${block.retried.text}`,
+              metadata: { action: params.action, url: block.retried.url, browser: "chrome" as const },
+            }
+          const note = block ? `${block.note}\n\n` : ""
           return {
             title: `${params.action} ${reading.url}`,
-            output: `${lead}URL: ${reading.url}\nTitle: ${reading.title}\n\n${reading.text}`,
-            metadata: { ...meta, url: reading.url },
+            output: `${lead}${note}URL: ${reading.url}\nTitle: ${reading.title}\n\n${reading.text}`,
+            metadata: { ...meta, url: reading.url, ...(block?.connect ? { connect: true } : {}) },
           }
           // A rejected promise dies with its error, which becomes the tool call's error text.
         }).pipe(Effect.orDie),

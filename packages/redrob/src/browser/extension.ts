@@ -15,6 +15,7 @@
  */
 import * as Channels from "@redrob-code/server/channels"
 import * as Registry from "@/daemon/registry"
+import { BlockedPage } from "./blocked"
 
 export type Action = "open" | "read" | "click" | "type" | "scroll" | "wait" | "screenshot"
 
@@ -339,6 +340,53 @@ export const CONNECT =
   "Tell the person once, in their language: to let Redrob Code use their own Chrome with their sign-ins, they install the Redrob extension in Chrome and connect it with the same Redrob account (extension Settings → Redrob chat → Connect). The next browser step then asks them to press Allow in Chrome."
 
 /** The first line of every result: which browser the action ran in, and why not the person's own. */
+/**
+ * A reading from the built-in browser that turned out to be a block page: try the person's Chrome
+ * once when it is linked now (`retried`), else the note for the result (`blockedNote`). Undefined
+ * when the page is the site.
+ */
+export async function onBlocked(
+  reading: { readonly url: string; readonly title: string; readonly text: string },
+  context: Context,
+): Promise<{ retried: Result & { kind: "extension" } } | { note: string; connect: boolean } | undefined> {
+  const sign = BlockedPage.blocked(reading)
+  if (!sign) return undefined
+  if (await linked(context.observe)) {
+    const again = await act({ action: "open", url: reading.url }, context).catch(() => undefined)
+    if (again?.kind === "extension") return { retried: again }
+  }
+  const { text, connect } = blockedNote(context.sessionID, sign, reading.url)
+  return { note: text, connect }
+}
+
+/** The person's Chrome is linked to the engine service right now. */
+export async function linked(observe?: () => Promise<Channels.DeskBrowserState | undefined>): Promise<boolean> {
+  const read = observe ?? (await observer().catch(() => undefined))
+  return (await read?.().catch(() => undefined))?.state === "ready"
+}
+
+/**
+ * The lines a blocked page in the built-in browser gets (BlockedPage.blocked): nothing on it came
+ * from the site; the person is told their own Chrome is needed, with how to connect it once per
+ * session; and an answer from search results has to say so. `connect` is true when the
+ * how-to-connect line was given this time.
+ */
+export function blockedNote(sessionID: string, sign: string, url: string): { text: string; connect: boolean } {
+  const state = session(sessionID)
+  const connect = !state.hinted
+  state.hinted = true
+  let host = url
+  try {
+    host = new URL(url).hostname
+  } catch {}
+  const text = [
+    `Blocked: ${host} showed ${sign} to this headless browser, so nothing below is the site's content. Tell the person the site blocked the built-in browser and that their own Chrome is needed for it.`,
+    `If you answer from search results instead, say so plainly: the answer comes from search results, not from ${host}, and may be out of date.`,
+    ...(connect ? [CONNECT] : []),
+  ].join("\n")
+  return { text, connect }
+}
+
 export function line(result: Result): string {
   if (result.kind === "extension") return `Browser: the person's own Chrome (${result.browser}), through the Redrob extension.`
   const base = `Browser: Redrob Code's own Chromium on this machine (headless).${result.reason ? ` The person's Chrome is not used: ${result.reason}.` : ""}`
