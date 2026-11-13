@@ -18,6 +18,7 @@ import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@redrob-code/core/provider"
 import { ModelV2 } from "@redrob-code/core/model"
+import { Balance } from "@redrob-code/core/balance"
 
 const ConsoleStateResponse = Schema.Struct({
   consoleManagedProviders: Schema.mutable(Schema.Array(Schema.String)),
@@ -99,6 +100,11 @@ export class WorktreeApiError extends Schema.ErrorClass<WorktreeApiError>("Workt
   },
   { httpApiStatus: 400 },
 ) {}
+/** The caller's IANA zone, so "today" and "this month" are the user's own. */
+export const ConsoleUsageQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  tz: Schema.String,
+})
 export const SessionListQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
   roots: Schema.optional(QueryBoolean),
@@ -121,6 +127,7 @@ export const ExperimentalPaths = {
   console: "/experimental/console",
   consoleOrgs: "/experimental/console/orgs",
   consoleSwitch: "/experimental/console/switch",
+  consoleUsage: "/experimental/console/usage",
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
@@ -165,6 +172,17 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.console.listOrgs",
             summary: "List switchable Console orgs",
             description: "Get the available Console orgs across logged-in accounts, including the current active org.",
+          }),
+        ),
+        HttpApiEndpoint.get("consoleUsage", ExperimentalPaths.consoleUsage, {
+          query: ConsoleUsageQuery,
+          success: described(Schema.NullOr(Balance.Summary), "Console balance and spend, or null"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.usage",
+            summary: "Get Console balance and spend",
+            description:
+              "The Redrob workspace's balance and today's and this month's spend across every device, read from the Console with the Redrob provider's key. Null when there is no key or the Console does not answer.",
           }),
         ),
         HttpApiEndpoint.post("consoleSwitch", ExperimentalPaths.consoleSwitch, {

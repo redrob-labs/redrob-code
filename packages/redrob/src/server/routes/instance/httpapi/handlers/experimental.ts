@@ -11,12 +11,17 @@ import type { SessionID } from "@/session/schema"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { ToolRegistry } from "@/tool/registry"
 import { Worktree } from "@/worktree"
+import { Provider } from "@/provider/provider"
+import { Balance } from "@redrob-code/core/balance"
+import { CONSOLE_URL } from "@redrob-code/core/plugin/provider/redrob-constants"
+import { ProviderV2 } from "@redrob-code/core/provider"
 import { Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import {
   ConsoleSwitchPayload,
+  ConsoleUsageQuery,
   SessionListQuery,
   ToolListQuery,
   UsageQuery,
@@ -41,6 +46,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const sessions = yield* Session.Service
     const background = yield* BackgroundJob.Service
     const flags = yield* RuntimeFlags.Service
+    const providers = yield* Provider.Service
 
     const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
       return {
@@ -191,6 +197,19 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return yield* sessions.usage({ day: ctx.query.day, month: ctx.query.month })
     })
 
+    const consoleUsage = Effect.fn("ExperimentalHttpApi.consoleUsage")(function* (ctx: {
+      query: typeof ConsoleUsageQuery.Type
+    }) {
+      // The key and base URL the Redrob provider sends inference with, resolved the way the SDK gets
+      // them (`options.apiKey`, else the merged credential). "public" is the keyless placeholder.
+      const info = (yield* providers.list())[ProviderV2.ID.redrob]
+      const options = (info?.options ?? {}) as { apiKey?: unknown; baseURL?: unknown }
+      const key = typeof options.apiKey === "string" ? options.apiKey : info?.key
+      if (!key || key === "public") return null
+      const url = typeof options.baseURL === "string" && options.baseURL ? options.baseURL : CONSOLE_URL
+      return (yield* Balance.summary({ url, key, tz: ctx.query.tz })) ?? null
+    })
+
     const resource = Effect.fn("ExperimentalHttpApi.resource")(function* () {
       return yield* mcp.resources()
     })
@@ -200,6 +219,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("console", getConsole)
       .handle("consoleOrgs", listConsoleOrgs)
       .handle("consoleSwitch", switchConsole)
+      .handle("consoleUsage", consoleUsage)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)
       .handle("worktree", worktree)

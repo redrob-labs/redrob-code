@@ -27,4 +27,37 @@ describe("Usage", () => {
     expect(createTranslator("en").t("status.usage.line", value)).toBe("in 12 · out 3 · cache 0 · $0.00")
     expect(createTranslator("ko").t("status.usage.line", value)).toBe("입력 12 · 출력 3 · 캐시 0 · $0.00")
   })
+
+  const reply = {
+    currency: "USD",
+    balance: 20.368355,
+    complimentary: false,
+    today: { spend: 0, requestCount: 0 },
+    month: { spend: 147.07, requestCount: 16764 },
+  }
+
+  test("workspace formats the Console balance and spend in the workspace's currency", () => {
+    expect(Usage.workspace(reply)).toEqual({
+      balance: "$20.37",
+      low: false,
+      complimentary: false,
+      today: { spend: "$0.00", count: "0" },
+      month: { spend: "$147.07", count: "16,764" },
+    })
+    expect(createTranslator("en").t("status.console.spend", Usage.workspace(reply).month)).toBe(
+      "$147.07 · 16,764 requests",
+    )
+    expect(createTranslator("ko").t("status.console.spend", Usage.workspace(reply).month)).toBe(
+      "$147.07 · 요청 16,764건",
+    )
+  })
+
+  test("a low balance warns, unless the workspace is complimentary", () => {
+    expect(Usage.workspace({ ...reply, balance: 0.4 }).low).toBe(true)
+    expect(Usage.workspace({ ...reply, balance: 0, complimentary: true }).low).toBe(false)
+  })
+
+  test("an unknown currency code still formats", () => {
+    expect(Usage.workspace({ ...reply, currency: "not-a-code" }).balance).toBe("$20.37")
+  })
 })

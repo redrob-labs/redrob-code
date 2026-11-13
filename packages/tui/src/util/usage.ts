@@ -39,4 +39,35 @@ export function format(total: Total) {
   }
 }
 
+/** The console's `/usage/summary` reply, as the engine passes it through. */
+export type Console = {
+  currency: string
+  balance: number
+  complimentary: boolean
+  today: { spend: number; requestCount: number }
+  month: { spend: number; requestCount: number }
+}
+
+/** Below this the balance is shown as a warning. */
+export const LOW_BALANCE = 1
+
+/** The Console block's figures, formatted in the workspace's own currency. */
+export function workspace(value: Console) {
+  const currency = (() => {
+    try {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: value.currency })
+    } catch {
+      return money
+    }
+  })()
+  const count = new Intl.NumberFormat("en-US")
+  return {
+    balance: currency.format(value.balance),
+    low: !value.complimentary && value.balance < LOW_BALANCE,
+    complimentary: value.complimentary,
+    today: { spend: currency.format(value.today.spend), count: count.format(value.today.requestCount) },
+    month: { spend: currency.format(value.month.spend), count: count.format(value.month.requestCount) },
+  }
+}
+
 export * as Usage from "./usage"
