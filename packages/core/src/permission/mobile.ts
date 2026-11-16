@@ -19,7 +19,7 @@ export * as MobileProfile from "./mobile"
  * session becomes mobile again when the phone prompts it.
  */
 
-import { isReadOnlyCommand } from "./readonly"
+import { isReadOnlyCommand, isSandboxDestructive } from "./readonly"
 
 const KEY = Symbol.for("redrob.mobile.permission-profile")
 
@@ -28,7 +28,8 @@ const KEY = Symbol.for("redrob.mobile.permission-profile")
  *
  * - `ask`: every dangerous action asks (the profile above; also what an old app without the header gets);
  * - `edits`: file edits inside the project folder and read-only commands run right away; other
- *   commands and outside folders ask;
+ *   commands and outside folders ask. In a disposable cloud sandbox (`REDROB_SANDBOX=1`) commands,
+ *   edits and outside folders run too, except clearly destructive commands (`isSandboxDestructive`);
  * - `all`: nothing asks except the rules in `KEEP_ASKING`. The forwarder only grants it while the
  *   launcher's switch (`~/.redrob/desk/settings.json` `allowAutoAll`) is not turned off.
  *
@@ -36,6 +37,17 @@ const KEY = Symbol.for("redrob.mobile.permission-profile")
  */
 export type ApprovalMode = "ask" | "edits" | "all"
 export const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "edits", "all"]
+
+/** What a disposable sandbox's `edits` mode lets through. */
+const SANDBOX_ACTIONS: readonly string[] = ["bash", "edit", "external_directory", "read", "write"]
+
+/**
+ * The engine runs in a disposable cloud sandbox (Redrob's project preview sets `REDROB_SANDBOX=1`
+ * on the daemon): the VM is thrown away with the run. Never set on a PC.
+ */
+export function disposable(): boolean {
+  return process.env.REDROB_SANDBOX === "1"
+}
 
 /** Rules that ask in every mode, even `all`. */
 export const KEEP_ASKING: readonly string[] = ["doom_loop"]
@@ -98,6 +110,10 @@ export function decide(sessionID: string, action: string, resource: string, conf
   const current = mode(sessionID)
   if (current === "all") return "allow"
   if (current === "edits" && action === "edit" && insideProject(resource)) return "allow"
+  // A disposable cloud sandbox (REDROB_SANDBOX=1): nothing in it outlives the run and only the
+  // reviewed changes leave it, so edits, commands and outside folders run; clear wreckage still asks.
+  if (current === "edits" && disposable() && SANDBOX_ACTIONS.includes(action))
+    return action === "bash" && isSandboxDestructive(resource) ? "ask" : "allow"
   // Commands that only read (grep, cat, git status, ...) run as reads do (permission/readonly.ts).
   if (current === "edits" && action === "bash" && isReadOnlyCommand(resource)) return "allow"
   if (isDangerous(action)) return "ask"
