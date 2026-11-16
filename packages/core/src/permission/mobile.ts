@@ -19,13 +19,16 @@ export * as MobileProfile from "./mobile"
  * session becomes mobile again when the phone prompts it.
  */
 
+import { isReadOnlyCommand } from "./readonly"
+
 const KEY = Symbol.for("redrob.mobile.permission-profile")
 
 /**
  * The approval mode the device picked for a session (header `X-Redrob-Approval`):
  *
  * - `ask`: every dangerous action asks (the profile above; also what an old app without the header gets);
- * - `edits`: file edits inside the project folder run right away; commands and outside folders ask;
+ * - `edits`: file edits inside the project folder and read-only commands run right away; other
+ *   commands and outside folders ask;
  * - `all`: nothing asks except the rules in `KEEP_ASKING`. The forwarder only grants it while the
  *   launcher's switch (`~/.redrob/desk/settings.json` `allowAutoAll`) is not turned off.
  *
@@ -95,6 +98,8 @@ export function decide(sessionID: string, action: string, resource: string, conf
   const current = mode(sessionID)
   if (current === "all") return "allow"
   if (current === "edits" && action === "edit" && insideProject(resource)) return "allow"
+  // Commands that only read (grep, cat, git status, ...) run as reads do (permission/readonly.ts).
+  if (current === "edits" && action === "bash" && isReadOnlyCommand(resource)) return "allow"
   if (isDangerous(action)) return "ask"
   return configured
 }
