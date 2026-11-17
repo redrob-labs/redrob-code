@@ -167,6 +167,22 @@ export const ROUTES: readonly Route[] = [
       return reply === "once" || reply === "reject"
     },
   },
+  // The agent's questions (the `question` tool): the device lists, answers or dismisses them, or the
+  // turn waits on an answer nobody can give.
+  { method: "GET", path: new RegExp(`^/api/session/${ID}/question$`) },
+  {
+    method: "POST",
+    path: new RegExp(`^/api/session/${ID}/question/${ID}/reply$`),
+    body: (body) => {
+      const answers = (body as { answers?: unknown } | undefined)?.answers
+      return (
+        Array.isArray(answers) &&
+        answers.length <= 20 &&
+        answers.every((a) => Array.isArray(a) && a.length <= 20 && a.every((v) => typeof v === "string" && v.length <= 2000))
+      )
+    },
+  },
+  { method: "POST", path: new RegExp(`^/api/session/${ID}/question/${ID}/reject$`) },
   { method: "GET", path: /^\/v1\/apps$/ },
   // AI 방화벽 "strong": the web reads and sets the PC's masking, and masks a message on the PC first.
   { method: "GET", path: /^\/api\/privacy$/ },
@@ -1093,7 +1109,8 @@ export class Forwarder {
       return
     }
     const sessionID = typeof event.data?.sessionID === "string" ? event.data.sessionID : undefined
-    const permission = event.type.startsWith("permission.")
+    // Permission and question requests reach every device, like the approval count.
+    const permission = event.type.startsWith("permission.") || event.type.startsWith("question.")
     if (event.type === "session.next.attachment" && isAttachment(event.data)) this.remember(event.data)
     if (event.type === "permission.v2.asked" && typeof event.data?.id === "string") this.asked.add(event.data.id)
     if (event.type === "permission.v2.replied" && typeof event.data?.requestID === "string")
