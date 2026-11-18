@@ -41,6 +41,7 @@ import { LocalProvider, useLocal } from "./context/local"
 import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
+import { useLogout } from "./component/logout"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogDebug } from "./component/dialog-debug"
@@ -564,6 +565,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   )
 
   const connected = useConnected()
+  const logout = useLogout()
   const currentWorktreeWorkspace = createMemo(() => {
     const workspaceID = project.workspace.current()
     if (!workspaceID) return
@@ -849,6 +851,28 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "connect",
         run: () => {
           dialog.replace(() => <DialogProviderList />)
+        },
+        category: "Provider",
+      },
+      {
+        name: "auth.login",
+        desc: language.t("command.desc.auth.login"),
+        title: language.t("command.auth.login"),
+        slashName: "login",
+        slashAliases: ["signin"],
+        run: () => {
+          dialog.replace(() => <DialogProviderList />)
+        },
+        category: "Provider",
+      },
+      {
+        name: "auth.logout",
+        desc: language.t("command.desc.auth.logout"),
+        title: language.t("command.auth.logout"),
+        slashName: "logout",
+        slashAliases: ["signout"],
+        run: () => {
+          void logout()
         },
         category: "Provider",
       },
