@@ -256,6 +256,24 @@ describe("installation", () => {
         expect(fs.existsSync(run!.args[5]!)).toBe(false)
       }),
     )
+
+    const setupCalls: string[] = []
+    testEffect(
+      testLayer((request) => {
+        setupCalls.push(request.url)
+        return new Response("MZ setup bytes", { status: 200 })
+      }),
+    ).effect("stages the Windows setup without starting it", () =>
+      Effect.gen(function* () {
+        const file = yield* Installation.use.stageInstaller("9.9.9")
+        expect(setupCalls).toEqual([
+          `${Installation.RELEASE_DOWNLOAD_BASE}/download/v9.9.9/redrob-code-9.9.9-windows-x64-setup.exe`,
+        ])
+        expect(path.basename(file)).toBe("redrob-code-9.9.9-windows-x64-setup.exe")
+        expect(fs.readFileSync(file, "utf8")).toBe("MZ setup bytes")
+        fs.rmSync(file)
+      }),
+    )
   })
 
   describe("method", () => {
