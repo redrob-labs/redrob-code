@@ -131,6 +131,22 @@ export interface Interface {
   readonly method: () => Effect.Effect<Method>
   readonly latest: () => Effect.Effect<string>
   readonly upgrade: (method: Method, target: string) => Effect.Effect<void, UpgradeFailedError>
+  /** Download the Windows setup for `target` without starting it; returns its path. */
+  readonly stageInstaller: (target: string) => Effect.Effect<string, UpgradeFailedError>
+}
+
+/**
+ * Start a downloaded Windows setup silently (Inno Setup's /VERYSILENT). /CLOSEAPPLICATIONS makes
+ * it close every running `redrob.exe` from the install folder through the Restart Manager so the
+ * files can be replaced -- an open TUI included, which then drops straight back to the shell. So a
+ * TUI only calls this on its way out.
+ */
+export function launchInstaller(file: string) {
+  spawn(file, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  }).unref()
 }
 
 /**
@@ -258,13 +274,11 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
     )
 
     /**
-     * The Windows installer install: download the new setup next to the temp files and start it
-     * silently (Inno Setup's /VERYSILENT; /CLOSEAPPLICATIONS lets it close the running redrob so the
-     * files can be replaced). It runs after this process exits, so the upgrade finishes a few seconds
-     * after the command does. A running `.exe` cannot be overwritten in place, which is why this
-     * hands over to the installer instead of replacing the file itself.
+     * The Windows installer install, first half: download the new setup next to the temp files.
+     * Starting it is `launchInstaller`, kept separate because the TUI must not start it while it is
+     * still open (see `launchInstaller`).
      */
-    const upgradeInstaller = Effect.fnUntraced(
+    const stageInstaller = Effect.fnUntraced(
       function* (target: string) {
         const name = `redrob-code-${target}-windows-x64-setup.exe`
         const base = process.env["REDROB_CODE_DOWNLOAD_BASE"]?.trim().replace(/\/+$/, "") || RELEASE_DOWNLOAD_BASE
@@ -272,17 +286,20 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         const bytes = new Uint8Array(yield* response.arrayBuffer)
         const file = path.join(os.tmpdir(), name)
         yield* Effect.promise(() => fs.writeFile(file, bytes))
-        yield* Effect.sync(() =>
-          spawn(file, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], {
-            detached: true,
-            stdio: "ignore",
-            windowsHide: true,
-          }).unref(),
-        )
         return file
       },
       Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("installer") })),
     )
+
+    /**
+     * Download and start it now. Right for `redrob upgrade`, which exits straight after; the
+     * upgrade finishes a few seconds after the command does.
+     */
+    const upgradeInstaller = Effect.fnUntraced(function* (target: string) {
+      const file = yield* stageInstaller(target)
+      yield* Effect.sync(() => launchInstaller(file))
+      return file
+    })
 
     const result: Interface = {
       info: Effect.fn("Installation.info")(function* () {
@@ -349,6 +366,9 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         })
         yield* text([process.execPath, "--version"])
       }),
+      stageInstaller: Effect.fn("Installation.stageInstaller")(function* (target: string) {
+        return yield* stageInstaller(target)
+      }),
     }
 
     return Service.of(result)
@@ -362,5 +382,7 @@ const { runPromise } = makeRuntime(Service, AppNodeBuilder.build(node))
 export const latest = (...args: Parameters<Interface["latest"]>) => runPromise((s) => s.latest(...args))
 export const method = () => runPromise((s) => s.method())
 export const upgrade = (...args: Parameters<Interface["upgrade"]>) => runPromise((s) => s.upgrade(...args))
+export const stage = (...args: Parameters<Interface["stageInstaller"]>) =>
+  runPromise((s) => s.stageInstaller(...args))
 
 export * as Installation from "."

@@ -1,7 +1,7 @@
 import { Server } from "@/server/server"
 import { InstanceRuntime } from "@/project/instance-runtime"
 import { Rpc } from "@/util/rpc"
-import { upgrade } from "@/cli/upgrade"
+import { launchStagedInstaller, upgrade } from "@/cli/upgrade"
 import { Config } from "@/config/config"
 import { GlobalBus } from "@/bus/global"
 import { ServerAuth } from "@/server/auth"
@@ -74,6 +74,8 @@ export const rpc = {
     if (server) await server.stop(true)
     process.off("unhandledRejection", onUnhandledRejection)
     process.off("uncaughtException", onUncaughtException)
+    // Last, once nothing of ours is left to close: the setup ends any redrob.exe still running.
+    launchStagedInstaller()
   },
 }
 
