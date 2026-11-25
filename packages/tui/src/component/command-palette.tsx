@@ -24,6 +24,13 @@ function isSuggestedPaletteCommand(entry: PaletteCommandEntry) {
   return false
 }
 
+function slashKeywords(command: PaletteCommandEntry["command"]) {
+  const names = [command.slashName, ...(Array.isArray(command.slashAliases) ? command.slashAliases : [])].filter(
+    (name): name is string => typeof name === "string" && name.length > 0,
+  )
+  return names.length ? names.map((name) => `/${name}`).join(" ") : undefined
+}
+
 export function CommandPaletteDialog() {
   const config = useTuiConfig()
   const language = useLanguage()
@@ -51,6 +58,8 @@ export function CommandPaletteDialog() {
     entries().map((entry) => ({
       title: typeof entry.command.title === "string" ? entry.command.title : entry.command.name,
       description: typeof entry.command.desc === "string" ? entry.command.desc : undefined,
+      // The slash name stays English in every locale, so "login" also finds 로그인.
+      keywords: slashKeywords(entry.command),
       category: language.category(entry.command.category),
       footer: formatKeyBindings(entry.bindings, config),
       value: entry.command.name,
