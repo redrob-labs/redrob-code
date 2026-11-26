@@ -142,17 +142,35 @@ jobs:
       APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
       APPLE_NOTARY_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
     steps:
-      # Only the installer scripts are needed from the repository (sparse: one directory).
+      # The installer scripts, and the Rust crates for Redrob Drive's tray icon (sparse).
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           sparse-checkout: |
             installer
+            crates
           sparse-checkout-cone-mode: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-unsigned
           path: dist
+
+      # Redrob Drive's tray icon (crates/tray), one per architecture, put beside the engine so the
+      # signing below covers it and the archives carry it. The runner's own rustup; no extra action
+      # in a job that holds signing keys.
+      - name: Build the tray icon
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin
+          for pair in "aarch64-apple-darwin:arm64" "x86_64-apple-darwin:x64"; do
+            target="${pair%%:*}"; arch="${pair##*:}"
+            cargo +stable build --release --locked --manifest-path crates/tray/Cargo.toml --target "$target"
+            for directory in dist/redrob-darwin-"$arch"*; do
+              [ -d "$directory/bin" ] || continue
+              cp "crates/tray/target/$target/release/redrob-tray" "$directory/bin/redrob-tray"
+              chmod 755 "$directory/bin/redrob-tray"
+            done
+          done
 
       # Fail here rather than three steps later inside codesign, where the error is about
       # a keychain and says nothing about the missing secret that caused it.
@@ -216,8 +234,16 @@ jobs:
               --entitlements installer/macos-entitlements.plist \
               --keychain "$APPLE_SIGNING_KEYCHAIN" --sign "$APPLE_SIGNING_IDENTITY" "$binary"
             codesign --verify --strict --verbose=2 "$binary"
+            # The tray icon beside it: native code, so the hardened runtime without Bun's
+            # entitlements. Notarized in the same submission as the engine.
+            tray="$(dirname "$binary")/redrob-tray"
+            if [ -f "$tray" ]; then
+              codesign --force --options runtime --timestamp \
+                --keychain "$APPLE_SIGNING_KEYCHAIN" --sign "$APPLE_SIGNING_IDENTITY" "$tray"
+              codesign --verify --strict --verbose=2 "$tray"
+            fi
             archive="$RUNNER_TEMP/$(basename "$(dirname "$(dirname "$binary")")").zip"
-            ditto -c -k --keepParent "$binary" "$archive"
+            ditto -c -k --keepParent "$(dirname "$binary")" "$archive"
             xcrun notarytool submit "$archive" \
               --key "$RUNNER_TEMP/AuthKey.p8" \
               --key-id "$APPLE_NOTARY_API_KEY_ID" \
@@ -291,6 +317,9 @@ jobs:
         dist/redrob-windows-arm64/bin/redrob.exe
         dist/redrob-windows-x64/bin/redrob.exe
         dist/redrob-windows-x64-baseline/bin/redrob.exe
+        dist/redrob-windows-arm64/bin/redrob-tray.exe
+        dist/redrob-windows-x64/bin/redrob-tray.exe
+        dist/redrob-windows-x64-baseline/bin/redrob-tray.exe
       REDROB_WINDOWS_INSTALLER: >-
         dist/redrob-code-${{ needs.version.outputs.version }}-windows-x64-setup.exe
         dist/redrob-drive-${{ needs.version.outputs.version }}-windows-x64-setup.exe
@@ -304,12 +333,28 @@ jobs:
         with:
           sparse-checkout: |
             installer
+            crates
           sparse-checkout-cone-mode: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-unsigned
           path: dist
+
+      # Redrob Drive's tray icon (crates/tray), built here so it is signed with the engine below.
+      # One x64 build for every folder: Windows on Arm runs it under its x64 emulation, so the
+      # arm64 archive carries it too. The runner's own rustup; no extra action in a signing job.
+      - name: Build the tray icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          rustup toolchain install stable --profile minimal
+          cargo +stable build --release --locked --manifest-path crates/tray/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "cargo build (tray) failed with $LASTEXITCODE" }
+          $tray = "crates/tray/target/release/redrob-tray.exe"
+          foreach ($dir in @('redrob-windows-x64', 'redrob-windows-x64-baseline', 'redrob-windows-arm64')) {
+            Copy-Item -LiteralPath $tray -Destination "dist/$dir/bin/redrob-tray.exe" -Force
+          }
 
       # Azure Artifact Signing, authenticated with OpenID Connect: the job's GitHub token is
       # exchanged for an Azure token against the organization's app registration, whose federated
@@ -461,6 +506,20 @@ jobs:
           pattern: release-*
           path: signed
           merge-multiple: true
+
+      # Redrob Drive's tray icon for x64 Linux desktops (GTK and an AppIndicator tray). glibc builds
+      # only: a musl or arm64 archive has none, and `redrob drive setup` then goes on without it.
+      - name: Build the Linux tray icon
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-dev libayatana-appindicator3-dev libxdo-dev >/dev/null
+          cargo build --release --locked --manifest-path crates/tray/Cargo.toml
+          for directory in unsigned/redrob-linux-x64 unsigned/redrob-linux-x64-baseline; do
+            [ -d "$directory/bin" ] || continue
+            cp crates/tray/target/release/redrob-tray "$directory/bin/redrob-tray"
+            chmod 755 "$directory/bin/redrob-tray"
+          done
 
       - name: Pack the Linux binaries
         run: |

@@ -98,6 +98,9 @@ ChangesEnvironment=yes
 ; script that works everywhere except here.
 Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob.exe"; Flags: ignoreversion
 Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob-code.exe"; Flags: ignoreversion
+; Redrob Drive's tray icon (crates/tray), started by `redrob drive setup`. Optional in the payload so
+; a local build of the installer without it still compiles.
+Source: "{#SourceBin}\redrob-tray.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Tasks]
 Name: "addtopath"; Description: "Add Redrob Code to my PATH"; GroupDescription: "Shell integration:"
@@ -188,13 +191,37 @@ begin
   Existing := ExpandConstant('{app}\redrob.exe');
   if FileExists(Existing) then
     Exec(Existing, 'service stop', ExpandConstant('{localappdata}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  { The tray icon holds redrob-tray.exe open too; it is started again after the install. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+const
+  TrayRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  TrayRunValue = 'Redrob Drive';
+
+{ After an update, bring the tray icon back for a person who set Drive up: its login entry holds
+  the exact command line `redrob drive setup` registered. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Line: string;
+  ResultCode: Integer;
+begin
+  if (CurStep = ssPostInstall) and RegQueryStringValue(HKEY_CURRENT_USER, TrayRunKey, TrayRunValue, Line) then
+    Exec(ExpandConstant('{cmd}'), '/c start "" ' + Line, '', SW_HIDE, ewNoWait, ResultCode);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   { usUninstall, not usPostUninstall: the value is removed while the app path is still known good. }
   if CurUninstallStep = usUninstall then
+  begin
     RemoveFromUserPath(ExpandConstant('{app}'));
+    { Close the tray icon and drop its login entry, so nothing points at a deleted program. }
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    RegDeleteValue(HKEY_CURRENT_USER, TrayRunKey, TrayRunValue);
+  end;
 end;
 
 [Messages]
