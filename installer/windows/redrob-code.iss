@@ -86,6 +86,9 @@ Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob-code.exe"
 
 [Tasks]
 Name: "addtopath"; Description: "Add Redrob Code to my PATH"; GroupDescription: "Shell integration:"
+; Redrob Drive: off by default so a plain Redrob Code install is untouched. The Redrob Drive
+; download pre-selects it with `/TASKS="drivesetup"`; a person can also tick it here.
+Name: "drivesetup"; Description: "Set up Redrob Drive (let Redrob Chat work with this computer's files)"; GroupDescription: "Redrob Drive:"; Flags: unchecked
 
 [Registry]
 ; HKCU only, and `expandsz` because a user PATH normally holds unexpanded variables; writing it as
@@ -94,6 +97,14 @@ Name: "addtopath"; Description: "Add Redrob Code to my PATH"; GroupDescription: 
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   ValueData: "{olddata};{app}"; Flags: preservestringtype; \
   Tasks: addtopath; Check: NeedsPathEntry(ExpandConstant('{app}'))
+
+[Run]
+; Redrob Drive one-tap setup: open the home folder to Redrob Chat, turn the desk on, register the
+; engine to start at login, and sign in. Only runs when the `drivesetup` task is selected, and
+; skipped on a silent install. `drive setup` signs in to production; a dev test points the daemon
+; at dev by running `redrob drive setup` from a shell with REDROB_CHAT_API_URL set.
+Filename: "{app}\redrob.exe"; Parameters: "drive setup"; Description: "Set up Redrob Drive"; \
+  Flags: postinstall nowait skipifsilent; Tasks: drivesetup
 
 [Code]
 { True when the install directory is not already on the user's PATH. Compared case-insensitively
