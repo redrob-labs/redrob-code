@@ -30,6 +30,10 @@ serde_json = "1"
 # Plain HTTP to the local daemon on 127.0.0.1 only, as engine-client does.
 ureq = { version = "3.4", default-features = false }
 
+[target.'cfg(windows)'.dependencies]
+# The per-icon taskbar setting Explorer keeps (see `show_on_taskbar_once`).
+winreg = "0.55"
+
 [profile.release]
 opt-level = "s"
 lto = true
