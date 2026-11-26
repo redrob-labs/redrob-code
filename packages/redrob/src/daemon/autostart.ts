@@ -245,14 +245,28 @@ async function installWin32(env: NodeJS.ProcessEnv): Promise<void> {
   const tr = win32TaskCommand()
   // /F overwrites an existing task of the same name; /RL LIMITED = no elevation.
   const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", tr, "/RL", "LIMITED"])
-  if (result.code !== 0) throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim() || result.code}`)
+  if (result.code !== 0) {
+    // A logon task needs an elevated token; a normal (not elevated) session gets "Access is
+    // denied". The per-user Run key needs no elevation and starts the same launcher at login.
+    const reg = await run("reg.exe", ["add", WIN32_RUN_KEY, "/v", TASK_NAME, "/t", "REG_SZ", "/d", tr, "/f"])
+    if (reg.code !== 0) throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim() || result.code}`)
+    // Start it now too, so the first enable does not wait for the next login.
+    const child = spawn("wscript.exe", ["//B", "//Nologo", win32LauncherPath()], { detached: true, stdio: "ignore", windowsHide: true })
+    child.on("error", () => undefined)
+    child.unref()
+    return
+  }
   // Start it now too, so the first enable does not wait for the next login.
   await run("schtasks.exe", ["/Run", "/TN", TASK_NAME])
 }
 
+/** Where the login start goes when a logon task cannot be made (not elevated). */
+const WIN32_RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+
 async function uninstallWin32(): Promise<void> {
   // /Delete alone: the daemon the task started keeps running for attached apps.
   await run("schtasks.exe", ["/Delete", "/F", "/TN", TASK_NAME])
+  await run("reg.exe", ["delete", WIN32_RUN_KEY, "/v", TASK_NAME, "/f"])
 }
 
 /**
@@ -275,7 +289,8 @@ export async function repairWin32(): Promise<boolean> {
 
 async function installedWin32(): Promise<boolean> {
   const result = await run("schtasks.exe", ["/Query", "/TN", TASK_NAME])
-  return result.code === 0
+  if (result.code === 0) return true
+  return (await run("reg.exe", ["query", WIN32_RUN_KEY, "/v", TASK_NAME])).code === 0
 }
 
 // ---- public ---------------------------------------------------------------------------------
