@@ -16,6 +16,7 @@ import { ServeCommand } from "./cli/cmd/serve"
 import { ServiceCommand } from "./cli/cmd/service"
 import { ChannelsCommand } from "./cli/cmd/channels"
 import { DeskCommand } from "./cli/cmd/desk"
+import { DriveCommand } from "./cli/cmd/drive"
 import { AppsCommand } from "./cli/cmd/apps"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
@@ -99,6 +100,7 @@ const cli = yargs(args)
   .command(ServiceCommand)
   .command(ChannelsCommand)
   .command(DeskCommand)
+  .command(DriveCommand)
   .command(AppsCommand)
   .command(ModelsCommand)
   .command(ModelsLocalCommand)
