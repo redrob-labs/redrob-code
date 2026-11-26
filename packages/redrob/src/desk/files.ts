@@ -14,7 +14,7 @@
  * usual places (Desktop, Documents, Downloads); reading what is inside still needs the folder allowed.
  */
 import { randomUUID } from "node:crypto"
-import { mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { deskHome } from "./settings"
@@ -99,6 +99,24 @@ const skipped = (name: string) =>
   name.startsWith(".") || name === "node_modules" || name === "$RECYCLE.BIN" || name === "Library"
 
 /** Folders whose name contains `name` (spaces and case ignored), nearest first. */
+/**
+ * Replace the allowed-folders list (`folders.json` `{ folders }`), written whole like the launcher
+ * writes it. Redrob Drive calls this at setup to open the whole home folder; on a machine with
+ * Redrob Desktop installed, Desktop owns this file instead. Entries are normalized and de-duped.
+ */
+export async function setAllowedFolders(folders: string[]): Promise<void> {
+  const clean: string[] = []
+  for (const entry of folders) {
+    const folder = normalize(entry)
+    if (folder && !clean.includes(folder)) clean.push(folder)
+  }
+  const file = path.join(deskDir(), "folders.json")
+  await mkdir(deskDir(), { recursive: true })
+  const temp = `${file}.${process.pid}.tmp`
+  await writeFile(temp, JSON.stringify({ folders: clean }, null, 2) + "\n", "utf8")
+  await rename(temp, file)
+}
+
 export async function findFolders(name: unknown): Promise<{ folders: { path: string; allowed: boolean }[] }> {
   if (typeof name !== "string" || !comparable(name)) throw new FilesError(400, "bad_name")
   const wanted = comparable(name)
