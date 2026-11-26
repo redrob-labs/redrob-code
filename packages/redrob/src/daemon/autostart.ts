@@ -56,6 +56,22 @@ export function daemonCommand(): { command: string; args: string[] } {
   return { command: self.command, args: [...self.args, "serve", "--register", "--idle-exit", "0"] }
 }
 
+/**
+ * Environment the resident daemon must keep from the moment it was registered, so the daemon that
+ * comes up at the next login targets the same Redrob Chat and auth server as when it was set up.
+ * Without this a daemon installed against dev (`REDROB_CHAT_API_URL=https://chat-dev.redrob.ai`)
+ * would silently fall back to production after a reboot, because the login-started unit carries no
+ * environment of its own. Only the targeting variables are kept, not the whole environment.
+ */
+function persistedEnv(env: NodeJS.ProcessEnv): Array<[string, string]> {
+  const keep: Array<[string, string]> = []
+  for (const key of ["REDROB_CHAT_API_URL", "REDROB_AUTH_ISSUER"]) {
+    const value = env[key]?.trim()
+    if (value) keep.push([key, value])
+  }
+  return keep
+}
+
 function run(command: string, args: string[], input?: string): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
@@ -83,9 +99,10 @@ function systemdQuote(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
 }
 
-function systemdUnit(): string {
+function systemdUnit(env: NodeJS.ProcessEnv): string {
   const { command, args } = daemonCommand()
   const exec = [command, ...args].map(systemdQuote).join(" ")
+  const targeting = persistedEnv(env).map(([k, v]) => `Environment=${systemdQuote(`${k}=${v}`)}`)
   return [
     "[Unit]",
     "Description=Redrob Code engine (shared daemon for chat channels and apps)",
@@ -98,6 +115,7 @@ function systemdUnit(): string {
     "Restart=on-failure",
     "RestartSec=5",
     "Environment=REDROB_SERVICE=systemd",
+    ...targeting,
     "",
     "[Install]",
     "WantedBy=default.target",
@@ -108,7 +126,7 @@ function systemdUnit(): string {
 async function installLinux(env: NodeJS.ProcessEnv): Promise<void> {
   const file = location(env)
   await fs.mkdir(path.dirname(file), { recursive: true })
-  await fs.writeFile(file, systemdUnit(), { mode: 0o644 })
+  await fs.writeFile(file, systemdUnit(env), { mode: 0o644 })
   const reload = await run("systemctl", ["--user", "daemon-reload"])
   if (reload.code !== 0) throw new Error(`systemctl --user daemon-reload failed: ${reload.stderr.trim() || reload.code}`)
   const enable = await run("systemctl", ["--user", "enable", "--now", `${SERVICE_NAME}.service`])
@@ -130,9 +148,12 @@ function xml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-function launchdPlist(): string {
+function launchdPlist(env: NodeJS.ProcessEnv): string {
   const { command, args } = daemonCommand()
   const argv = [command, ...args].map((a) => `    <string>${xml(a)}</string>`).join("\n")
+  const targeting = persistedEnv(env)
+    .map(([k, v]) => `    <key>${xml(k)}</key>\n    <string>${xml(v)}</string>`)
+    .join("\n")
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -157,6 +178,7 @@ function launchdPlist(): string {
     "  <dict>",
     "    <key>REDROB_SERVICE</key>",
     "    <string>launchd</string>",
+    ...(targeting ? [targeting] : []),
     "  </dict>",
     "</dict>",
     "</plist>",
@@ -169,7 +191,7 @@ async function installDarwin(env: NodeJS.ProcessEnv): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true })
   // Unload an older copy first; launchctl refuses to load a label twice.
   if (await exists(file)) await run("launchctl", ["unload", file])
-  await fs.writeFile(file, launchdPlist(), { mode: 0o644 })
+  await fs.writeFile(file, launchdPlist(env), { mode: 0o644 })
   const load = await run("launchctl", ["load", "-w", file])
   if (load.code !== 0) throw new Error(`launchctl load failed: ${load.stderr.trim() || load.code}`)
 }
@@ -198,10 +220,14 @@ export function win32LauncherPath(): string {
  * window people saw at login and each time the task ran. Checked on windows-latest: the plain
  * command opens that window, this launcher opens none and the daemon comes up.
  */
-export function win32Launcher(): string {
+export function win32Launcher(env: NodeJS.ProcessEnv = process.env): string {
   const { command, args } = daemonCommand()
   const line = [command, ...args].map(cmdQuote).join(" ").replace(/"/g, '""')
-  return `CreateObject("WScript.Shell").Run "${line}", 0, False\r\n`
+  // Bake targeting env into the wscript process; the daemon it starts inherits it.
+  const sets = persistedEnv(env)
+    .map(([k, v]) => `sh.Environment("PROCESS")("${k}") = "${v.replace(/"/g, '""')}"\r\n`)
+    .join("")
+  return `Set sh = CreateObject("WScript.Shell")\r\n${sets}sh.Run "${line}", 0, False\r\n`
 }
 
 /** The task's command line: wscript running the launcher, with no window of its own. */
@@ -209,13 +235,13 @@ function win32TaskCommand(): string {
   return ["wscript.exe", "//B", "//Nologo", win32LauncherPath()].map(cmdQuote).join(" ")
 }
 
-async function writeWin32Launcher(): Promise<void> {
+async function writeWin32Launcher(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   await fs.mkdir(path.dirname(win32LauncherPath()), { recursive: true })
-  await fs.writeFile(win32LauncherPath(), win32Launcher())
+  await fs.writeFile(win32LauncherPath(), win32Launcher(env))
 }
 
-async function installWin32(): Promise<void> {
-  await writeWin32Launcher()
+async function installWin32(env: NodeJS.ProcessEnv): Promise<void> {
+  await writeWin32Launcher(env)
   const tr = win32TaskCommand()
   // /F overwrites an existing task of the same name; /RL LIMITED = no elevation.
   const result = await run("schtasks.exe", ["/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", tr, "/RL", "LIMITED"])
@@ -278,7 +304,7 @@ export async function install(env: NodeJS.ProcessEnv = process.env): Promise<Sta
       await installDarwin(env)
       break
     case "win32":
-      await installWin32()
+      await installWin32(env)
       break
     default:
       throw new Error(`Login start is not supported on ${process.platform}`)

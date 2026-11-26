@@ -46,6 +46,7 @@
   $installDir = Get-Setting @('REDROB_INSTALL_DIR', 'REDROB_CODE_INSTALL_DIR')
   $binaryPath = Get-Setting @('REDROB_CODE_BIN')
   $connectCode = Get-Setting @('REDROB_CONNECT')
+  $driveMode = (Get-Setting @('REDROB_DRIVE')) -eq '1'
   $noModifyPath = (Get-Setting @('REDROB_NO_MODIFY_PATH', 'REDROB_CODE_NO_PATH')) -eq '1'
   $downloadBase = Get-Setting @('REDROB_CODE_DOWNLOAD_BASE')
   if (-not $downloadBase) { $downloadBase = "https://github.com/$Repo/releases" }
@@ -83,6 +84,7 @@
         if (-not $next) { throw "-Connect needs the rc_... code from Redrob Chat's connect card" }
         $connectCode = $next; $i++; continue
       }
+      '^-{1,2}drive$' { $driveMode = $true; continue }
       default { Write-Warning "Unknown option '$arg'" }
     }
   }
@@ -264,23 +266,36 @@
   }
 
   Write-Host ''
-  Write-Host 'Redrob Code'
-  Write-Host ''
-  Write-Host 'To start, open your project and run redrob, then type /connect to sign in:'
-  # The same line in Korean, kept as UTF-8 bytes so this file stays ASCII: Windows PowerShell 5.1
-  # reads a script without a BOM in the ANSI code page, and `irm` text is not always UTF-8 either.
-  Write-Host ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('7Iuc7J6R7ZWY66Ck66m0IO2UhOuhnOygne2KuCDtj7TrjZTsl5DshJwgcmVkcm9i7J2EIOyLpO2Wie2VnCDrkqQgL2Nvbm5lY3Trpbwg7J6F66Cl7ZW0IOuhnOq3uOyduO2VmOyEuOyalDo=')))
-  Write-Host ''
-  Write-Host '  cd <project>'
-  Write-Host '  redrob'
-  Write-Host '  /connect'
-  Write-Host ''
-  Write-Host "More: $ReadmeUrl"
-  Write-Host ''
+  if ($driveMode) {
+    Write-Host 'Redrob Drive'
+    Write-Host ''
+    Write-Host 'Redrob Drive lets Redrob Chat work with your files. Finishing setup below.'
+    Write-Host ''
+  } else {
+    Write-Host 'Redrob Code'
+    Write-Host ''
+    Write-Host 'To start, open your project and run redrob, then type /connect to sign in:'
+    # The same line in Korean, kept as UTF-8 bytes so this file stays ASCII: Windows PowerShell 5.1
+    # reads a script without a BOM in the ANSI code page, and `irm` text is not always UTF-8 either.
+    Write-Host ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('7Iuc7J6R7ZWY66Ck66m0IO2UhOuhnOygne2KuCDtj7TrjZTsl5DshJwgcmVkcm9i7J2EIOyLpO2Wie2VnCDrkqQgL2Nvbm5lY3Trpbwg7J6F66Cl7ZW0IOuhnOq3uOyduO2VmOyEuOyalDo=')))
+    Write-Host ''
+    Write-Host '  cd <project>'
+    Write-Host '  redrob'
+    Write-Host '  /connect'
+    Write-Host ''
+    Write-Host "More: $ReadmeUrl"
+    Write-Host ''
+  }
 
   if ($connectCode) {
     Write-Host 'Connecting this PC to Redrob Chat'
     & $target desk connect $connectCode
     if ($LASTEXITCODE -ne 0) { throw "redrob desk connect failed with code $LASTEXITCODE" }
+  }
+
+  if ($driveMode) {
+    Write-Host 'Setting up Redrob Drive (always on, home folder open)'
+    & $target drive setup
+    if ($LASTEXITCODE -ne 0) { throw "redrob drive setup failed with code $LASTEXITCODE" }
   }
 } @args

@@ -36,6 +36,8 @@ requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
 connect_code=""
+drive_mode=false
+[ "${REDROB_DRIVE:-}" = "1" ] && drive_mode=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
                 echo -e "${RED}Error: --connect needs the rc_... code from the web's connect card${NC}"
                 exit 1
             fi
+            ;;
+        --drive)
+            drive_mode=true
+            shift
             ;;
         *)
             echo -e "${ORANGE}Warning: Unknown option '$1'${NC}" >&2
@@ -302,6 +308,17 @@ run_connect() {
     "$bin" desk connect "$connect_code"
 }
 
+run_drive() {
+    [ "$drive_mode" = "true" ] || return 0
+    local bin="${INSTALL_DIR}/redrob"
+    if [ "$already_installed" = "true" ] && [ -n "${redrob_path:-}" ]; then
+        bin="$redrob_path"
+    fi
+    echo -e ""
+    print_message info "${MUTED}Setting up Redrob Drive (always on, home folder open)${NC}"
+    "$bin" drive setup
+}
+
 unbuffered_sed() {
     if echo | sed -u -e "" >/dev/null 2>&1; then
         sed -nu "$@"
@@ -517,17 +534,26 @@ if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
     print_message info "Added $INSTALL_DIR to \$GITHUB_PATH"
 fi
 
-echo -e ""
-echo -e "Redrob Code"
-echo -e ""
-echo -e ""
-echo -e "${MUTED}Redrob Code includes free models, to start:${NC}"
-echo -e ""
-echo -e "cd <project>  ${MUTED}# Open directory${NC}"
-echo -e "redrob      ${MUTED}# Run command${NC}"
-echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://github.com/redrob-labs/redrob-code#readme"
-echo -e ""
-echo -e ""
+if [ "$drive_mode" = "true" ]; then
+    echo -e ""
+    echo -e "Redrob Drive"
+    echo -e ""
+    echo -e "${MUTED}Redrob Drive lets Redrob Chat work with your files. Finishing setup below.${NC}"
+    echo -e ""
+else
+    echo -e ""
+    echo -e "Redrob Code"
+    echo -e ""
+    echo -e ""
+    echo -e "${MUTED}Redrob Code includes free models, to start:${NC}"
+    echo -e ""
+    echo -e "cd <project>  ${MUTED}# Open directory${NC}"
+    echo -e "redrob      ${MUTED}# Run command${NC}"
+    echo -e ""
+    echo -e "${MUTED}For more information visit ${NC}https://github.com/redrob-labs/redrob-code#readme"
+    echo -e ""
+    echo -e ""
+fi
 
 run_connect
+run_drive
