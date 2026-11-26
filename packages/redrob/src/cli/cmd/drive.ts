@@ -19,6 +19,7 @@ import { cmd } from "./cmd"
 import { UI } from "@/cli/ui"
 import { Daemon } from "@/daemon/connect"
 import * as Autostart from "@/daemon/autostart"
+import * as Tray from "@/daemon/tray"
 import { setAllowedFolders, allowedFolders } from "@/desk/files"
 import { homedir } from "node:os"
 import open from "open"
@@ -108,6 +109,17 @@ const SetupCommand = cmd({
     const enabled = await call<Status>("/desk/enable", "POST", { enabled: true })
     if (!enabled) return
 
+    // The tray icon: the visible sign that Drive is on, and its menu (open chat, pause, close).
+    const tray = await Tray.ensure()
+    if (tray) {
+      const chat = Tray.chatWebUrl()
+      const registered = await Tray.register(tray, chat)
+      Tray.start(tray, chat)
+      UI.println(registered ? "tray icon on, and it starts at login" : "tray icon on")
+    } else {
+      dim("could not add the tray icon; Redrob Drive works without it")
+    }
+
     const status = await call<Status>("/desk/status")
     if (!status) return
     if (status.signedIn) {
@@ -142,6 +154,8 @@ const OffCommand = cmd({
   describe: "stop Redrob Drive: turn the desk off and unregister login start",
   handler: async () => {
     await call<Status>("/desk/enable", "POST", { enabled: false })
+    await Tray.unregister()
+    await Tray.stop()
     const state = await Autostart.uninstall().catch(() => undefined)
     UI.println(state && !state.installed ? "Redrob Drive is off; it no longer starts at login" : "Redrob Drive is off")
   },
