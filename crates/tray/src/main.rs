@@ -283,7 +283,15 @@ fn main() {
     })));
     let poller = event_loop.create_proxy();
     std::thread::spawn(move || {
+        // The tray keeps the engine up: an update stops it, and a login start that could not be
+        // registered never starts it. A paused Drive keeps its engine running (desk off), so this
+        // never undoes a pause; `redrob drive off` closes the tray first.
+        let mut last_start: Option<std::time::Instant> = None;
         loop {
+            if engine::current().is_none() && last_start.is_none_or(|t| t.elapsed() >= Duration::from_secs(30)) {
+                last_start = Some(std::time::Instant::now());
+                let _ = start_daemon();
+            }
             if poller.send_event(UserEvent::Status(status())).is_err() {
                 return;
             }
