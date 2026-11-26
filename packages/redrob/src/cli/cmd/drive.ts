@@ -125,14 +125,16 @@ const SetupCommand = cmd({
   },
 })
 
+async function showStatus(): Promise<void> {
+  const status = await call<Status>("/desk/status")
+  if (!status) return
+  printStatus(status, await allowedFolders())
+}
+
 const StatusCommand = cmd({
   command: "status",
   describe: "show whether Redrob Drive is on, signed in and which folders are open",
-  handler: async () => {
-    const status = await call<Status>("/desk/status")
-    if (!status) return
-    printStatus(status, await allowedFolders())
-  },
+  handler: showStatus,
 })
 
 const OffCommand = cmd({
@@ -148,7 +150,9 @@ const OffCommand = cmd({
 export const DriveCommand = cmd({
   command: "drive",
   describe: "manage Redrob Drive: let Redrob Chat work with this computer's files",
-  builder: (yargs) =>
-    yargs.command(SetupCommand).command(StatusCommand).command(OffCommand).demandCommand(1),
-  handler: () => {},
+  builder: (yargs) => yargs.command(SetupCommand).command(StatusCommand).command(OffCommand),
+  // Bare `redrob drive` shows status instead of exiting with a yargs usage error (which, in a
+  // double-clicked console, just flashed and closed). `redrob drive setup` is still the one-tap
+  // setup; `off` turns it off.
+  handler: showStatus,
 })
