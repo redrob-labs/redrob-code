@@ -205,6 +205,42 @@ fn pid_file() -> Option<PathBuf> {
     engine::run_dir().map(|d| d.join("tray.pid"))
 }
 
+/// Windows 11 puts a new tray icon in the hidden overflow (the ^), where nobody sees that Drive is
+/// on. Explorer keeps one record per program under `HKCU\Control Panel\NotifyIconSettings`, written
+/// some time after the icon first shows; its `IsPromoted` value puts the icon on the taskbar. This
+/// waits for our record and promotes it once. A marker remembers that, so a person who hides the
+/// icon later is not overruled.
+#[cfg(windows)]
+fn show_on_taskbar_once() {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+
+    let Some(marker) = dirs::home_dir().map(|h| h.join(".redrob").join("desk").join("tray-shown")) else { return };
+    if marker.exists() {
+        return;
+    }
+    let Ok(me) = std::env::current_exe() else { return };
+    let me = me.to_string_lossy().to_lowercase();
+    // Up to ten minutes: Explorer writes the record late, sometimes only after a while.
+    for _ in 0..120 {
+        if let Ok(root) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(r"Control Panel\NotifyIconSettings", KEY_READ) {
+            for name in root.enum_keys().flatten() {
+                let Ok(key) = root.open_subkey_with_flags(&name, KEY_READ | KEY_WRITE) else { continue };
+                let path: String = key.get_value("ExecutablePath").unwrap_or_default();
+                if path.to_lowercase() == me {
+                    let _ = key.set_value("IsPromoted", &1u32);
+                    if let Some(dir) = marker.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    let _ = std::fs::write(&marker, "");
+                    return;
+                }
+            }
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
 fn main() {
     // One icon per person: a second start (login item plus `drive setup`) just leaves.
     let instance = single_instance::SingleInstance::new("redrob-drive-tray").ok();
@@ -220,6 +256,8 @@ fn main() {
 
     let chat = chat_url();
     let t = text();
+    #[cfg(windows)]
+    std::thread::spawn(show_on_taskbar_once);
 
     #[allow(unused_mut)]
     let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();

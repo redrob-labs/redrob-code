@@ -115,7 +115,6 @@ const SetupCommand = cmd({
       const chat = Tray.chatWebUrl()
       const registered = await Tray.register(tray, chat)
       Tray.start(tray, chat)
-      await Tray.show(tray)
       UI.println(registered ? "tray icon on, and it starts at login" : "tray icon on")
     } else {
       dim("could not add the tray icon; Redrob Drive works without it")
