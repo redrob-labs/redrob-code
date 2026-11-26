@@ -21,6 +21,7 @@ import { Daemon } from "@/daemon/connect"
 import * as Autostart from "@/daemon/autostart"
 import { setAllowedFolders, allowedFolders } from "@/desk/files"
 import { homedir } from "node:os"
+import open from "open"
 
 type Login = { userCode: string; verificationUriComplete: string; expiresAt: number }
 
@@ -117,9 +118,10 @@ const SetupCommand = cmd({
     const login = await call<Login>("/desk/login", "POST")
     if (!login) return
     UI.println("")
-    UI.println("Finish setup in Redrob Chat:")
-    UI.println(`  open ${login.verificationUriComplete}`)
+    UI.println("Opening your browser to finish setup in Redrob Chat.")
+    UI.println(`  if it does not open, go to ${login.verificationUriComplete}`)
     UI.println(`  and confirm the code ${UI.Style.TEXT_SUCCESS_BOLD}${login.userCode}${UI.Style.TEXT_NORMAL}`)
+    await open(login.verificationUriComplete).catch(() => undefined)
   },
 })
 
