@@ -211,6 +211,42 @@ export function start(tray: string, chat: string): void {
   }
 }
 
+function output(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
+    let out = ""
+    child.stdout?.on("data", (d) => (out += d.toString()))
+    child.on("error", () => resolve(""))
+    child.on("close", () => resolve(out))
+  })
+}
+
+const NOTIFY_ICONS = "HKCU\\Control Panel\\NotifyIconSettings"
+
+/**
+ * Windows 11 puts a new tray icon in the hidden overflow (the ^), where nobody sees that Drive is
+ * on. Show it on the taskbar once, at setup: the per-icon `IsPromoted` value Explorer keeps for
+ * each program. A person can still hide it later. Waits for Explorer to record the icon first.
+ */
+export async function show(tray: string): Promise<void> {
+  if (process.platform !== "win32") return
+  const want = tray.toLowerCase()
+  for (let i = 0; i < 20; i++) {
+    const listing = await output("reg.exe", ["query", NOTIFY_ICONS, "/s", "/f", "redrob-tray.exe", "/d"])
+    let key: string | undefined
+    let found: string | undefined
+    for (const line of listing.split(/\r?\n/)) {
+      if (line.startsWith("HKEY_")) key = line.trim()
+      else if (key && /ExecutablePath/i.test(line) && line.toLowerCase().includes(want)) found = key
+    }
+    if (found) {
+      await run("reg.exe", ["add", found, "/v", "IsPromoted", "/t", "REG_DWORD", "/d", "1", "/f"])
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+}
+
 function pidFile(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(env.REDROB_RUN_DIR?.trim() || path.join(os.homedir(), ".redrob", "run"), "tray.pid")
 }
