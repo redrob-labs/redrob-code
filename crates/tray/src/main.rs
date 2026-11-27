@@ -163,29 +163,38 @@ fn set_enabled(on: bool) {
 
 /// The mark as RGBA, grayed out when the computer is not connected.
 fn icon(gray: bool) -> Option<Icon> {
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(ICON_PNG));
+    let (width, height, pixels) = rgba(ICON_PNG)?;
+    Icon::from_rgba(if gray { grayed(pixels) } else { pixels }, width, height).ok()
+}
+
+/// A PNG decoded to RGBA: width, height, pixels.
+fn rgba(png_bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;
     let mut buf = vec![0; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     let pixels = &buf[..info.buffer_size()];
-    let mut rgba: Vec<u8> = match info.color_type {
+    let rgba: Vec<u8> = match info.color_type {
         png::ColorType::Rgba => pixels.to_vec(),
         png::ColorType::Rgb => pixels.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
         png::ColorType::GrayscaleAlpha => pixels.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
         png::ColorType::Grayscale => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
         png::ColorType::Indexed => return None,
     };
-    if gray {
-        for p in rgba.chunks_exact_mut(4) {
-            let l = ((u32::from(p[0]) * 30 + u32::from(p[1]) * 59 + u32::from(p[2]) * 11) / 100) as u8;
-            p[0] = l;
-            p[1] = l;
-            p[2] = l;
-            p[3] = (u32::from(p[3]) * 55 / 100) as u8;
-        }
+    Some((info.width, info.height, rgba))
+}
+
+/// The offline look: gray and see-through.
+fn grayed(mut rgba: Vec<u8>) -> Vec<u8> {
+    for p in rgba.chunks_exact_mut(4) {
+        let l = ((u32::from(p[0]) * 30 + u32::from(p[1]) * 59 + u32::from(p[2]) * 11) / 100) as u8;
+        p[0] = l;
+        p[1] = l;
+        p[2] = l;
+        p[3] = (u32::from(p[3]) * 55 / 100) as u8;
     }
-    Icon::from_rgba(rgba, info.width, info.height).ok()
+    rgba
 }
 
 fn chat_url() -> String {
@@ -224,21 +233,71 @@ fn show_on_taskbar_once() {
     // Up to ten minutes: Explorer writes the record late, sometimes only after a while.
     for _ in 0..120 {
         if let Ok(root) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(r"Control Panel\NotifyIconSettings", KEY_READ) {
+            let mut found = false;
             for name in root.enum_keys().flatten() {
                 let Ok(key) = root.open_subkey_with_flags(&name, KEY_READ | KEY_WRITE) else { continue };
                 let path: String = key.get_value("ExecutablePath").unwrap_or_default();
-                if path.to_lowercase() == me {
+                let ours = if path.is_empty() {
+                    // Explorer sometimes keeps only the picture of the icon, without the program's path.
+                    key.get_raw_value("IconSnapshot").is_ok_and(|v| is_our_snapshot(&v.bytes))
+                } else {
+                    same_program(&path, &me)
+                };
+                if ours {
                     let _ = key.set_value("IsPromoted", &1u32);
-                    if let Some(dir) = marker.parent() {
-                        let _ = std::fs::create_dir_all(dir);
-                    }
-                    let _ = std::fs::write(&marker, "");
-                    return;
+                    found = true;
                 }
+            }
+            if found {
+                if let Some(dir) = marker.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                let _ = std::fs::write(&marker, "");
+                return;
             }
         }
         std::thread::sleep(POLL);
     }
+}
+
+/// Explorer writes a path either in full or as `{known folder id}\rest`; the rest must end our path.
+#[cfg(any(windows, test))]
+fn same_program(path: &str, me: &str) -> bool {
+    let path = path.to_lowercase();
+    if path == me {
+        return true;
+    }
+    match path.strip_prefix('{').and_then(|p| p.split_once("}\\")) {
+        Some((_, rest)) => me.ends_with(&format!("\\{rest}")),
+        None => false,
+    }
+}
+
+/// Whether Explorer's saved picture of an icon (a 128 px PNG) is our mark, colored or grayed.
+#[cfg(any(windows, test))]
+fn is_our_snapshot(png_bytes: &[u8]) -> bool {
+    let Some((w, h, snap)) = rgba(png_bytes) else { return false };
+    let Some((mw, mh, mark)) = rgba(ICON_PNG) else { return false };
+    w == mw && h == mh && [grayed(mark.clone()), mark].iter().any(|m| mean_difference(&snap, m) < 8.0)
+}
+
+/// Mean difference per channel, color weighted by alpha: a fully clear pixel's color says nothing.
+#[cfg(any(windows, test))]
+fn mean_difference(a: &[u8], b: &[u8]) -> f64 {
+    if a.len() != b.len() || a.is_empty() {
+        return f64::MAX;
+    }
+    let pre = |p: &[u8]| {
+        let alpha = u32::from(p[3]);
+        [u32::from(p[0]) * alpha / 255, u32::from(p[1]) * alpha / 255, u32::from(p[2]) * alpha / 255, alpha]
+    };
+    let sum: u64 = a
+        .chunks_exact(4)
+        .zip(b.chunks_exact(4))
+        .flat_map(|(x, y)| pre(x).into_iter().zip(pre(y)))
+        .map(|(x, y)| u64::from(x.abs_diff(y)))
+        .sum();
+    sum as f64 / a.len() as f64
 }
 
 fn main() {
@@ -383,4 +442,40 @@ fn main() {
             _ => {}
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A picture Explorer saved for this icon on a real Windows 11 PC (the offline look).
+    const SNAPSHOT: &[u8] = include_bytes!("../assets/test/snapshot.png");
+
+    #[test]
+    fn knows_its_own_snapshot() {
+        assert!(is_our_snapshot(SNAPSHOT));
+    }
+
+    #[test]
+    fn other_pictures_are_not_ours() {
+        let (w, h, _) = rgba(ICON_PNG).unwrap();
+        let mut other = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut other, w, h);
+            encoder.set_color(png::ColorType::Rgba);
+            let mut writer = encoder.write_header().unwrap();
+            writer.write_image_data(&vec![200u8; (w * h * 4) as usize]).unwrap();
+        }
+        assert!(!is_our_snapshot(&other));
+        assert!(!is_our_snapshot(b"not a png"));
+    }
+
+    #[test]
+    fn known_folder_paths_match() {
+        let me = r"c:\users\a\appdata\local\redrob\bin\redrob-tray.exe";
+        assert!(same_program(r"C:\Users\A\AppData\Local\redrob\bin\redrob-tray.exe", me));
+        assert!(same_program(r"{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\redrob\bin\redrob-tray.exe", me));
+        assert!(!same_program(r"{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\other\redrob-tray.exe", me));
+        assert!(!same_program(r"C:\Users\A\Downloads\redrob-tray.exe", me));
+    }
 }

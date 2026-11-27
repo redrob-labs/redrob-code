@@ -1,4 +1,4 @@
-; Redrob Code Windows installer.
+﻿; Redrob Code Windows installer.
 ;
 ; Produces `redrob-code-<version>-windows-x64-setup.exe`: a click-to-run installer, so Windows is not the one
 ; platform where the only way in is to paste a PowerShell one-liner. That asymmetry is what this
@@ -44,7 +44,10 @@ AppId={{8F4C6A21-9E3B-4D77-A5C8-2B1E7F0D9A64}
 ; (ISCC `/DDRIVE`): the window is branded Redrob Drive and the install runs `redrob drive setup`
 ; by default. Same AppId on purpose -- it is one installed program under two front doors.
 #ifdef DRIVE
-AppName=Redrob Drive
+; 레드롭 드라이브 on a Korean Windows, Redrob Drive elsewhere ([CustomMessages] below).
+AppName={cm:DriveName}
+; The window title is the name alone, not "<name> version 0.18.x".
+AppVerName={cm:DriveName}
 #else
 AppName=Redrob Code
 #endif
@@ -83,6 +86,23 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 
+; Redrob's own mark on the installer file, its window and the two wizard images (one per DPI step),
+; in place of Inno's default box-and-disc.
+SetupIconFile=redrob.ico
+UninstallDisplayIcon={app}\redrob.exe
+WizardImageFile=wizard-164.bmp,wizard-205.bmp,wizard-246.bmp,wizard-328.bmp
+WizardSmallImageFile=small-55.bmp,small-69.bmp,small-83.bmp,small-110.bmp
+; Korean on a Korean Windows, English elsewhere, without asking.
+ShowLanguageDialog=no
+LanguageDetectionMethod=uilanguage
+
+#ifdef DRIVE
+; Redrob Drive is one click: no welcome, no tasks, no "ready" page. Double-click, it installs, and
+; the browser opens to connect it.
+DisableWelcomePage=yes
+DisableReadyPage=yes
+#endif
+
 ; The payload is x64. Declaring it keeps the installer from running on an architecture whose
 ; binary this is not, which would otherwise fail at first run rather than at install.
 ArchitecturesAllowed=x64compatible
@@ -102,9 +122,9 @@ Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob-code.exe"
 ; a local build of the installer without it still compiles.
 Source: "{#SourceBin}\redrob-tray.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
+#ifndef DRIVE
 [Tasks]
 Name: "addtopath"; Description: "Add Redrob Code to my PATH"; GroupDescription: "Shell integration:"
-#ifndef DRIVE
 ; In a plain Redrob Code install, Redrob Drive setup is an off-by-default opt-in task; a person can
 ; tick it here. The dedicated Redrob Drive installer (/DDRIVE) runs it unconditionally instead.
 Name: "drivesetup"; Description: "Set up Redrob Drive (let Redrob Chat work with this computer's files)"; GroupDescription: "Redrob Drive:"; Flags: unchecked
@@ -114,18 +134,28 @@ Name: "drivesetup"; Description: "Set up Redrob Drive (let Redrob Chat work with
 ; HKCU only, and `expandsz` because a user PATH normally holds unexpanded variables; writing it as
 ; a plain string would flatten anything already there. `Check:` keeps the entry from being appended
 ; twice when the installer is run again over an existing install.
+; Redrob Drive asks nothing: the engine goes on PATH as it always does, so `redrob` works in a
+; terminal for anyone who later wants it.
+#ifdef DRIVE
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
+  ValueData: "{olddata};{app}"; Flags: preservestringtype; \
+  Check: NeedsPathEntry(ExpandConstant('{app}'))
+#else
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   ValueData: "{olddata};{app}"; Flags: preservestringtype; \
   Tasks: addtopath; Check: NeedsPathEntry(ExpandConstant('{app}'))
+#endif
 
 [Run]
 ; Redrob Drive setup: open the home folder to Redrob Chat, turn the desk on, register the engine to
 ; start at login, and sign in. `drive setup` signs in to production; a dev test points the daemon at
 ; dev by running `redrob drive setup` from a shell with REDROB_CHAT_API_URL set.
 #ifdef DRIVE
-; Dedicated Redrob Drive installer: run setup for everyone (still skipped on a silent install).
-Filename: "{app}\redrob.exe"; Parameters: "drive setup"; Description: "Set up Redrob Drive"; \
-  Flags: postinstall nowait skipifsilent
+; Dedicated Redrob Drive installer: setup runs at the end of the install, with no checkbox, while
+; the installer still owns the foreground, so the browser it opens comes to the front. Hidden: it
+; is a console program. Still skipped on a silent install.
+Filename: "{app}\redrob.exe"; Parameters: "drive setup"; StatusMsg: "{cm:DriveConnecting}"; \
+  Flags: nowait runhidden skipifsilent
 #else
 ; Plain Redrob Code installer: only when the opt-in task is ticked.
 Filename: "{app}\redrob.exe"; Parameters: "drive setup"; Description: "Set up Redrob Drive"; \
@@ -188,11 +218,13 @@ var
   ResultCode: Integer;
 begin
   Result := '';
+  { The tray icon first: it starts the engine again whenever none is running, so stopping the
+    engine while it is still up lost the race and left redrob.exe locked ("DeleteFile failed;
+    code 5"). It is started again after the install. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Existing := ExpandConstant('{app}\redrob.exe');
   if FileExists(Existing) then
     Exec(Existing, 'service stop', ExpandConstant('{localappdata}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  { The tray icon holds redrob-tray.exe open too; it is started again after the install. }
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 const
@@ -224,12 +256,92 @@ begin
   end;
 end;
 
+[Languages]
+; English is Inno's default text. Korean is the same file with every line this installer shows
+; written over below, so it needs no translation file the build image may not ship.
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "korean"; MessagesFile: "compiler:Default.isl"
+
+[LangOptions]
+korean.LanguageName=한국어
+korean.LanguageID=$0412
+korean.LanguageCodePage=0
+
+[CustomMessages]
+english.DriveName=Redrob Drive
+korean.DriveName=레드롭 드라이브
+english.DriveConnecting=Opening your browser to connect your computer...
+korean.DriveConnecting=내 컴퓨터를 연결하도록 브라우저를 여는 중이에요...
+
 [Messages]
 #ifdef DRIVE
-FinishedLabel=Redrob Drive is installed.%n%nIt will open your browser to finish connecting your computer to Redrob Chat. After that it stays on in the background -- use your files from chat at any time.
+; Inno always shows one page before it installs: for Redrob Drive that is this one, the whole
+; pitch and one Install button.
+english.WizardReady=Install Redrob Drive
+english.ReadyLabel1=Redrob Drive connects this computer to Redrob Chat, so chat can find, read and organize your files.
+english.ReadyLabel2b=Click Install. Your browser opens next to connect it with your Redrob account.
+korean.WizardReady=레드롭 드라이브 설치
+korean.ReadyLabel1=레드롭 드라이브는 이 컴퓨터를 레드롭 챗과 연결해요. 챗에서 내 파일을 찾고, 읽고, 정리할 수 있어요.
+korean.ReadyLabel2b=설치를 누르세요. 그다음 브라우저가 열리면 레드롭 계정으로 연결해요.
+; An install with no shortcuts shows FinishedLabelNoIcons, not FinishedLabel: both say the same.
+english.FinishedLabelNoIcons=Your browser opened to connect this computer to Redrob Chat. Allow it once with your Redrob account.%n%nAfter that, Redrob Drive stays on in the background. Look for the Redrob icon on the taskbar.
+korean.FinishedLabelNoIcons=브라우저가 열렸어요. 레드롭 계정으로 한 번 허용하면 이 컴퓨터가 레드롭 챗과 연결돼요.%n%n그다음엔 백그라운드에서 항상 켜져 있어요. 작업 표시줄의 레드롭 아이콘을 확인해 보세요.
+english.FinishedHeadingLabel=Redrob Drive is installed
+english.FinishedLabel=Your browser opened to connect this computer to Redrob Chat. Allow it once with your Redrob account.%n%nAfter that, Redrob Drive stays on in the background. Look for the Redrob icon on the taskbar.
+korean.FinishedHeadingLabel=레드롭 드라이브를 설치했어요
+korean.FinishedLabel=브라우저가 열렸어요. 레드롭 계정으로 한 번 허용하면 이 컴퓨터가 레드롭 챗과 연결돼요.%n%n그다음엔 백그라운드에서 항상 켜져 있어요. 작업 표시줄의 레드롭 아이콘을 확인해 보세요.
 #else
-FinishedLabel=Redrob Code is installed.%n%nOpen a NEW terminal and run `redrob --version`. An already-open terminal still holds the old PATH and will not find it until it is restarted.
+english.FinishedLabel=Redrob Code is installed.%n%nOpen a NEW terminal and run `redrob --version`. An already-open terminal still holds the old PATH and will not find it until it is restarted.
+korean.FinishedLabel=레드롭 코드를 설치했어요.%n%n새 터미널을 열고 `redrob --version`을 실행해 보세요. 이미 열려 있던 터미널은 다시 열어야 찾을 수 있어요.
 #endif
+korean.SetupAppTitle=설치
+korean.SetupWindowTitle=설치 - %1
+korean.UninstallAppTitle=제거
+korean.UninstallAppFullTitle=%1 제거
+korean.ButtonBack=< 이전
+korean.ButtonNext=다음 >
+korean.ButtonInstall=설치
+korean.ButtonOK=확인
+korean.ButtonCancel=취소
+korean.ButtonYes=예
+korean.ButtonNo=아니요
+korean.ButtonFinish=마침
+korean.ExitSetupTitle=설치 그만두기
+korean.ExitSetupMessage=아직 설치가 끝나지 않았어요. 지금 그만두면 설치되지 않아요.%n%n나중에 다시 실행하면 이어서 설치할 수 있어요.%n%n설치를 그만둘까요?
+korean.WizardPreparing=설치 준비 중
+korean.PreparingDesc=설치할 준비를 하고 있어요.
+korean.WizardInstalling=설치 중
+korean.InstallingLabel=설치하고 있어요. 잠시만 기다려 주세요.
+korean.StatusClosingApplications=프로그램을 닫는 중...
+korean.StatusCreateDirs=폴더를 만드는 중...
+korean.StatusExtractFiles=파일을 복사하는 중...
+korean.StatusCreateIcons=바로 가기를 만드는 중...
+korean.StatusCreateIniEntries=설정을 쓰는 중...
+korean.StatusCreateRegistryEntries=설정을 쓰는 중...
+korean.StatusSavingUninstall=제거 정보를 저장하는 중...
+korean.StatusRunProgram=설치를 마무리하는 중...
+korean.StatusRollback=바뀐 것을 되돌리는 중...
+korean.WizardSelectTasks=추가 작업 고르기
+korean.SelectTasksDesc=어떤 작업을 더 할까요?
+korean.SelectTasksLabel2=설치하면서 할 작업을 고르고 다음을 누르세요.
+korean.ReadyLabel2a=설치를 누르면 시작해요. 바꿀 것이 있으면 이전을 누르세요.
+korean.ReadyMemoTasks=추가 작업:
+#ifndef DRIVE
+korean.WizardReady=설치 준비 완료
+korean.ReadyLabel1=이 컴퓨터에 설치할 준비가 됐어요.
+korean.ReadyLabel2b=설치를 누르면 시작해요.
+korean.FinishedHeadingLabel=레드롭 코드 설치를 마쳤어요
+#endif
+korean.ClickFinish=마침을 누르면 설치 창이 닫혀요.
+korean.ErrorTitle=오류
+korean.AbortRetryIgnoreSelectAction=무엇을 할지 고르세요
+korean.AbortRetryIgnoreRetry=다시 시도(&T)
+korean.AbortRetryIgnoreIgnore=이 파일 건너뛰기 (권하지 않아요)(&S)
+korean.AbortRetryIgnoreCancel=설치 그만두기
+korean.ErrorReplacingExistingFile=있던 파일을 바꾸는 중에 문제가 생겼어요:
+korean.UninstallStatusLabel=컴퓨터에서 지우고 있어요. 잠시만 기다려 주세요.
+korean.ConfirmUninstall=%1 프로그램과 구성 요소를 모두 지울까요?
+korean.UninstalledAll=%1 프로그램을 컴퓨터에서 지웠어요.
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
