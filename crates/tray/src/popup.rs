@@ -1,8 +1,8 @@
 //! The popup a click on the tray icon opens (Windows and macOS): who is signed in and whether the
 //! computer is connected, the usual folders to open, what Redrob did with this computer's files
-//! lately, and the way to the chat or to pause. The page is `assets/popup.html` in the system web
+//! lately, and the way to the chat. Pausing is in the right-click menu. The page is `assets/popup.html` in the system web
 //! view (wry); this side gives it the facts (`render(...)`) and does what its buttons ask
-//! (`window.ipc.postMessage`: `chat`, `toggle`, `folder:<n>`).
+//! (`window.ipc.postMessage`: `chat`, `folder:<n>`, `hide`).
 //!
 //! What Redrob did comes from the daemon's `~/.redrob/desk/events.jsonl`: one `{"type":"file"}`
 //! line per folder looked in or file read, saved, moved or deleted from Redrob Chat (forward.ts).

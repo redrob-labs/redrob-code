@@ -57,13 +57,13 @@ h4 { margin: 8px 16px 8px; font-size: 12px; font-weight: 600; color: var(--ink-3
 .ico.pdf { background: #ff4b4b; } .ico.doc { background: #2f8dff; } .ico.sheet { background: #00864a; }
 .ico.image { background: #8944ff; } .ico.zip { background: #ff9c1b; } .ico.file { background: #7c8390; }
 .recent { flex: 1; padding: 0 16px; overflow: hidden; }
-.act { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.act { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .act:last-child { border-bottom: 0; }
 .act b { display: block; font-weight: 600; line-height: 18px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .act span { font-size: 12px; color: var(--ink-3); }
 .empty { color: var(--ink-3); padding: 6px 0; }
 .foot { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); }
-.btn { height: 36px; padding: 0 14px; border-radius: 8px; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); }
+.btn { display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; text-align: center; border-radius: 8px; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); }
 .btn:hover { background: var(--tile); }
 .btn.primary { flex: 1; background: var(--blue); border-color: var(--blue); color: #fff; }
 .btn.primary:hover { background: var(--blue-hover); }
@@ -81,7 +81,6 @@ h4 { margin: 8px 16px 8px; font-size: 12px; font-weight: 600; color: var(--ink-3
 <div class="recent" id="recent"></div>
 <div class="foot">
   <button class="btn primary" id="chat"></button>
-  <button class="btn" id="toggle"></button>
 </div>
 <script>
 const lang = document.documentElement.lang === "ko" ? "ko" : "en";
@@ -89,7 +88,7 @@ const T = {
   ko: {
     name: "레드롭 드라이브", folders: "내 PC 폴더", recent: "레드롭이 최근에 한 일",
     on: "연결됨", paused: "잠시 멈춤", offline: "연결 안 됨", signedOut: "로그인하면 레드롭 챗과 연결돼요",
-    chat: "레드롭 챗에서 정리하기", pause: "잠시 멈춤", resume: "다시 켜기",
+    chat: "레드롭 챗에서 정리하기",
     empty: "아직 한 일이 없어요. 레드롭 챗에서 내 PC 파일을 물어보세요.",
     desktop: "바탕화면", documents: "문서", downloads: "다운로드", pictures: "사진",
     list: n => `'${n}' 폴더를 봤어요`, read: n => `${n} 파일을 읽었어요`, write: n => `${n} 파일을 저장했어요`,
@@ -99,7 +98,7 @@ const T = {
   en: {
     name: "Redrob Drive", folders: "Folders on this PC", recent: "What Redrob did lately",
     on: "Connected", paused: "Paused", offline: "Not connected", signedOut: "Sign in to connect to Redrob Chat",
-    chat: "Organize in Redrob Chat", pause: "Pause", resume: "Turn back on",
+    chat: "Organize in Redrob Chat",
     empty: "Nothing yet. Ask Redrob Chat about files on this PC.",
     desktop: "Desktop", documents: "Documents", downloads: "Downloads", pictures: "Pictures",
     list: n => `Looked in '${n}'`, read: n => `Read ${n}`, write: n => `Saved ${n}`,
@@ -139,13 +138,11 @@ $("foldersTitle").textContent = T.folders;
 $("recentTitle").textContent = T.recent;
 $("chat").textContent = T.chat;
 $("chat").onclick = () => post("chat");
-$("toggle").onclick = () => post("toggle");
 window.render = data => {
   const state = ["on", "paused", "offline"].includes(data.state) ? data.state : "offline";
   $("pill").className = `pill ${state}`;
   $("pill").textContent = T[state];
   $("email").textContent = data.email || T.signedOut;
-  $("toggle").textContent = state === "on" ? T.pause : T.resume;
   const folders = $("folders");
   folders.replaceChildren(...(data.folders || []).map((key, i) => {
     const b = document.createElement("button");
