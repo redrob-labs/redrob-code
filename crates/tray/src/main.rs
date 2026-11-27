@@ -15,8 +15,39 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use redrob_engine_client as engine;
-use tao::event::{Event, StartCause};
+use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
+
+#[cfg(any(windows, target_os = "macos"))]
+mod popup;
+
+/// Linux has no popup (no web view there); the icon keeps its menu and left click opens the chat.
+#[cfg(not(any(windows, target_os = "macos")))]
+mod popup {
+    #[allow(dead_code)]
+    pub struct Facts<'a> {
+        pub state: &'a str,
+        pub email: Option<&'a str>,
+    }
+    pub fn folders() -> Vec<(&'static str, std::path::PathBuf)> {
+        Vec::new()
+    }
+    pub struct Popup;
+    impl Popup {
+        pub fn new<T>(_: &tao::event_loop::EventLoopWindowTarget<T>, _: bool, _: impl Fn(String) + 'static) -> Option<Self> {
+            None
+        }
+        pub fn visible(&self) -> bool {
+            false
+        }
+        pub fn hide(&mut self) {}
+        pub fn toggle(&mut self, _: tray_icon::Rect, _: &Facts) {}
+        pub fn render(&self, _: &Facts) {}
+        pub fn is(&self, _: tao::window::WindowId) -> bool {
+            false
+        }
+    }
+}
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
@@ -35,10 +66,24 @@ enum State {
     Offline,
 }
 
+impl State {
+    /// The popup page's word for it (assets/popup.html).
+    fn key(self) -> &'static str {
+        match self {
+            State::On => "on",
+            State::Paused => "paused",
+            State::Offline => "offline",
+        }
+    }
+}
+
 enum UserEvent {
-    Status(State),
+    /// The connection and the signed-in account's email.
+    Status(State, Option<String>),
     Tray(TrayIconEvent),
     Menu(MenuEvent),
+    /// What a button in the popup asked for.
+    Popup(String),
 }
 
 struct Text {
@@ -100,23 +145,30 @@ fn desk_url(record: &engine::Record, path: &str) -> String {
 }
 
 /// The connection right now, from the daemon's `GET /desk/status`.
-fn status() -> State {
-    let Some(record) = engine::current() else { return State::Offline };
+fn status() -> UserEvent {
+    let (state, email) = read_status();
+    UserEvent::Status(state, email)
+}
+
+fn read_status() -> (State, Option<String>) {
+    let Some(record) = engine::current() else { return (State::Offline, None) };
     let response = agent().get(&desk_url(&record, "/desk/status")).header("Authorization", &engine::authorization(&record.secret)).call();
-    let Ok(mut response) = response else { return State::Offline };
+    let Ok(mut response) = response else { return (State::Offline, None) };
     if !response.status().is_success() {
-        return State::Offline;
+        return (State::Offline, None);
     }
-    let Ok(body) = response.body_mut().read_to_string() else { return State::Offline };
+    let Ok(body) = response.body_mut().read_to_string() else { return (State::Offline, None) };
     let value: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
     let flag = |key: &str| value.get(key).and_then(serde_json::Value::as_bool).unwrap_or(false);
-    if !flag("enabled") {
+    let email = value.pointer("/account/email").and_then(serde_json::Value::as_str).map(str::to_string);
+    let state = if !flag("enabled") {
         State::Paused
     } else if flag("signedIn") && flag("connected") {
         State::On
     } else {
         State::Offline
-    }
+    };
+    (state, email)
 }
 
 /// The `redrob` binary beside this one (both are installed into the same folder), else the
@@ -351,7 +403,7 @@ fn main() {
                 last_start = Some(std::time::Instant::now());
                 let _ = start_daemon();
             }
-            if poller.send_event(UserEvent::Status(status())).is_err() {
+            if poller.send_event(status()).is_err() {
                 return;
             }
             std::thread::sleep(POLL);
@@ -378,17 +430,37 @@ fn main() {
     let mut tray: Option<TrayIcon> = None;
     let mut menu = Some(menu);
     let mut state = State::Offline;
+    let mut email: Option<String> = None;
+    let mut popup: Option<popup::Popup> = None;
+    let korean = t.name != "Redrob Drive";
+    let popup_proxy = event_loop.create_proxy();
 
-    event_loop.run(move |event, _, control_flow| {
+    // Pause or resume off the loop, then show the new state at once.
+    let flip = move |on: bool| {
+        let refresh = refresh.clone();
+        std::thread::spawn(move || {
+            set_enabled(on);
+            let _ = refresh.send_event(status());
+        });
+    };
+
+    event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
             // The icon is made once the loop runs (macOS needs the app to be up first).
             Event::NewEvents(StartCause::Init) => {
+                let proxy = std::sync::Mutex::new(popup_proxy.clone());
+                popup = popup::Popup::new(target, korean, move |message| {
+                    if let Ok(proxy) = proxy.lock() {
+                        let _ = proxy.send_event(UserEvent::Popup(message));
+                    }
+                });
                 let mut builder = TrayIconBuilder::new()
                     .with_tooltip(format!("{} · {}", t.name, label(&t, state)))
-                    // Windows and Linux: left click opens the chat, right click the menu.
-                    // macOS: the menu on a click, as every menu-bar item does.
-                    .with_menu_on_left_click(cfg!(target_os = "macos"));
+                    // A click opens the popup and a right click the menu. Without a popup
+                    // (Linux) a click opens the chat; on macOS a click then opens the menu, as
+                    // every menu-bar item does.
+                    .with_menu_on_left_click(cfg!(target_os = "macos") && popup.is_none());
                 if let Some(menu) = menu.take() {
                     builder = builder.with_menu(Box::new(menu));
                 }
@@ -397,7 +469,8 @@ fn main() {
                 }
                 tray = builder.build().ok();
             }
-            Event::UserEvent(UserEvent::Status(next)) => {
+            Event::UserEvent(UserEvent::Status(next, account)) => {
+                email = account;
                 if next != state {
                     state = next;
                     if let Some(tray) = &tray {
@@ -407,14 +480,45 @@ fn main() {
                     status_item.set_text(label(&t, state));
                     toggle.set_text(if state == State::On { t.pause } else { t.resume });
                 }
+                if let Some(popup) = popup.as_ref().filter(|p| p.visible()) {
+                    // Every poll, so new file events show while it is open.
+                    popup.render(&popup::Facts { state: state.key(), email: email.as_deref() });
+                }
             }
             Event::UserEvent(UserEvent::Tray(TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                rect,
                 ..
             })) => {
-                if !cfg!(target_os = "macos") {
+                if let Some(popup) = popup.as_mut() {
+                    popup.toggle(rect, &popup::Facts { state: state.key(), email: email.as_deref() });
+                } else if !cfg!(target_os = "macos") {
                     let _ = open::that_detached(&chat);
+                }
+            }
+            Event::WindowEvent { window_id, event: WindowEvent::Focused(false), .. } => {
+                if let Some(popup) = popup.as_mut().filter(|p| p.is(window_id)) {
+                    popup.hide();
+                }
+            }
+            Event::UserEvent(UserEvent::Popup(message)) => {
+                let Some(popup) = popup.as_mut() else { return };
+                match message.as_str() {
+                    "ready" => popup.render(&popup::Facts { state: state.key(), email: email.as_deref() }),
+                    "chat" => {
+                        popup.hide();
+                        let _ = open::that_detached(&chat);
+                    }
+                    "toggle" => flip(state != State::On),
+                    "hide" => popup.hide(),
+                    other => {
+                        let folder = other.strip_prefix("folder:").and_then(|n| n.parse::<usize>().ok()).and_then(|n| popup::folders().into_iter().nth(n));
+                        if let Some((_, dir)) = folder {
+                            popup.hide();
+                            let _ = open::that_detached(dir);
+                        }
+                    }
                 }
             }
             Event::UserEvent(UserEvent::Menu(event)) => {
@@ -425,17 +529,13 @@ fn main() {
                         let _ = open::that_detached(home);
                     }
                 } else if &event.id == toggle.id() {
-                    let on = state != State::On;
-                    let refresh = refresh.clone();
-                    std::thread::spawn(move || {
-                        set_enabled(on);
-                        let _ = refresh.send_event(UserEvent::Status(status()));
-                    });
+                    flip(state != State::On);
                 } else if &event.id == close.id() {
                     if let Some(file) = pid_file() {
                         let _ = std::fs::remove_file(file);
                     }
                     tray = None;
+                    popup = None;
                     *control_flow = ControlFlow::Exit;
                 }
             }

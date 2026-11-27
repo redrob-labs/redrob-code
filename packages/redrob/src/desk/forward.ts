@@ -114,6 +114,20 @@ export const FEATURES = [
 ] as const
 
 /** `POST /pty`: a terminal in the work folder, `{ command?, args?, cwd?, title? }`, nothing else. */
+/** The file a successful `/desk/file/*` change was about: rename and delete answer it; a write names it. */
+function fileEventPath(op: WriteOp, body: unknown, answer: unknown): string | undefined {
+  const value = (v: unknown, key: string) =>
+    typeof v === "object" && v !== null && typeof (v as Record<string, unknown>)[key] === "string"
+      ? ((v as Record<string, unknown>)[key] as string)
+      : undefined
+  if (op === "rename") return value(answer, "to")
+  if (op === "delete") return value(answer, "path")
+  const file = value(body, "path")
+  const directory = value(body, "directory")
+  if (!file) return undefined
+  return path.isAbsolute(file) || !directory ? file : path.join(directory, file)
+}
+
 function isPtyCreate(body: unknown): boolean {
   if (body === undefined) return true
   if (typeof body !== "object" || body === null || Array.isArray(body)) return false
@@ -846,6 +860,7 @@ export class Forwarder {
       const folder = (request.body as { directory?: unknown } | undefined)?.directory ?? queryOf(request.path).get("directory")
       const root = result.status < 300 && folder ? await this.roots.root(folder) : undefined
       if (root) this.watch(link, root)
+      if (result.status < 300 && route.file !== "content") this.noteFile(link, route.file, fileEventPath(route.file, request.body, result.body))
       return link.send({ t: "res", id, ...result })
     }
     if (route.local === "skills") return link.send({ t: "res", id, status: 200, body: { v: 1, skills: this.skills.list() } })
@@ -853,8 +868,14 @@ export class Forwarder {
       return link.send({ t: "res", id, status: 200, body: await capabilities(await this.privacy()) })
     if (route.local === "attachment")
       return link.send({ t: "res", id, ...(await this.attachment(allowed.params, request.path)) })
-    if (route.local === "files" && route.files)
-      return link.send({ t: "res", id, ...(await filesRequest(route.files, request.path, link.device)) })
+    if (route.local === "files" && route.files) {
+      const result = await filesRequest(route.files, request.path, link.device)
+      const query = queryOf(request.path)
+      // A folder looked in, or a file read (its first piece only, not every piece).
+      if (result.status === 200 && route.files !== "find" && !(route.files === "read" && Number(query.get("offset") ?? 0) > 0))
+        this.noteFile(link, route.files, (result.body as { path?: unknown } | undefined)?.path ?? query.get("path"))
+      return link.send({ t: "res", id, ...result })
+    }
     if (route.local === "routine" && route.routine)
       return link.send({ t: "res", id, ...(await this.routine(route.routine, allowed.params, request)) })
     if (route.local === "screen" && route.screen)
@@ -1032,6 +1053,14 @@ export class Forwarder {
     }
     session.set(attachment.id, attachment)
     if (session.size > MAX_ATTACHMENTS_PER_SESSION) session.delete(session.keys().next().value!)
+  }
+
+  /** Note on the PC what the chat did with a file, for Redrob Drive's popup ("what Redrob did lately"). */
+  private noteFile(link: Link, op: string, file: unknown): void {
+    if (typeof file !== "string" || !file) return
+    void appendEvent({ type: "file", op, path: file, ...(link.device ? { device: link.device } : {}) }).catch((error: unknown) =>
+      this.log(`events.jsonl write failed: ${error instanceof Error ? error.message : String(error)}`),
+    )
   }
 
   /** Mark a session, and note on the PC when it first turns to `all`. */
