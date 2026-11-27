@@ -1,0 +1,41 @@
+[package]
+name = "redrob-tray"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/redrob-labs/redrob-code"
+description = "Redrob Drive's tray icon: shows whether this computer is connected to Redrob Chat, opens the chat and the home folder, and pauses or resumes the connection"
+# Shipped next to the `redrob` binary (the release puts it in every desktop archive and in the
+# Windows installers). `redrob drive setup` starts it and registers it to start at login.
+publish = false
+
+[[bin]]
+name = "redrob-tray"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+redrob-engine-client = { path = "../engine-client" }
+tray-icon = "0.27"
+tao = "0.38"
+png = "0.18"
+open = "5"
+dirs = "6"
+sys-locale = "0.3"
+single-instance = "0.3"
+serde_json = "1"
+# Plain HTTP to the local daemon on 127.0.0.1 only, as engine-client does.
+ureq = { version = "3.4", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+# The per-icon taskbar setting Explorer keeps (see `show_on_taskbar_once`).
+winreg = "0.55"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

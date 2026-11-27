@@ -40,7 +40,14 @@
 
 [Setup]
 AppId={{8F4C6A21-9E3B-4D77-A5C8-2B1E7F0D9A64}
+; Redrob Drive is the same binary and install dir as Redrob Code, repackaged for non-developers
+; (ISCC `/DDRIVE`): the window is branded Redrob Drive and the install runs `redrob drive setup`
+; by default. Same AppId on purpose -- it is one installed program under two front doors.
+#ifdef DRIVE
+AppName=Redrob Drive
+#else
 AppName=Redrob Code
+#endif
 AppVersion={#AppVersion}
 AppPublisher=Redrob
 AppPublisherURL=https://redrob.ai
@@ -56,14 +63,22 @@ PrivilegesRequiredOverridesAllowed=dialog
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 Uninstallable=yes
+#ifdef DRIVE
+UninstallDisplayName=Redrob Drive
+#else
 UninstallDisplayName=Redrob Code
+#endif
 UninstallFilesDir={localappdata}\Redrob\uninstall
 
 OutputDir=.
 ; `<repo>-<version>-<os>-<arch>-setup`: the asset-name convention Redrob Launcher parses
 ; (`redrob-code-0.6.8-windows-x64-setup.exe`), so a Windows user and the launcher see the same
 ; version in the file name as in the release tag.
+#ifdef DRIVE
+OutputBaseFilename=redrob-drive-{#AppVersion}-windows-x64-setup
+#else
 OutputBaseFilename=redrob-code-{#AppVersion}-windows-x64-setup
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -83,12 +98,17 @@ ChangesEnvironment=yes
 ; script that works everywhere except here.
 Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob.exe"; Flags: ignoreversion
 Source: "{#SourceBin}\redrob.exe"; DestDir: "{app}"; DestName: "redrob-code.exe"; Flags: ignoreversion
+; Redrob Drive's tray icon (crates/tray), started by `redrob drive setup`. Optional in the payload so
+; a local build of the installer without it still compiles.
+Source: "{#SourceBin}\redrob-tray.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Tasks]
 Name: "addtopath"; Description: "Add Redrob Code to my PATH"; GroupDescription: "Shell integration:"
-; Redrob Drive: off by default so a plain Redrob Code install is untouched. The Redrob Drive
-; download pre-selects it with `/TASKS="drivesetup"`; a person can also tick it here.
+#ifndef DRIVE
+; In a plain Redrob Code install, Redrob Drive setup is an off-by-default opt-in task; a person can
+; tick it here. The dedicated Redrob Drive installer (/DDRIVE) runs it unconditionally instead.
 Name: "drivesetup"; Description: "Set up Redrob Drive (let Redrob Chat work with this computer's files)"; GroupDescription: "Redrob Drive:"; Flags: unchecked
+#endif
 
 [Registry]
 ; HKCU only, and `expandsz` because a user PATH normally holds unexpanded variables; writing it as
@@ -99,12 +119,18 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   Tasks: addtopath; Check: NeedsPathEntry(ExpandConstant('{app}'))
 
 [Run]
-; Redrob Drive one-tap setup: open the home folder to Redrob Chat, turn the desk on, register the
-; engine to start at login, and sign in. Only runs when the `drivesetup` task is selected, and
-; skipped on a silent install. `drive setup` signs in to production; a dev test points the daemon
-; at dev by running `redrob drive setup` from a shell with REDROB_CHAT_API_URL set.
+; Redrob Drive setup: open the home folder to Redrob Chat, turn the desk on, register the engine to
+; start at login, and sign in. `drive setup` signs in to production; a dev test points the daemon at
+; dev by running `redrob drive setup` from a shell with REDROB_CHAT_API_URL set.
+#ifdef DRIVE
+; Dedicated Redrob Drive installer: run setup for everyone (still skipped on a silent install).
+Filename: "{app}\redrob.exe"; Parameters: "drive setup"; Description: "Set up Redrob Drive"; \
+  Flags: postinstall nowait skipifsilent
+#else
+; Plain Redrob Code installer: only when the opt-in task is ticked.
 Filename: "{app}\redrob.exe"; Parameters: "drive setup"; Description: "Set up Redrob Drive"; \
   Flags: postinstall nowait skipifsilent; Tasks: drivesetup
+#endif
 
 [Code]
 { True when the install directory is not already on the user's PATH. Compared case-insensitively
@@ -165,17 +191,45 @@ begin
   Existing := ExpandConstant('{app}\redrob.exe');
   if FileExists(Existing) then
     Exec(Existing, 'service stop', ExpandConstant('{localappdata}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  { The tray icon holds redrob-tray.exe open too; it is started again after the install. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+const
+  TrayRunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  TrayRunValue = 'Redrob Drive';
+
+{ After an update, bring the tray icon back for a person who set Drive up: its login entry holds
+  the exact command line `redrob drive setup` registered. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Line: string;
+  ResultCode: Integer;
+begin
+  if (CurStep = ssPostInstall) and RegQueryStringValue(HKEY_CURRENT_USER, TrayRunKey, TrayRunValue, Line) then
+    Exec(ExpandConstant('{cmd}'), '/c start "" ' + Line, '', SW_HIDE, ewNoWait, ResultCode);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   { usUninstall, not usPostUninstall: the value is removed while the app path is still known good. }
   if CurUninstallStep = usUninstall then
+  begin
     RemoveFromUserPath(ExpandConstant('{app}'));
+    { Close the tray icon and drop its login entry, so nothing points at a deleted program. }
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM redrob-tray.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    RegDeleteValue(HKEY_CURRENT_USER, TrayRunKey, TrayRunValue);
+  end;
 end;
 
 [Messages]
+#ifdef DRIVE
+FinishedLabel=Redrob Drive is installed.%n%nIt will open your browser to finish connecting your computer to Redrob Chat. After that it stays on in the background -- use your files from chat at any time.
+#else
 FinishedLabel=Redrob Code is installed.%n%nOpen a NEW terminal and run `redrob --version`. An already-open terminal still holds the old PATH and will not find it until it is restarted.
+#endif
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
