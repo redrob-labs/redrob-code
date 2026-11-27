@@ -56,6 +56,19 @@ export async function allowAutoAll(): Promise<boolean> {
   return (await readSettings()).allowAutoAll !== false
 }
 
+/**
+ * Whether a new web browser is let in without the six-digit code (`autoPairWeb: true`).
+ * `redrob drive setup` turns it on: Redrob Drive has no screen to approve a code on, and only a
+ * browser signed in to the same Redrob account reaches this machine's relay room. Phones still ask.
+ */
+export async function autoPairWeb(): Promise<boolean> {
+  return (await readSettings()).autoPairWeb === true
+}
+
+export function setAutoPairWeb(on: boolean): Promise<void> {
+  return updateSettings((current) => ({ settings: { ...current, autoPairWeb: on }, result: undefined }))
+}
+
 export type MachineKind = "desktop" | "server" | "cloud"
 export const MACHINE_KINDS: readonly MachineKind[] = ["desktop", "server", "cloud"]
 
