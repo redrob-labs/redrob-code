@@ -46,6 +46,8 @@ AppId={{8F4C6A21-9E3B-4D77-A5C8-2B1E7F0D9A64}
 #ifdef DRIVE
 ; 레드롭 드라이브 on a Korean Windows, Redrob Drive elsewhere ([CustomMessages] below).
 AppName={cm:DriveName}
+; The window title is the name alone, not "<name> version 0.18.x".
+AppVerName={cm:DriveName}
 #else
 AppName=Redrob Code
 #endif
@@ -281,6 +283,9 @@ english.ReadyLabel2b=Click Install. Your browser opens next to connect it with y
 korean.WizardReady=레드롭 드라이브 설치
 korean.ReadyLabel1=레드롭 드라이브는 이 컴퓨터를 레드롭 챗과 연결해요. 챗에서 내 파일을 찾고, 읽고, 정리할 수 있어요.
 korean.ReadyLabel2b=설치를 누르세요. 그다음 브라우저가 열리면 레드롭 계정으로 연결해요.
+; An install with no shortcuts shows FinishedLabelNoIcons, not FinishedLabel: both say the same.
+english.FinishedLabelNoIcons=Your browser opened to connect this computer to Redrob Chat. Allow it once with your Redrob account.%n%nAfter that, Redrob Drive stays on in the background. Look for the Redrob icon on the taskbar.
+korean.FinishedLabelNoIcons=브라우저가 열렸어요. 레드롭 계정으로 한 번 허용하면 이 컴퓨터가 레드롭 챗과 연결돼요.%n%n그다음엔 백그라운드에서 항상 켜져 있어요. 작업 표시줄의 레드롭 아이콘을 확인해 보세요.
 english.FinishedHeadingLabel=Redrob Drive is installed
 english.FinishedLabel=Your browser opened to connect this computer to Redrob Chat. Allow it once with your Redrob account.%n%nAfter that, Redrob Drive stays on in the background. Look for the Redrob icon on the taskbar.
 korean.FinishedHeadingLabel=레드롭 드라이브를 설치했어요
