@@ -444,17 +444,21 @@ fn main() {
         });
     };
 
+    let make_popup = move |target: &tao::event_loop::EventLoopWindowTarget<UserEvent>| {
+        let proxy = std::sync::Mutex::new(popup_proxy.clone());
+        popup::Popup::new(target, korean, move |message| {
+            if let Ok(proxy) = proxy.lock() {
+                let _ = proxy.send_event(UserEvent::Popup(message));
+            }
+        })
+    };
+
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
             // The icon is made once the loop runs (macOS needs the app to be up first).
             Event::NewEvents(StartCause::Init) => {
-                let proxy = std::sync::Mutex::new(popup_proxy.clone());
-                popup = popup::Popup::new(target, korean, move |message| {
-                    if let Ok(proxy) = proxy.lock() {
-                        let _ = proxy.send_event(UserEvent::Popup(message));
-                    }
-                });
+                popup = make_popup(target);
                 let mut builder = TrayIconBuilder::new()
                     .with_tooltip(format!("{} · {}", t.name, label(&t, state)))
                     // A click opens the popup and a right click the menu. Without a popup
@@ -491,6 +495,11 @@ fn main() {
                 rect,
                 ..
             })) => {
+                // The web view can fail to start (another tray instance still holding its data
+                // folder, say): try again on each click rather than once at start.
+                if popup.is_none() {
+                    popup = make_popup(target);
+                }
                 if let Some(popup) = popup.as_mut() {
                     popup.toggle(rect, &popup::Facts { state: state.key(), email: email.as_deref() });
                 } else if !cfg!(target_os = "macos") {
