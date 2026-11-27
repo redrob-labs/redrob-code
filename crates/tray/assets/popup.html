@@ -1,0 +1,174 @@
+<!doctype html>
+<!-- Redrob Drive's popup (src/popup.rs). Redrob design tokens, copied as values: the system web
+     view has no network and no package to load them from. -->
+<html lang="__LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<style>
+:root {
+  --ink: #0a0b0c; --ink-2: #576071; --ink-3: #686e78;
+  --line: #eff1f4; --tile: #f8f9fb; --page: #ffffff;
+  --blue: #2b52ff; --blue-hover: #1733d5; --blue-tint: #d9e6ff; --blue-ink: #1733d5;
+  --ok-bg: #d6ffe1; --ok-ink: #004829; --ok-dot: #00864a;
+  --off-bg: #eff1f4; --off-ink: #576071; --off-dot: #aab0bb;
+  --warn-bg: #fff7cc; --warn-ink: #734f00; --warn-dot: #d2a100;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f8f9fb; --ink-2: #aab0bb; --ink-3: #838a97;
+    --line: #292e37; --tile: #1c2026; --page: #141719;
+    --blue: #507fff; --blue-hover: #8aafff; --blue-tint: #061460; --blue-ink: #8aafff;
+    --ok-bg: #004829; --ok-ink: #d6ffe1; --ok-dot: #29e474;
+    --off-bg: #292e37; --off-ink: #aab0bb; --off-dot: #7c8390;
+    --warn-bg: #5c2d00; --warn-ink: #ffedda; --warn-dot: #ff9c1b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  display: flex; flex-direction: column;
+  background: var(--page); color: var(--ink);
+  font: 400 13px/1.4 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
+  word-break: keep-all; overflow-wrap: break-word;
+  user-select: none; cursor: default; overflow: hidden;
+}
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.mark { width: 32px; height: 32px; flex: none; }
+.who b { display: block; font-size: 15px; font-weight: 700; }
+.who span { display: block; font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+.pill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.on { background: var(--ok-bg); color: var(--ok-ink); }
+.pill.on::before { background: var(--ok-dot); }
+.pill.paused { background: var(--warn-bg); color: var(--warn-ink); }
+.pill.paused::before { background: var(--warn-dot); }
+.pill.offline { background: var(--off-bg); color: var(--off-ink); }
+.pill.offline::before { background: var(--off-dot); }
+h4 { margin: 8px 16px 8px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.folders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 16px; }
+.folders button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; border-radius: 8px; background: var(--tile); font-weight: 500; font-size: 12px; }
+.folders button:hover { background: var(--blue-tint); color: var(--blue-ink); }
+.ico { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; flex: none; font-size: 9px; font-weight: 800; color: #fff; letter-spacing: 0.02em; }
+.ico svg { width: 16px; height: 16px; }
+.ico.folder { background: var(--blue-tint); color: var(--blue-ink); }
+.ico.pdf { background: #ff4b4b; } .ico.doc { background: #2f8dff; } .ico.sheet { background: #00864a; }
+.ico.image { background: #8944ff; } .ico.zip { background: #ff9c1b; } .ico.file { background: #7c8390; }
+.recent { flex: 1; padding: 0 16px; overflow: hidden; }
+.act { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.act:last-child { border-bottom: 0; }
+.act b { display: block; font-weight: 600; line-height: 18px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.act span { font-size: 12px; color: var(--ink-3); }
+.empty { color: var(--ink-3); padding: 6px 0; }
+.foot { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); }
+.btn { display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; text-align: center; border-radius: 8px; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); }
+.btn:hover { background: var(--tile); }
+.btn.primary { flex: 1; background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.primary:hover { background: var(--blue-hover); }
+</style>
+</head>
+<body>
+<div class="head">
+  <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#2b52ff"/><path fill="#fff" d="M54.4 26.33L54.4 17.75L47.57 15.26L32 9.6L25.16 12.09L9.6 17.75L9.6 26.33L13.37 27.7L25.16 31.99L25.16 23.41L32 20.93L35.4 19.69L38.8 18.45L38.8 32L38.8 45.54L32 43.06L25.16 40.57L25.16 32.01L13.39 36.29L9.6 37.67L9.6 46.25L32 54.4L54.4 46.25L54.4 37.67L50.6 36.29L38.8 32L50.63 27.69L54.4 26.32Z"/></svg>
+  <div class="who"><b id="name"></b><span id="email"></span></div>
+  <span class="pill offline" id="pill"></span>
+</div>
+<h4 id="foldersTitle"></h4>
+<div class="folders" id="folders"></div>
+<h4 id="recentTitle"></h4>
+<div class="recent" id="recent"></div>
+<div class="foot">
+  <button class="btn primary" id="chat"></button>
+</div>
+<script>
+const lang = document.documentElement.lang === "ko" ? "ko" : "en";
+const T = {
+  ko: {
+    name: "레드롭 드라이브", folders: "내 PC 폴더", recent: "레드롭이 최근에 한 일",
+    on: "연결됨", paused: "잠시 멈춤", offline: "연결 안 됨", signedOut: "로그인하면 레드롭 챗과 연결돼요",
+    chat: "레드롭 챗에서 정리하기",
+    empty: "아직 한 일이 없어요. 레드롭 챗에서 내 PC 파일을 물어보세요.",
+    desktop: "바탕화면", documents: "문서", downloads: "다운로드", pictures: "사진",
+    list: n => `'${n}' 폴더를 봤어요`, read: n => `${n} 파일을 읽었어요`, write: n => `${n} 파일을 저장했어요`,
+    rename: n => `${n} 파일을 옮겼어요`, delete: n => `${n} 파일을 지웠어요`,
+    now: "방금", min: m => `${m}분 전`, hour: h => `${h}시간 전`, yesterday: "어제", day: d => `${d}일 전`,
+  },
+  en: {
+    name: "Redrob Drive", folders: "Folders on this PC", recent: "What Redrob did lately",
+    on: "Connected", paused: "Paused", offline: "Not connected", signedOut: "Sign in to connect to Redrob Chat",
+    chat: "Organize in Redrob Chat",
+    empty: "Nothing yet. Ask Redrob Chat about files on this PC.",
+    desktop: "Desktop", documents: "Documents", downloads: "Downloads", pictures: "Pictures",
+    list: n => `Looked in '${n}'`, read: n => `Read ${n}`, write: n => `Saved ${n}`,
+    rename: n => `Moved ${n}`, delete: n => `Deleted ${n}`,
+    now: "Just now", min: m => `${m} min ago`, hour: h => `${h} h ago`, yesterday: "Yesterday", day: d => `${d} days ago`,
+  },
+}[lang];
+const $ = id => document.getElementById(id);
+const post = m => window.ipc.postMessage(m);
+const FOLDER = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.6l1.4 1.5h6a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>';
+const KINDS = [
+  [/\.pdf$/i, "pdf", "PDF"], [/\.(hwpx?|docx?|rtf|txt|md|pages)$/i, "doc", "DOC"],
+  [/\.(xlsx?|csv|numbers|cell)$/i, "sheet", "XLS"], [/\.(png|jpe?g|gif|webp|heic|bmp)$/i, "image", "IMG"],
+  [/\.(zip|7z|rar|tar|gz)$/i, "zip", "ZIP"],
+];
+function icon(name, folder) {
+  const el = document.createElement("i");
+  if (folder) { el.className = "ico folder"; el.innerHTML = FOLDER; return el; }
+  const kind = KINDS.find(([re]) => re.test(name));
+  el.className = `ico ${kind ? kind[1] : "file"}`;
+  el.textContent = kind ? kind[2] : (name.split(".").pop() || "").slice(0, 3).toUpperCase();
+  return el;
+}
+function base(p) { const parts = String(p || "").split(/[\\/]+/).filter(Boolean); return parts[parts.length - 1] || String(p || ""); }
+function parent(p) { const parts = String(p || "").split(/[\\/]+/).filter(Boolean); return parts[parts.length - 2] || ""; }
+function ago(ts) {
+  const s = (Date.now() - Date.parse(ts)) / 1000;
+  if (!(s >= 0)) return "";
+  if (s < 60) return T.now;
+  if (s < 3600) return T.min(Math.floor(s / 60));
+  if (s < 86400) return T.hour(Math.floor(s / 3600));
+  if (s < 172800) return T.yesterday;
+  return T.day(Math.floor(s / 86400));
+}
+$("name").textContent = T.name;
+$("foldersTitle").textContent = T.folders;
+$("recentTitle").textContent = T.recent;
+$("chat").textContent = T.chat;
+$("chat").onclick = () => post("chat");
+window.render = data => {
+  const state = ["on", "paused", "offline"].includes(data.state) ? data.state : "offline";
+  $("pill").className = `pill ${state}`;
+  $("pill").textContent = T[state];
+  $("email").textContent = data.email || T.signedOut;
+  const folders = $("folders");
+  folders.replaceChildren(...(data.folders || []).map((key, i) => {
+    const b = document.createElement("button");
+    b.append(icon("", true), document.createTextNode(T[key] || key));
+    b.onclick = () => post(`folder:${i}`);
+    return b;
+  }));
+  const recent = $("recent");
+  const rows = (data.recent || []).filter(e => T[e.op]);
+  if (!rows.length) {
+    const p = document.createElement("div"); p.className = "empty"; p.textContent = T.empty;
+    recent.replaceChildren(p);
+    return;
+  }
+  recent.replaceChildren(...rows.map(e => {
+    const row = document.createElement("div"); row.className = "act";
+    const text = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = T[e.op](base(e.path));
+    const s = document.createElement("span"); s.textContent = [parent(e.path), ago(e.ts)].filter(Boolean).join(" · ");
+    text.append(b, s);
+    row.append(icon(base(e.path), e.op === "list"), text);
+    return row;
+  }));
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape") post("hide"); });
+post("ready");
+</script>
+</body>
+</html>

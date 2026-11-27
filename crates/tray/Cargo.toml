@@ -30,6 +30,11 @@ serde_json = "1"
 # Plain HTTP to the local daemon on 127.0.0.1 only, as engine-client does.
 ureq = { version = "3.4", default-features = false }
 
+# The popup a click on the icon opens (src/popup.rs): the system web view (WebView2, WKWebView).
+# Linux keeps the menu only, so the tray there does not need WebKitGTK.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+wry = { version = "0.58", default-features = false, features = ["os-webview"] }
+
 [target.'cfg(windows)'.dependencies]
 # The per-icon taskbar setting Explorer keeps (see `show_on_taskbar_once`).
 winreg = "0.55"
