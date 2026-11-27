@@ -273,6 +273,14 @@ korean.DriveConnecting=내 컴퓨터를 연결하도록 브라우저를 여는 �
 
 [Messages]
 #ifdef DRIVE
+; Inno always shows one page before it installs: for Redrob Drive that is this one, the whole
+; pitch and one Install button.
+english.WizardReady=Install Redrob Drive
+english.ReadyLabel1=Redrob Drive connects this computer to Redrob Chat, so chat can find, read and organize your files.
+english.ReadyLabel2b=Click Install. Your browser opens next to connect it with your Redrob account.
+korean.WizardReady=레드롭 드라이브 설치
+korean.ReadyLabel1=레드롭 드라이브는 이 컴퓨터를 레드롭 챗과 연결해요. 챗에서 내 파일을 찾고, 읽고, 정리할 수 있어요.
+korean.ReadyLabel2b=설치를 누르세요. 그다음 브라우저가 열리면 레드롭 계정으로 연결해요.
 english.FinishedHeadingLabel=Redrob Drive is installed
 english.FinishedLabel=Your browser opened to connect this computer to Redrob Chat. Allow it once with your Redrob account.%n%nAfter that, Redrob Drive stays on in the background. Look for the Redrob icon on the taskbar.
 korean.FinishedHeadingLabel=레드롭 드라이브를 설치했어요
@@ -311,12 +319,12 @@ korean.StatusRollback=바뀐 것을 되돌리는 중...
 korean.WizardSelectTasks=추가 작업 고르기
 korean.SelectTasksDesc=어떤 작업을 더 할까요?
 korean.SelectTasksLabel2=설치하면서 할 작업을 고르고 다음을 누르세요.
-korean.WizardReady=설치 준비 완료
-korean.ReadyLabel1=이 컴퓨터에 설치할 준비가 됐어요.
 korean.ReadyLabel2a=설치를 누르면 시작해요. 바꿀 것이 있으면 이전을 누르세요.
-korean.ReadyLabel2b=설치를 누르면 시작해요.
 korean.ReadyMemoTasks=추가 작업:
 #ifndef DRIVE
+korean.WizardReady=설치 준비 완료
+korean.ReadyLabel1=이 컴퓨터에 설치할 준비가 됐어요.
+korean.ReadyLabel2b=설치를 누르면 시작해요.
 korean.FinishedHeadingLabel=레드롭 코드 설치를 마쳤어요
 #endif
 korean.ClickFinish=마침을 누르면 설치 창이 닫혀요.
