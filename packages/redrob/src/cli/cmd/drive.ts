@@ -9,7 +9,9 @@
  *   1. register the engine to start at login, and start it now (always on);
  *   2. allow the whole home folder (`~/`), by writing the desk's `folders.json`;
  *   3. turn the desk on, so the relay carries requests from the web;
- *   4. sign in to the Redrob account, so the chat for that account can reach this machine.
+ *   4. sign in to the Redrob account, so the chat for that account can reach this machine;
+ *   5. let that account's browsers in without the six-digit code (`autoPairWeb`), since Drive has
+ *      no screen to approve one on.
  *
  * Approval stays at the daemon's defaults -- machine access `trusted`, Auto all on -- so the chat
  * works with the files without asking per file. That is the point of Drive; a person who wants the
@@ -21,6 +23,7 @@ import { Daemon } from "@/daemon/connect"
 import * as Autostart from "@/daemon/autostart"
 import * as Tray from "@/daemon/tray"
 import { setAllowedFolders, allowedFolders } from "@/desk/files"
+import { setAutoPairWeb } from "@/desk/settings"
 import { homedir } from "node:os"
 import open from "open"
 
@@ -105,6 +108,8 @@ const SetupCommand = cmd({
     const home = homedir()
     await setAllowedFolders([home])
     UI.println(`opened your home folder to Redrob Chat: ${home}`)
+    // Drive has no screen to approve a browser's code on: a browser of this account is let in.
+    await setAutoPairWeb(true)
 
     const enabled = await call<Status>("/desk/enable", "POST", { enabled: true })
     if (!enabled) return

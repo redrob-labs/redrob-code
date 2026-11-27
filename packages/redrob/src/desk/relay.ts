@@ -27,7 +27,7 @@ import {
   type MachineFrame,
 } from "./frames"
 import { Pairing, deviceKind, type Device, type DeviceKind, type PendingRequest } from "./pairing"
-import { machine } from "./settings"
+import { autoPairWeb, machine } from "./settings"
 import { ToolCatalog } from "./tools"
 
 /** State changes closer together than this go out as one `desk.machine`. */
@@ -330,6 +330,11 @@ export class DeskRelay {
     const known = await this.pairing.device(deviceId)
     if (known && known.pub === hello.phone) return this.accept(peer)
     const request = await this.pairing.request({ devicePub, name, kind, peerId })
+    if (kind === "web" && (await autoPairWeb())) {
+      this.log.info(`let in "${request.name}" (web) without a code: Redrob Drive pairs this account's browsers`)
+      await this.approve(request.code)
+      return
+    }
     this.log.info(`pairing request from "${request.name}" (${request.kind}); run: redrob desk approve ${request.code}`)
     this.sendJson("desk.pending", { v: 1 }, peerId)
   }
