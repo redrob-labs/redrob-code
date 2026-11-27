@@ -519,7 +519,6 @@ fn main() {
                         popup.hide();
                         let _ = open::that_detached(&chat);
                     }
-                    "toggle" => flip(state != State::On),
                     "hide" => popup.hide(),
                     other => {
                         let folder = other.strip_prefix("folder:").and_then(|n| n.parse::<usize>().ok()).and_then(|n| popup::folders().into_iter().nth(n));
